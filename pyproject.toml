@@ -1,0 +1,7 @@
+[project]
+name = "lakegen"
+version = "0.1.0"
+description = "Autonomous AI Agent For Managing Lakehouses"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = []

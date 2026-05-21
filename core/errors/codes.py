@@ -1,0 +1,34 @@
+from enum import Enum
+
+
+class ErrorCode(str, Enum):
+
+    # Client/Input Errors
+    INVALID_ARGUMENT = "INVALID_ARGUMENT"
+    FAILED_PRECONDITION = "FAILED_PRECONDITION"
+
+    # Auth
+    UNAUTHENTICATED = "UNAUTHENTICATED"
+    PERMISSION_DENIED = "PERMISSION_DENIED"
+
+    # Resource Errors
+    NOT_FOUND = "NOT_FOUND"
+    ALREADY_EXISTS = "ALREADY_EXISTS"
+
+    # Execution
+    ABORTED = "ABORTED"
+    CANCELLED = "CANCELLED"
+    TIMEOUT = "TIMEOUT"
+
+    # Availability
+    UNAVAILABLE = "UNAVAILABLE"
+
+    # Capability
+    UNIMPLEMENTED = "UNIMPLEMENTED"
+
+    # Internal/System
+    INTERNAL = "INTERNAL"
+    DATA_LOSS = "DATA_LOSS"
+
+    # Unknown
+    UNKNOWN = "UNKNOWN"
