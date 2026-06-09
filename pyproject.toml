@@ -5,5 +5,6 @@ description = "Autonomous AI Agent For Managing Lakehouses"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
+    "keyring>=25.7.0",
     "pyiceberg[glue,pyarrow,s3fs]>=0.11.1",
 ]

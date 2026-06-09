@@ -32,3 +32,7 @@ class ErrorCode(str, Enum):
 
     # Unknown
     UNKNOWN = "UNKNOWN"
+
+    # Credential backends
+    KEYRING = "KEYRING"
+    JSON = "JSON"

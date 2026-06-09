@@ -5,7 +5,6 @@ high-level orchestration in ``credentials.store``.
 """
 
 from dataclasses import dataclass
-from typing import Optional
 
 # Namespace used for every entry written to the OS keyring.
 SERVICE_NAME = "lakegen"
@@ -39,8 +38,11 @@ class StoreResult:
     ``success`` and read ``error`` to decide how to recover.
     """
 
+    connection_name: str | None
     success: bool
-    error: Optional[str] = None
+    error: str | None = None
+
+    output: Any
 
     def __bool__(self) -> bool:
         return self.success

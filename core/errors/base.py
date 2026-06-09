@@ -1,4 +1,5 @@
 from core.errors.codes import ErrorCode
+from typing import Any
 
 class BaseError(Exception):
     def __init__(
@@ -6,8 +7,8 @@ class BaseError(Exception):
         code: ErrorCode,
         message: str,
         *,
-        details: Optional[dict[str, Any]] = None,
-        cause: Optional[BaseException] = None,
+        details: dict[str, Any] | None = None,
+        cause: BaseException | None = None,
     ) -> None:
         self.code = code
         self.message = message
@@ -16,5 +17,5 @@ class BaseError(Exception):
             self.__cause__ = cause
         super().__init__(message)
 
-    def __str__(self) - > str:
+    def __str__(self) -> str:
         return f"{self.code.value}: {self.message}"
