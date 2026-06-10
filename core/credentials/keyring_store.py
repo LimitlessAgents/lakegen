@@ -1,12 +1,10 @@
-"""Keyring-backed storage for sensitive credential fields.
+"""Read and write secret credential fields in the OS keyring.
 
-Secrets are kept in the OS-native vault (macOS Keychain, Windows Credential
-Manager, Linux Secret Service) via the optional ``keyring`` package. When no
-backend is installed, write paths raise ``BaseError`` with code ``KEYRING`` so
-callers can fall back; reads return ``None`` and deletes are no-ops.
+Uses the system vault (macOS Keychain, Windows Credential Manager, etc.) via the
+``keyring`` package. Each secret is stored under ``<connection_name>/<field>``.
 
-Keyring is a flat key/value store, so each field is stored under the key
-``"<connection_name>/<field>"``.
+Raises ``BaseError`` with code ``KEYRING`` when the backend is missing or an
+operation fails.
 """
 
 from typing import Any
@@ -21,7 +19,10 @@ _backend: Any = None
 
 
 def _get_backend() -> Any:
-    """Return the imported ``keyring`` module"""
+    """Return the keyring module, loading it on first use.
+
+    Raises ``BaseError`` if the keyring package is not installed.
+    """
     global _backend
     if _backend:
         return _backend
@@ -34,12 +35,15 @@ def _get_backend() -> Any:
 
 
 def _entry_key(connection_name: str, field: str) -> str:
-    """Build the flat keyring key for one field of a connection."""
+    """Return the keyring key for one field of a connection."""
     return f"{connection_name}/{field}"
 
 
 def set_secret(connection_name: str, field: str, value: Any) -> None:
-    """Store a single secret. Raises ``BaseError`` on failure."""
+    """Write one secret field to the keyring.
+
+    Raises ``BaseError`` on failure.
+    """
     try:
         backend = _get_backend()
         backend.set_password(SERVICE_NAME, _entry_key(connection_name, field), value)
@@ -54,7 +58,11 @@ def set_secret(connection_name: str, field: str, value: Any) -> None:
 
 
 def get_secret(connection_name: str, field: str) -> str | None:
-    """Read a single secret"""
+    """Read one secret field from the keyring.
+
+    Returns ``None`` if the field is not stored.
+    Raises ``BaseError`` if the keyring is unavailable or the read fails.
+    """
     try:
         backend = _get_backend()
         return backend.get_password(SERVICE_NAME, _entry_key(connection_name, field))
@@ -67,8 +75,12 @@ def get_secret(connection_name: str, field: str) -> str | None:
             cause=e,
         )
 
+
 def delete_secret(connection_name: str, field: str) -> None:
-    """Remove a single secret. Raises ``BaseError`` on failure."""
+    """Remove one secret field from the keyring.
+
+    Raises ``BaseError`` on failure.
+    """
     try:
         backend = _get_backend()
         backend.delete_password(SERVICE_NAME, _entry_key(connection_name, field))
@@ -83,10 +95,12 @@ def delete_secret(connection_name: str, field: str) -> None:
 
 
 def store(connection_name: str, secrets: dict[str, Any]) -> None:
-    """Store all secret fields atomically.
+    """Write all secret fields for a connection.
 
-    If any field fails to write, the ones already written are rolled back so
-    the keyring is never left holding a partial set of credentials.
+    If any field fails, previously written fields are rolled back, then the
+    error is raised. The keyring never keeps a partial set of secrets.
+
+    Raises ``BaseError`` on failure.
     """
     written: list[str] = []
     for field, value in secrets.items():
@@ -96,10 +110,13 @@ def store(connection_name: str, secrets: dict[str, Any]) -> None:
         except BaseError:
             delete(connection_name, written)
             raise
-        
+
 
 def delete(connection_name: str, fields: Iterable[str]) -> None:
-    """Best-effort removal of the given fields for a connection."""
+    """Remove the given secret fields for a connection.
+
+    Ignores fields that fail to delete. Used for rollback and cleanup.
+    """
     for field in fields:
         try:
             delete_secret(connection_name, field)

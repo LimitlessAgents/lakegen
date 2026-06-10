@@ -1,11 +1,11 @@
-"""High-level credential storage combining the keyring and JSON backends.
+"""Public API for saving and loading lakehouse connection credentials.
 
-Storage strategy:
-  - Secret fields (``SENSITIVE_FIELDS``) go into the OS keyring, and the JSON
-    file keeps a placeholder in their place.
-  - Non-secret fields are stored as-is in the JSON file.
-  - If no keyring is available, the full credentials fall back to plaintext
-    JSON so the connection still works.
+Secrets (passwords, tokens, keys) are stored in the OS keyring when possible.
+Everything else is stored in a JSON file. If the keyring is unavailable, secrets
+are written to the JSON file instead.
+
+All functions raise ``BaseError`` on failure. Tools should catch those errors
+and return them to the agent.
 """
 
 from typing import Any
@@ -16,12 +16,16 @@ from credentials import json_store, keyring_store
 from credentials.model import KEYRING_PLACEHOLDER, SENSITIVE_FIELDS
 
 
-def store_credentials(connection_name: str, creds: Dict[str, Any]) -> None:
-    """Persist a connection's credentials across the keyring and JSON backends.
+def store_credentials(connection_name: str, creds: dict[str, Any]) -> None:
+    """Save credentials for a connection.
 
-    Secrets are written to the keyring and the JSON copy keeps placeholders. If
-    the keyring write succeeds but the JSON write fails, the keyring changes are
-    rolled back so the two backends never disagree.
+    Tries the keyring first for secret fields and writes placeholders to JSON.
+    If the keyring is unavailable, stores everything in JSON instead.
+    Rolls back the keyring if the JSON write fails afterward.
+
+    Raises:
+        ``BaseError`` if both backends fail, or if JSON fails after a
+        successful keyring write (keyring is rolled back first).
     """
     secrets = {k: v for k, v in creds.items() if k in SENSITIVE_FIELDS}
 
@@ -56,7 +60,13 @@ def store_credentials(connection_name: str, creds: Dict[str, Any]) -> None:
 
 
 def get_credentials(connection_name: str) -> dict[str, Any]:
-    """Return a connection's full credentials, resolving keyring-backed secrets."""
+    """Load credentials for a connection.
+
+    Reads from JSON and fills in any secret fields from the keyring.
+
+    Raises:
+        ``BaseError`` if the connection does not exist or a backend read fails.
+    """
     creds = json_store.load(connection_name)
     for field, value in creds.items():
         if value == KEYRING_PLACEHOLDER:
@@ -65,7 +75,13 @@ def get_credentials(connection_name: str) -> dict[str, Any]:
 
 
 def delete_credentials(connection_name: str) -> None:
-    """Remove a connection from both backends."""
+    """Delete a connection and all of its credentials.
+
+    Removes secrets from the keyring and the entry from the JSON file.
+
+    Raises:
+        ``BaseError`` if the connection does not exist or a backend delete fails.
+    """
     stored = json_store.load(connection_name)
     secret_fields = [f for f, v in stored.items() if v == KEYRING_PLACEHOLDER]
     keyring_store.delete(connection_name, secret_fields)
@@ -73,5 +89,9 @@ def delete_credentials(connection_name: str) -> None:
 
 
 def list_connections() -> list[str]:
-    """List all available connection names from the JSON backend."""
+    """Return the names of all saved connections.
+
+    Raises:
+        ``BaseError`` if the credentials file cannot be read.
+    """
     return json_store.list()

@@ -1,11 +1,9 @@
-"""JSON-file-backed storage for connection credentials.
+"""Read and write connection credentials in a JSON file.
 
-The file holds one entry per connection, keyed by connection name, with each
-value being a dict of ``field -> value``. Secret fields are replaced with
-``KEYRING_PLACEHOLDER`` when their real values live in the keyring.
+Each connection is one entry in ``~/.lakegen/credentials.json``. The file must
+already exist before writes (created at app startup).
 
-The file is expected to already exist (created during application startup);
-writes to a missing file are treated as a failure rather than created here.
+Raises ``BaseError`` with code ``JSON`` or ``NOT_FOUND`` on failure.
 """
 
 import json
@@ -18,17 +16,20 @@ from credentials.model import CREDENTIALS_PATH
 
 
 def _path() -> str:
-    """Absolute path to the credentials file, with ``~`` expanded."""
+    """Return the expanded path to the credentials file."""
     return os.path.expanduser(CREDENTIALS_PATH)
 
 
 def _read(path: str) -> dict[str, Any]:
-    """Load the whole store. Returns ``{}`` if the file is missing."""
+    """Read the full credentials file.
+
+    Raises ``BaseError`` if the file does not exist, is corrupt, or cannot be read.
+    """
     try:
         with open(path, "r") as f:
             return json.load(f)
     except FileNotFoundError:
-        return {}
+        raise BaseError(ErrorCode.JSON, "Credentials file does not exist.")
     except json.JSONDecodeError as e:
         raise BaseError(
             ErrorCode.JSON,
@@ -44,7 +45,10 @@ def _read(path: str) -> dict[str, Any]:
 
 
 def _write(path: str, data: dict[str, Any]) -> None:
-    """Write the whole store and restrict the file to owner-only access."""
+    """Write the full credentials file with owner-only permissions.
+
+    Raises ``BaseError`` if the write fails.
+    """
     try:
         with open(path, "w") as f:
             json.dump(data, f, indent=2)
@@ -58,35 +62,45 @@ def _write(path: str, data: dict[str, Any]) -> None:
 
 
 def store(connection_name: str, creds: dict[str, Any]) -> None:
-    """Save (or overwrite) one connection's credentials. Other entries are kept."""
-    path = _path()
-    if not os.path.exists(path):
-        raise BaseError(ErrorCode.JSON, "Credentials file does not exist.")
-    data = _read(path)
+    """Save or overwrite one connection. Other connections are unchanged.
+
+    Raises ``BaseError`` if the credentials file does not exist or the write fails.
+    """
+    data = _read(_path())
     data[connection_name] = creds
-    _write(path, data)
+    _write(_path(), data)
+
 
 def load(connection_name: str) -> dict[str, Any]:
-    """Return one connection's stored fields, or ``{}`` if it does not exist."""
+    """Load the stored fields for one connection.
+
+    Raises ``BaseError`` with ``NOT_FOUND`` if the connection does not exist.
+    """
     data = _read(_path()).get(connection_name, None)
     if data is None:
         raise BaseError(
-            ErrorCode.JSON,
+            ErrorCode.NOT_FOUND,
             f"No connection data found for connection_name: {connection_name}",
         )
     return data
 
+
 def delete(connection_name: str) -> None:
-    """Remove one connection. No-op if the connection is absent."""
-    path = _path()
-    if not os.path.exists(path):
-        raise BaseError(ErrorCode.JSON, "Credentials file does not exist.")
-    data = _read(path)
+    """Remove one connection from the file.
+
+    Does nothing if the connection is not in the file.
+    Raises ``BaseError`` if the credentials file does not exist or the write fails.
+    """
+    data = _read(_path())
     if connection_name not in data:
         return
     del data[connection_name]
-    _write(path, data)
+    _write(_path(), data)
+
 
 def list() -> list[str]:
-    """List all available connections."""
+    """Return all connection names in the credentials file.
+
+    Raises ``BaseError`` if the file does not exist or cannot be read.
+    """
     return list(_read(_path()).keys())

@@ -1,9 +1,13 @@
 """Credential storage for lakegen connections.
 
-Secrets are kept in the OS keyring when available; the rest live in a JSON
-file. Import the high-level API from here:
+    from credentials import (
+        store_credentials,
+        get_credentials,
+        delete_credentials,
+        list_connections,
+    )
 
-    from credentials import store_credentials, get_credentials, delete_credentials
+All functions raise ``BaseError`` on failure.
 """
 
 from credentials.store import (
