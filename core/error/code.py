@@ -18,7 +18,7 @@ class ErrorCode(str, Enum):
     # Execution
     ABORTED = "ABORTED"
     CANCELLED = "CANCELLED"
-    TIMEOUT = "TIMEOUT"
+    
 
     # Availability
     UNAVAILABLE = "UNAVAILABLE"
@@ -36,3 +36,6 @@ class ErrorCode(str, Enum):
     # Credential backends
     KEYRING = "KEYRING"
     JSON = "JSON"
+
+    CONNECTION_TIMEOUT = "CONNECTION_TIMEOUT"
+    CONNECTION_FAILED = "CONNECTION_FAILED"

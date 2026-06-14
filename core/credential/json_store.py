@@ -1,7 +1,10 @@
 """Read and write connection credentials in a JSON file.
 
-Each connection is one entry in ``~/.lakegen/credentials.json``. The file must
-already exist before writes (created at app startup).
+Credentials are nested by kind and name in ``~/.lakegen/credentials.json``::
+
+    {"catalogs": {"prod": {...}}, "databases": {"prod": {...}}}
+
+The file must already exist before writes (created at app startup).
 
 Raises ``BaseError`` with code ``JSON`` or ``NOT_FOUND`` on failure.
 """
@@ -10,9 +13,9 @@ import json
 import os
 from typing import Any
 
-from core.errors.base import BaseError
-from core.errors.codes import ErrorCode
-from credentials.model import CREDENTIALS_PATH
+from .model import CREDENTIALS_PATH
+from error.base import BaseError
+from error.code import ErrorCode
 
 
 def _path() -> str:
@@ -61,46 +64,56 @@ def _write(path: str, data: dict[str, Any]) -> None:
         ) from e
 
 
-def store(connection_name: str, creds: dict[str, Any]) -> None:
+def store(kind: str, name: str, creds: dict[str, Any]) -> None:
     """Save or overwrite one connection. Other connections are unchanged.
 
     Raises ``BaseError`` if the credentials file does not exist or the write fails.
     """
     data = _read(_path())
-    data[connection_name] = creds
+    if kind not in data:
+        data[kind] = {}
+    data[kind][name] = creds
     _write(_path(), data)
 
 
-def load(connection_name: str) -> dict[str, Any]:
+def load(kind: str, name: str) -> dict[str, Any]:
     """Load the stored fields for one connection.
 
     Raises ``BaseError`` with ``NOT_FOUND`` if the connection does not exist.
     """
-    data = _read(_path()).get(connection_name, None)
-    if data is None:
+    creds = _read(_path()).get(kind, {}).get(name)
+    if creds is None:
         raise BaseError(
             ErrorCode.NOT_FOUND,
-            f"No connection data found for connection_name: {connection_name}",
+            f"No connection data found for {kind}/{name}.",
         )
-    return data
+    return creds
 
 
-def delete(connection_name: str) -> None:
+def delete(kind: str, name: str) -> None:
     """Remove one connection from the file.
 
     Does nothing if the connection is not in the file.
     Raises ``BaseError`` if the credentials file does not exist or the write fails.
     """
     data = _read(_path())
-    if connection_name not in data:
+    kind_data = data.get(kind, {})
+    if name not in kind_data:
         return
-    del data[connection_name]
+    del kind_data[name]
+    if kind_data:
+        data[kind] = kind_data
+    elif kind in data:
+        del data[kind]
     _write(_path(), data)
 
 
-def list() -> list[str]:
-    """Return all connection names in the credentials file.
+def list(kind: str | None = None) -> dict[str, list[str]] | list[str]:
+    """Return connection names, grouped by kind or for one kind.
 
-    Raises ``BaseError`` if the file does not exist or cannot be read.
+    Raises ``BaseError`` if the credentials file cannot be read.
     """
-    return list(_read(_path()).keys())
+    data = _read(_path())
+    if kind is not None:
+        return list(data.get(kind, {}).keys())
+    return {k: list(v.keys()) for k, v in data.items() if isinstance(v, dict)}

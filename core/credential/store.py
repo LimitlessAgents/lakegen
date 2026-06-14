@@ -10,13 +10,18 @@ and return them to the agent.
 
 from typing import Any
 
-from core.errors.base import BaseError
-from core.errors.codes import ErrorCode
-from credentials import json_store, keyring_store
-from credentials.model import KEYRING_PLACEHOLDER, SENSITIVE_FIELDS
+from . import json_store, keyring_store
+from .model import KEYRING_PLACEHOLDER, SENSITIVE_FIELDS
+from error.base import BaseError
+from error.code import ErrorCode
 
 
-def store_credentials(connection_name: str, creds: dict[str, Any]) -> None:
+def _keyring_id(kind: str, name: str) -> str:
+    """Return the keyring namespace for a kind/name connection."""
+    return f"{kind}/{name}"
+
+
+def store_credentials(kind: str, name: str, creds: dict[str, Any]) -> None:
     """Save credentials for a connection.
 
     Tries the keyring first for secret fields and writes placeholders to JSON.
@@ -27,13 +32,14 @@ def store_credentials(connection_name: str, creds: dict[str, Any]) -> None:
         ``BaseError`` if both backends fail, or if JSON fails after a
         successful keyring write (keyring is rolled back first).
     """
+    keyring_name = _keyring_id(kind, name)
     secrets = {k: v for k, v in creds.items() if k in SENSITIVE_FIELDS}
 
     try:
-        keyring_store.store(connection_name, secrets)
+        keyring_store.store(keyring_name, secrets)
     except BaseError as ke:
         try:
-            json_store.store(connection_name, creds)
+            json_store.store(kind, name, creds)
         except BaseError as je:
             raise BaseError(
                 ErrorCode.UNAVAILABLE,
@@ -48,9 +54,9 @@ def store_credentials(connection_name: str, creds: dict[str, Any]) -> None:
         for k, v in creds.items()
     }
     try:
-        json_store.store(connection_name, redacted)
+        json_store.store(kind, name, redacted)
     except BaseError as e:
-        keyring_store.delete(connection_name, secrets.keys())
+        keyring_store.delete(keyring_name, secrets.keys())
         raise BaseError(
             ErrorCode.JSON,
             "Secrets written to keyring but JSON write failed; rolled back keyring.",
@@ -59,7 +65,7 @@ def store_credentials(connection_name: str, creds: dict[str, Any]) -> None:
         ) from e
 
 
-def get_credentials(connection_name: str) -> dict[str, Any]:
+def get_credentials(kind: str, name: str) -> dict[str, Any]:
     """Load credentials for a connection.
 
     Reads from JSON and fills in any secret fields from the keyring.
@@ -67,14 +73,15 @@ def get_credentials(connection_name: str) -> dict[str, Any]:
     Raises:
         ``BaseError`` if the connection does not exist or a backend read fails.
     """
-    creds = json_store.load(connection_name)
+    keyring_name = _keyring_id(kind, name)
+    creds = json_store.load(kind, name)
     for field, value in creds.items():
         if value == KEYRING_PLACEHOLDER:
-            creds[field] = keyring_store.get_secret(connection_name, field)
+            creds[field] = keyring_store.get_secret(keyring_name, field)
     return creds
 
 
-def delete_credentials(connection_name: str) -> None:
+def delete_credentials(kind: str, name: str) -> None:
     """Delete a connection and all of its credentials.
 
     Removes secrets from the keyring and the entry from the JSON file.
@@ -82,16 +89,17 @@ def delete_credentials(connection_name: str) -> None:
     Raises:
         ``BaseError`` if the connection does not exist or a backend delete fails.
     """
-    stored = json_store.load(connection_name)
+    keyring_name = _keyring_id(kind, name)
+    stored = json_store.load(kind, name)
     secret_fields = [f for f, v in stored.items() if v == KEYRING_PLACEHOLDER]
-    keyring_store.delete(connection_name, secret_fields)
-    json_store.delete(connection_name)
+    keyring_store.delete(keyring_name, secret_fields)
+    json_store.delete(kind, name)
 
 
-def list_connections() -> list[str]:
-    """Return the names of all saved connections.
+def list_connections(kind: str | None = None) -> dict[str, list[str]] | list[str]:
+    """Return saved connection names, grouped by kind or for one kind.
 
     Raises:
         ``BaseError`` if the credentials file cannot be read.
     """
-    return json_store.list()
+    return json_store.list(kind)

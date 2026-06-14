@@ -11,6 +11,21 @@ from typing import Any
 class BaseCatalog(ABC):
     """Abstract contract for catalog operations exposed to tools."""
 
+    @property
+    @abstractmethod
+    def name(self) -> str:
+        """Get name of the catalog"""
+        ...
+
+    @abstractmethod
+    def connect(self) -> Any:
+        """Connect to the catalog"""
+        ...
+    
+    @abstractmethod
+    def close(self) -> None:
+        """Close the connection if active"""
+
     @abstractmethod
     def list_namespaces(self) -> list[Any]:
         """Return all namespaces available in the catalog."""

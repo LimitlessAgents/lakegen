@@ -7,12 +7,12 @@ Raises ``BaseError`` with code ``KEYRING`` when the backend is missing or an
 operation fails.
 """
 
-from typing import Any
 from collections.abc import Iterable
+from typing import Any
 
-from core.errors.base import BaseError
-from core.errors.codes import ErrorCode
-from credentials.model import SERVICE_NAME
+from .model import SERVICE_NAME
+from error.base import BaseError
+from error.code import ErrorCode
 
 # Cached keyring module so we only attempt the optional import once.
 _backend: Any = None

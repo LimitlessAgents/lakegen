@@ -25,16 +25,3 @@ SENSITIVE_FIELDS = frozenset(
     }
 )
 
-
-@dataclass
-class StoreResult:
-    """Legacy result type for credential write operations. Prefer raising ``BaseError``."""
-
-    connection_name: str | None
-    success: bool
-    error: str | None = None
-
-    output: Any
-
-    def __bool__(self) -> bool:
-        return self.success
