@@ -1,34 +1,30 @@
 from typing import Any
 
-from tool.model import ToolDefinition, ToolOutput
-
-_all_available_tools: dict[str, dict[str, ToolDefinition]] = {}
+from tool.model import ToolDefinition
 
 
-def register_tool(kind: str, tool: ToolDefinition) -> None:
-    """Register a tool."""
-    _all_available_tools.setdefault(kind, {})[tool.name] = tool
+class Registry:
+    self._all_available_tools: dict[str, dict[str, ToolDefinition]] = {}
 
-
-def list_tools(kind: str | None = None) -> list[ToolDefinition]:
-    if kind is not None:
-        return list(_all_available_tools.get(kind, {}).values())
-    return [
-        tool
-        for tools in _all_available_tools.values()
-        for tool in tools.values()
-    ]
-
-
-def use_tool(kind: str, name: str, params: dict[str, Any]) -> ToolOutput:
-    # print("Available tools:", _all_available_tools)
-    tool = _all_available_tools.get(kind, {}).get(name)
-    if tool is None:
-        return ToolOutput(
-            ok=False,
-            error={
-                "code": "TOOL_NOT_FOUND",
-                "message": f"Unknown tool {name!r} in {kind!r}",
-            },
+    def register(name: str, schema: dict[str, Any], handler: Callable, requires_env: bool = False):
+        self._all_available_tools[name] = ToolDefinition(
+            name=name,
+            description=schema["description"],
+            schema=schema,
+            handler=handler,
+            requires_env=requires_env
         )
-    return tool.handler(params)
+    
+    def list_tool_names(self) -> list[ToolDefinition]:
+        return self._all_available_tools.keys()
+
+    def get_all_tools_info(self) -> dict[str, ToolDefinition]:
+        return self._all_available_tools
+
+    def get_all_tools_description(self) -> dict[str, str]:
+        return {name: tooldef.description for name, tooldef in self._all_available_tools.items()}
+
+    def get_tool_schema(self, tool_name: str) -> dict[str, Any]:
+        return self._all_available_tools[tool_name].schema
+
+

@@ -1,23 +1,21 @@
-from pydantic import BaseModel, Field
+from pydantic import Field
 from typing import Literal, Any, Callable
 
-
-class ToolParameters(BaseModel):
-    type: Literal["object"] = "object"
-    properties: dict[str, Any] = Field(default_factory=dict)
-    required: list[str] = Field(default_factory=list)
-    additionalProperties: bool = False
+from dataclasses import dataclass
 
 
-class ToolDefinition(BaseModel):
+@dataclass(slots=True)
+class ToolDefinition:
     type: Literal["function"] = "function"
     name: str
     description: str
-    parameters: ToolParameters = Field(default_factory=ToolParameters)
+    schema: dict[str, Any]
     handler: Callable
+    requires_env: bool
 
 
-class ToolOutput(BaseModel):
+@dataclass(slots=True)
+class ToolOutput:
     ok: bool
     response: Any = None
     error: dict[str, Any] = Field(default_factory=dict)
