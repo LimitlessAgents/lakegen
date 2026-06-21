@@ -25,7 +25,8 @@ def resolve_catalog_spec(spec: dict[str, Any]) -> GlueCatalogSpec | RestCatalogS
 
 def resolve_catalog_type(spec: dict[str, Any]) -> type[BaseCatalog]:
     try:
-        return CATALOG_TYPE_DICT[spec["catalog_kind"]]
+        catalog_kind = spec["catalog_kind"]
+        return CATALOG_TYPE_DICT[catalog_kind]
     except KeyError:
         raise BaseError(
             ErrorCode.INVALID_ARGUMENT,

@@ -8,20 +8,8 @@ from lakegen.tool.registry import registry
 
 _TOOLSET = "catalog"
 
-def add_catalog(params: dict[str, Any]) -> ToolOutput:
-    try:
-        conreg.open_new_connection(_TOOLSET, params)
-        return ToolOutput(
-            ok=True,
-            response=f"Catalog {params['name']} successfully added.",
-        )
-    except BaseError as e:
-        return ToolOutput(
-            ok=False,
-            response=f"Failed to add catalog: {params.get('name')}",
-            error=e.to_dict(),
-        )
-
+def add_catalog(params: dict[str, Any]) -> None:
+    conreg.open_new_connection(_TOOLSET, params)
 
 # OPENAI TOOL FORMAT
 SCHEMA = {
@@ -40,7 +28,7 @@ SCHEMA = {
 
 # Register the tool. Will register by a side affect call when the module is imported
 registry.register(
-    kind=_TOOLSET,
+    toolset=_TOOLSET,
     name="add_catalog",
     schema=SCHEMA,
     handler=add_catalog,

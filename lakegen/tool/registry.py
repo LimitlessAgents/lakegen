@@ -11,14 +11,14 @@ class ToolRegistry:
 
     def register(
         self,
-        kind: str,
+        toolset: str,
         name: str,
         schema: dict[str, Any],
         handler: Callable,
         requires_env: bool = False,
         description: str = ""
         ):
-        self.__all_available_tools.setdefault(kind, {})[name] = ToolDefinition(
+        self.__all_available_tools.setdefault(toolset, {})[name] = ToolDefinition(
             name=name,
             description=description or schema.get("description", ""),
             schema=schema,
@@ -45,8 +45,8 @@ class ToolRegistry:
     def get_all_tools_info(self) -> dict[str, dict[str, ToolDefinition]]:
         try:
             return {
-                kind: dict(tools)
-                for kind, tools in self.__all_available_tools.items()
+                toolset: dict(tools)
+                for toolset, tools in self.__all_available_tools.items()
             }
         except BaseError:
             raise
@@ -57,17 +57,17 @@ class ToolRegistry:
                 cause=e,
             ) from e
 
-    def get_tools_description(self, kind: str | None) -> dict[str, str]:
+    def get_tools_description(self, toolset: str | None) -> dict[str, str]:
         try:
-            if kind:
-                if kind not in self.__all_available_tools:
+            if toolset:
+                if toolset not in self.__all_available_tools:
                     raise BaseError(
                         ErrorCode.NOT_FOUND,
-                        f"No tools registered for kind {kind!r}.",
+                        f"No tools registered for toolset {toolset!r}.",
                     )
                 return {
                     name: tooldef.description
-                    for name, tooldef in self.__all_available_tools[kind].items()
+                    for name, tooldef in self.__all_available_tools[toolset].items()
                 }
             return {
                 name: tooldef.description
@@ -80,21 +80,21 @@ class ToolRegistry:
             raise BaseError(
                 ErrorCode.INTERNAL,
                 "Failed to get tool descriptions.",
-                details={"kind": kind},
+                details={"toolset": toolset},
                 cause=e,
             ) from e
 
-    def get_tool_schema(self, kind: str, tool_name: str) -> dict[str, Any]:
+    def get_tool_schema(self, toolset: str, tool_name: str) -> dict[str, Any]:
         try:
             if not tool_name:
                 raise BaseError(ErrorCode.INVALID_ARGUMENT, "tool_name is required.")
 
-            tools = self.__all_available_tools.get(kind, {})
+            tools = self.__all_available_tools.get(toolset, {})
             if tool_name not in tools:
                 raise BaseError(
                     ErrorCode.NOT_FOUND,
                     f"Tool {tool_name!r} not found.",
-                    details={"kind": kind},
+                    details={"toolset": toolset},
                 )
             return tools[tool_name].schema
         except BaseError:
@@ -106,19 +106,19 @@ class ToolRegistry:
                 cause=e,
             ) from e
 
-    def get_tool_handler(self, kind: str, tool_name: str) -> Callable:
+    def get_tool_handler(self, toolset: str, tool_name: str) -> Callable:
         try:
             if not tool_name:
                 raise BaseError(ErrorCode.INVALID_ARGUMENT, "tool_name is required.")
 
-            tools = self.__all_available_tools.get(kind, {})
+            tools = self.__all_available_tools.get(toolset, {})
             if tool_name in tools:
                 return tools[tool_name].handler
 
             raise BaseError(
                 ErrorCode.NOT_FOUND,
                 f"Tool {tool_name!r} not found.",
-                details={"kind": kind},
+                details={"toolset": toolset},
             )
         except BaseError:
             raise
@@ -126,7 +126,7 @@ class ToolRegistry:
             raise BaseError(
                 ErrorCode.INTERNAL,
                 f"Failed to get handler for tool {tool_name!r}.",
-                details={"kind": kind},
+                details={"toolset": toolset},
                 cause=e,
             ) from e
 
