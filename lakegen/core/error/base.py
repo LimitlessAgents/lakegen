@@ -1,6 +1,6 @@
 from typing import Any
 
-from error.code import ErrorCode
+from lakegen.core.error.code import ErrorCode
 
 
 class BaseError(Exception):

@@ -1,5 +1,5 @@
-from catalog.base import BaseCatalog
-from catalog.model import (
+from lakegen.core.catalog.base import BaseCatalog
+from lakegen.core.catalog.model import (
     CatalogSpec,
     GlueCatalogSpec,
     RestCatalogSpec,

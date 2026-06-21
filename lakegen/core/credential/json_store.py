@@ -14,8 +14,8 @@ import os
 from typing import Any
 
 from .model import CREDENTIALS_PATH
-from error.base import BaseError
-from error.code import ErrorCode
+from lakegen.core.error.base import BaseError
+from lakegen.core.error.code import ErrorCode
 
 
 def _path() -> str:

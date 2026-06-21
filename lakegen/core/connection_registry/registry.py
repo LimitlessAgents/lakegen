@@ -1,10 +1,8 @@
 from abc import ABC
 from typing import Any
 
-from connection_registry.type.catalog import get_catalog_instance
-from credential.store import get_credentials
-
-from credential.store import store_credentials, get_credentials
+from lakegen.core.connection_registry.type.catalog import get_catalog_instance
+from lakegen.core.credential.store import get_credentials, store_credentials
 
 class ConnectionRegistry:
     def __init__(self):
@@ -22,6 +20,7 @@ class ConnectionRegistry:
         return self.open_new_connection(kind, connection_creds)
     
     def open_new_connection(self, kind: str, params: dict[str, Any]):
+        print("Opening new connection")
         name = params["name"]
         if name in self._open[kind]:
             self._open[kind].pop(name).close()

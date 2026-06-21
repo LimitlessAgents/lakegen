@@ -1,3 +1,7 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
 [project]
 name = "lakegen"
 version = "0.1.0"
@@ -8,3 +12,6 @@ dependencies = [
     "keyring>=25.7.0",
     "pyiceberg[glue,pyarrow,s3fs]>=0.11.1",
 ]
+
+[tool.hatch.build.targets.wheel]
+packages = ["lakegen"]

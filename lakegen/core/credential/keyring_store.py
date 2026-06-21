@@ -11,8 +11,8 @@ from collections.abc import Iterable
 from typing import Any
 
 from .model import SERVICE_NAME
-from error.base import BaseError
-from error.code import ErrorCode
+from lakegen.core.error.base import BaseError
+from lakegen.core.error.code import ErrorCode
 
 # Cached keyring module so we only attempt the optional import once.
 _backend: Any = None

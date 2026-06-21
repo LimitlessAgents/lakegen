@@ -1,9 +1,9 @@
 from typing import Self
 
-from catalog.base import BaseCatalog
-from catalog.model import BaseIcebergCatalogSpec
-from error.base import BaseError
-from error.code import ErrorCode
+from lakegen.core.catalog.base import BaseCatalog
+from lakegen.core.catalog.model import BaseIcebergCatalogSpec
+from lakegen.core.error.base import BaseError
+from lakegen.core.error.code import ErrorCode
 
 
 class IcebergCatalog(BaseCatalog):

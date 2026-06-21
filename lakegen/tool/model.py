@@ -1,12 +1,10 @@
-from pydantic import Field
 from typing import Literal, Any, Callable
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 
 @dataclass(slots=True)
 class ToolDefinition:
-    type: Literal["function"] = "function"
     name: str
     description: str
     schema: dict[str, Any]
@@ -18,4 +16,4 @@ class ToolDefinition:
 class ToolOutput:
     ok: bool
     response: Any = None
-    error: dict[str, Any] = Field(default_factory=dict)
+    error: dict[str, Any] = field(default_factory=dict)

@@ -12,8 +12,8 @@ from typing import Any
 
 from . import json_store, keyring_store
 from .model import KEYRING_PLACEHOLDER, SENSITIVE_FIELDS
-from error.base import BaseError
-from error.code import ErrorCode
+from lakegen.core.error.base import BaseError
+from lakegen.core.error.code import ErrorCode
 
 
 def _keyring_id(kind: str, name: str) -> str:

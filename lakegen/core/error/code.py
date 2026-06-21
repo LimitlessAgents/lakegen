@@ -18,7 +18,6 @@ class ErrorCode(str, Enum):
     # Execution
     ABORTED = "ABORTED"
     CANCELLED = "CANCELLED"
-    
 
     # Availability
     UNAVAILABLE = "UNAVAILABLE"
@@ -39,3 +38,5 @@ class ErrorCode(str, Enum):
 
     CONNECTION_TIMEOUT = "CONNECTION_TIMEOUT"
     CONNECTION_FAILED = "CONNECTION_FAILED"
+
+    INVALID_TYPE = "INVALID_TYPE"

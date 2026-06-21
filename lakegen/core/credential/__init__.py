@@ -1,4 +1,4 @@
-from credential.store import (
+from lakegen.core.credential.store import (
     delete_credentials,
     get_credentials,
     list_connections,

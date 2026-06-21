@@ -2,12 +2,12 @@ from typing import Any
 
 from pydantic import ValidationError
 
-from catalog.base import BaseCatalog
-from catalog.iceberg import IcebergCatalog
-from error.base import BaseError
-from error.code import ErrorCode
+from lakegen.core.catalog.base import BaseCatalog
+from lakegen.core.catalog.iceberg import IcebergCatalog
+from lakegen.core.error.base import BaseError
+from lakegen.core.error.code import ErrorCode
 
-from catalog.model import CatalogSpec, GlueCatalogSpec, RestCatalogSpec, SqlCatalogSpec
+from lakegen.core.catalog.model import CatalogSpec, GlueCatalogSpec, RestCatalogSpec, SqlCatalogSpec
 from pydantic import TypeAdapter
 
 
@@ -43,6 +43,6 @@ def get_catalog_instance(spec: dict[str, Any]) -> BaseCatalog:
             details={"errors": e.errors()},
         ) from e
 
-    print("SPEC:", resolved_spec)
+    # print("SPEC:", resolved_spec)
 
     return resolve_catalog_type(spec)(resolved_spec)
