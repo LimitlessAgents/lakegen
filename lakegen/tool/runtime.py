@@ -1,5 +1,7 @@
 from typing import Any
 
+from pydantic import ValidationError
+
 from lakegen.core.error.base import BaseError
 from lakegen.core.error.code import ErrorCode
 from lakegen.tool.model import ToolOutput
@@ -7,7 +9,11 @@ from lakegen.tool.registry import registry
 
 
 class ToolRuntime:
+    """Validate tool input and call the registered handler."""
+
     def invoke(self, toolset: str, tools_to_call: dict[str, Any]) -> list[ToolOutput]:
+        if not tools_to_call:
+            return []
         return [
             self.use_tool(toolset, name, params)
             for name, params in tools_to_call.items()
@@ -21,23 +27,30 @@ class ToolRuntime:
                     "Tool parameters must be a dict.",
                     details={"got_type": type(params).__name__},
                 )
-            schema = registry.get_tool_schema(toolset, name)
-            p = schema.get("parameters", {})
-            if missing := [k for k in p.get("required", []) if k not in params]:
-                raise BaseError(ErrorCode.INVALID_ARGUMENT, "Missing required parameters.", details={"missing": missing})
-            # if p.get("additionalProperties") is False and (extra := set(params) - p.get("properties", {})):
-            #     raise BaseError(ErrorCode.INVALID_ARGUMENT, "Unexpected parameters.", details={"extra": list(extra)})
 
-            handler = registry.get_tool_handler(toolset, name)
-            result = handler(params)
+            tool = registry.get_tool_definition(toolset, name)
+            validated = tool.params_model.model_validate(params)
+            result = tool.handler(validated)
             return ToolOutput(
+                tool_name=name,
                 ok=True,
                 response=result,
             )
         except BaseError as e:
-            return ToolOutput(ok=False, error=e.to_dict())
+            return ToolOutput(tool_name=name, ok=False, error=e.to_dict())
+        except ValidationError as e:
+            return ToolOutput(
+                tool_name=name,
+                ok=False,
+                error={
+                    "code": ErrorCode.INVALID_ARGUMENT.value,
+                    "message": f"Invalid parameters for tool {name!r}.",
+                    "details": {"errors": e.errors()},
+                },
+            )
         except Exception as e:
             return ToolOutput(
+                tool_name=name,
                 ok=False,
                 error={"code": ErrorCode.INTERNAL.value, "message": str(e)},
             )

@@ -12,6 +12,7 @@ dependencies = [
     "keyring>=25.7.0",
     "pyiceberg[glue,pyarrow,s3fs]>=0.11.1",
     "pydantic>=2.0",
+    "jsonschema>=4.26.0",
 ]
 
 [tool.hatch.build.targets.wheel]

@@ -1,37 +1,30 @@
-from typing import Any
+from pydantic import BaseModel, ConfigDict, Field
 
-from lakegen.core.connection_registry.registry import conreg
-from lakegen.core.error.base import BaseError
-
+from lakegen.core.connection.registry import conreg
 from lakegen.tool.registry import registry
 
 _TOOLSET = "catalog"
+_DESCRIPTION = (
+    "Returns namespace names in an Iceberg catalog for a given connection name. "
+    "Use to list namespaces in a registered catalog connection. "
+)
 
 
-def iceberg_list_namespaces(params: dict[str, Any]):
-    catalog = conreg.open_connection(_TOOLSET, params["name"])
-    namespaces = catalog.list_namespaces()
-    return namespaces
+class ListNamespacesParams(BaseModel):
+    model_config = ConfigDict(extra="forbid")
 
-SCHEMA={
-    "name": "iceberg_list_namespaces",
-    "description": "Lists all the namespaces in the Iceberg catalog",
-    "parameters": {
-        "type": "object",
-        "properties": {
-            "name": {
-                "type": "string",
-                "description": "The name of the Iceberg catalog",
-            },
-        },
-        "required": ["name"],
-        "additionalProperties": False,
-    },
-}
+    name: str = Field(description="Name of the catalog connection.")
+
+
+def list_namespaces(params: ListNamespacesParams):
+    catalog = conreg.get_connection(_TOOLSET, params.name)
+    return catalog.list_namespaces()
+
 
 registry.register(
     toolset=_TOOLSET,
-    name="iceberg_list_namespaces",
-    schema=SCHEMA,
-    handler=iceberg_list_namespaces,
+    name="list_namespaces",
+    description=_DESCRIPTION,
+    params_model=ListNamespacesParams,
+    handler=list_namespaces,
 )

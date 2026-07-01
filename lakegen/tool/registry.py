@@ -1,5 +1,7 @@
 from typing import Any, Callable
 
+from pydantic import BaseModel
+
 from lakegen.core.error.base import BaseError
 from lakegen.core.error.code import ErrorCode
 from lakegen.tool.model import ToolDefinition
@@ -13,17 +15,28 @@ class ToolRegistry:
         self,
         toolset: str,
         name: str,
-        schema: dict[str, Any],
+        *,
+        description: str,
+        params_model: type[BaseModel],
         handler: Callable,
         requires_env: bool = False,
-        description: str = ""
-        ):
+    ):
+        from lakegen.tool.util.schema import params_model_to_tool_dict
+
+        if not issubclass(params_model, BaseModel):
+            raise BaseError(
+                ErrorCode.INVALID_ARGUMENT,
+                "params_model must be a Pydantic BaseModel subclass.",
+            )
+
+        tool_dict = params_model_to_tool_dict(name, description, params_model)
         self.__all_available_tools.setdefault(toolset, {})[name] = ToolDefinition(
-            name=name,
-            description=description or schema.get("description", ""),
-            schema=schema,
+            name=tool_dict["name"],
+            description=tool_dict["description"],
+            params=tool_dict["params"],
+            params_model=params_model,
             handler=handler,
-            requires_env=requires_env
+            requires_env=requires_env,
         )
 
     def list_tool_names(self) -> list[str]:
@@ -84,7 +97,7 @@ class ToolRegistry:
                 cause=e,
             ) from e
 
-    def get_tool_schema(self, toolset: str, tool_name: str) -> dict[str, Any]:
+    def get_tool_definition(self, toolset: str, tool_name: str) -> ToolDefinition:
         try:
             if not tool_name:
                 raise BaseError(ErrorCode.INVALID_ARGUMENT, "tool_name is required.")
@@ -96,15 +109,18 @@ class ToolRegistry:
                     f"Tool {tool_name!r} not found.",
                     details={"toolset": toolset},
                 )
-            return tools[tool_name].schema
+            return tools[tool_name]
         except BaseError:
             raise
         except Exception as e:
             raise BaseError(
                 ErrorCode.INTERNAL,
-                f"Failed to get schema for tool {tool_name!r}.",
+                f"Failed to get tool definition for {tool_name!r}.",
                 cause=e,
             ) from e
+
+    def get_tool_schema(self, toolset: str, tool_name: str) -> dict[str, Any]:
+        return self.get_tool_definition(toolset, tool_name).to_dict()
 
     def get_tool_handler(self, toolset: str, tool_name: str) -> Callable:
         try:
