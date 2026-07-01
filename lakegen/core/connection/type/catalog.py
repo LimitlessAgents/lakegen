@@ -1,8 +1,10 @@
 """Create catalog connections from validated specs."""
 
+from typing import Any
+
 from lakegen.core.catalog.base import BaseCatalog
 from lakegen.core.catalog.iceberg import IcebergCatalog
-from lakegen.core.catalog.model import ResolvedCatalogSpec
+from lakegen.core.catalog.model import ResolvedCatalogSpec, resolve_catalog_spec
 from lakegen.core.error.base import BaseError
 from lakegen.core.error.code import ErrorCode
 
@@ -26,3 +28,8 @@ def resolve_catalog_type(lakehouse: str) -> type[BaseCatalog]:
 def get_catalog_instance(spec: ResolvedCatalogSpec) -> BaseCatalog:
     """Build a catalog client from a validated spec."""
     return resolve_catalog_type(spec.lakehouse)(spec)
+
+
+def resolve_catalog_params(params: dict[str, Any]) -> ResolvedCatalogSpec:
+    """Validate stored catalog connection JSON into a spec."""
+    return resolve_catalog_spec(params)

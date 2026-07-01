@@ -1,9 +1,10 @@
-"""Open, cache, and reuse catalog connections."""
+"""Open, cache, and reuse connections."""
 
-from typing import Any
+from typing import Any, Callable
 
-from lakegen.core.catalog.model import ResolvedCatalogSpec, resolve_catalog_spec
-from lakegen.core.connection.type.catalog import get_catalog_instance
+from pydantic import BaseModel
+
+from lakegen.core.connection.type.catalog import get_catalog_instance, resolve_catalog_params
 from lakegen.core.credential.store import get_credentials, store_credentials
 from lakegen.core.error.base import BaseError
 from lakegen.core.error.code import ErrorCode
@@ -16,12 +17,16 @@ class ConnectionRegistry:
         self._open: dict[str, dict[str, Any]] = {
             "catalog": {},
         }
-        self._connection_type = {
+        self._connection_type: dict[str, Callable[..., Any]] = {
             "catalog": get_catalog_instance,
+        }
+        self._resolvers: dict[str, Callable[[dict[str, Any]], BaseModel]] = {
+            "catalog": resolve_catalog_params,
         }
 
     def get_connection(self, kind: str, connection_name: str):
         """Return a cached connection or open one from stored credentials."""
+
         if connection_name in self._open[kind]:
             return self._open[kind][connection_name]
 
@@ -34,8 +39,7 @@ class ConnectionRegistry:
                 details=e.to_dict(),
             ) from e
 
-        # Stored creds are JSON; validate once before opening.
-        spec = resolve_catalog_spec(stored)
+        spec = self.resolve_stored_params(kind, stored)
 
         try:
             return self.open_new_connection(kind, spec)
@@ -52,12 +56,11 @@ class ConnectionRegistry:
                 cause=e,
             ) from e
 
-    def open_new_connection(self, kind: str, params: ResolvedCatalogSpec):
+    def open_new_connection(self, kind: str, params: BaseModel):
         """Open a connection from a validated spec and save credentials."""
-        # Only serialize here — specs stay as objects everywhere else.
         json_params = params.model_dump()
-
         name = params.name
+
         if name in self._open[kind]:
             self._open[kind].pop(name).close()
 
@@ -65,6 +68,10 @@ class ConnectionRegistry:
         store_credentials(kind, name, json_params)
         self._open[kind][name] = connection
         return connection
+
+    def resolve_stored_params(self, kind: str, params: dict[str, Any]) -> BaseModel:
+        """Validate stored JSON into a connection spec for the given kind."""
+        return self._resolvers[kind](params)
 
 
 conreg = ConnectionRegistry()
