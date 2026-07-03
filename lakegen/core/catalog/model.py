@@ -167,23 +167,27 @@ class SqlCatalogSpec(BaseCatalogSpec):
     )
 
     database_type: Literal["postgresql", "mysql", "sqlite"] = Field(
-        exclude=True,
         description="Database type.",
     )
-    host: str = Field(exclude=True, description="Database host.")
-    port: int = Field(default=5432, exclude=True, description="Database port.")
-    username: str = Field(exclude=True, description="Database username.")
-    password: str = Field(exclude=True, description="Database password.")
-    database: str = Field(exclude=True, description="Database name.")
+    host: str = Field(description="Database host.")
+    port: int = Field(default=5432, description="Database port.")
+    username: str = Field(description="Database username.")
+    password: str = Field(description="Database password.")
+    database: str = Field(description="Database name.")
 
-    @computed_field(alias="uri")
-    @property
     def uri(self) -> str:
         """JDBC URI built from the connection fields above."""
         return (
             f"{self.database_type}://{self.username}:{self.password}"
             f"@{self.host}:{self.port}/{self.database}"
         )
+
+    def pyiceberg_kwargs(self) -> tuple[str, dict[str, Any]]:
+        name, props = super().pyiceberg_kwargs()
+        for field in ("database_type", "host", "port", "username", "password", "database"):
+            props.pop(field, None)
+        props["uri"] = self.uri()
+        return name, props
 
 
 # Discriminated union of all catalog backends.
