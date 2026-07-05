@@ -1,14 +1,21 @@
 from typing import Any, Callable
 
-from pydantic import BaseModel
-
 from lakegen.core.error.base import BaseError
 from lakegen.core.error.code import ErrorCode
-from lakegen.tool.model import ToolDefinition
+from lakegen.tool.model import ToolDefinition, ToolParams
 
 
 class ToolRegistry:
+    """In-memory catalog of tools, grouped by toolset.
+
+    Tools are stored two levels deep: ``toolset -> tool_name -> ToolDefinition``.
+    Tool modules call ``register`` at import time (see ``lakegen.tool``), so the
+    single module-level ``registry`` is fully populated once imported.
+    """
+
     def __init__(self):
+        # Name-mangled to discourage reaching into the store from outside;
+        # callers should go through the getter methods below.
         self.__all_available_tools: dict[str, dict[str, ToolDefinition]] = {}
 
     def register(
@@ -17,16 +24,18 @@ class ToolRegistry:
         name: str,
         *,
         description: str,
-        params_model: type[BaseModel],
+        params_model: ToolParams,
         handler: Callable,
         requires_env: bool = False,
     ):
+        """Build a tool's schema from ``params_model`` and store its definition."""
         from lakegen.tool.util.schema import params_model_to_tool_dict
 
-        if not issubclass(params_model, BaseModel):
-            raise BaseError(
-                ErrorCode.INVALID_ARGUMENT,
-                "params_model must be a Pydantic BaseModel subclass.",
+        # Fail loudly at registration (import time) if a tool is wired up wrong:
+        # this is a developer error, not something an agent should ever see.
+        if not isinstance(params_model, ToolParams):
+            raise TypeError(
+                "params_model must provide 'model_validate' and 'model_json_schema'."
             )
 
         tool_dict = params_model_to_tool_dict(name, description, params_model)
@@ -40,6 +49,9 @@ class ToolRegistry:
         )
 
     def list_tool_names(self) -> list[str]:
+        # Pattern used by every getter below: let intentional BaseErrors through
+        # unchanged, but wrap any unexpected failure as INTERNAL so callers only
+        # ever have to handle BaseError.
         try:
             return [
                 name
@@ -52,7 +64,6 @@ class ToolRegistry:
             raise BaseError(
                 ErrorCode.INTERNAL,
                 "Failed to list tool names.",
-                cause=e,
             ) from e
 
     def get_all_tools_info(self) -> dict[str, dict[str, ToolDefinition]]:
@@ -67,7 +78,6 @@ class ToolRegistry:
             raise BaseError(
                 ErrorCode.INTERNAL,
                 "Failed to get tool info.",
-                cause=e,
             ) from e
 
     def get_tools_description(self, toolset: str | None) -> dict[str, str]:
@@ -94,7 +104,6 @@ class ToolRegistry:
                 ErrorCode.INTERNAL,
                 "Failed to get tool descriptions.",
                 details={"toolset": toolset},
-                cause=e,
             ) from e
 
     def get_tool_definition(self, toolset: str, tool_name: str) -> ToolDefinition:
@@ -116,7 +125,6 @@ class ToolRegistry:
             raise BaseError(
                 ErrorCode.INTERNAL,
                 f"Failed to get tool definition for {tool_name!r}.",
-                cause=e,
             ) from e
 
     def get_tool_schema(self, toolset: str, tool_name: str) -> dict[str, Any]:
@@ -143,7 +151,6 @@ class ToolRegistry:
                 ErrorCode.INTERNAL,
                 f"Failed to get handler for tool {tool_name!r}.",
                 details={"toolset": toolset},
-                cause=e,
             ) from e
 
 

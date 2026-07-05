@@ -1,11 +1,16 @@
 """Common catalog interface for all lakehouse backends."""
 
 from abc import ABC, abstractmethod
-from typing import Any
+from typing import Any, Self
+
 
 
 class BaseCatalog(ABC):
-    """Operations exposed to tools (list namespaces, tables, etc.)."""
+    """Operations exposed to tools (list namespaces, tables, etc.).
+
+    Note: listing/loading methods currently return backend-native objects (e.g.
+    PyIceberg types), so callers should not assume a normalized shape yet.
+    """
 
     @property
     @abstractmethod
@@ -14,7 +19,7 @@ class BaseCatalog(ABC):
         ...
 
     @abstractmethod
-    def connect(self) -> Any:
+    def connect(self) -> Self:
         """Open the catalog connection."""
         ...
 
@@ -24,7 +29,7 @@ class BaseCatalog(ABC):
         ...
 
     @abstractmethod
-    def list_namespaces(self) -> list[Any]:
+    def list_namespaces(self) -> list[str]:
         """List all namespaces."""
         ...
 

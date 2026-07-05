@@ -9,9 +9,14 @@ from lakegen.tool.registry import registry
 
 
 class ToolRuntime:
-    """Validate tool input and call the registered handler."""
+    """Validate tool input and call the registered handler.
 
-    def invoke(self, toolset: str, tools_to_call: dict[str, Any]) -> list[ToolOutput]:
+    Every call returns a ``ToolOutput`` instead of raising, so a failure in one
+    tool never aborts a batch and the agent always gets a structured result.
+    """
+
+    def dispatch(self, toolset: str, tools_to_call: dict[str, Any]) -> list[ToolOutput]:
+        """Run each requested tool and collect one ``ToolOutput`` per call."""
         if not tools_to_call:
             return []
         return [
@@ -29,6 +34,8 @@ class ToolRuntime:
                 )
 
             tool = registry.get_tool_definition(toolset, name)
+            # Validation turns raw input into the concrete params object the
+            # handler expects (e.g. a specific catalog spec for add_catalog).
             validated = tool.params_model.model_validate(params)
             result = tool.handler(validated)
             return ToolOutput(
@@ -36,8 +43,10 @@ class ToolRuntime:
                 ok=True,
                 response=result,
             )
+        # Application errors already carry a structured, agent-readable payload.
         except BaseError as e:
             return ToolOutput(tool_name=name, ok=False, error=e.to_dict())
+        # Bad agent input: surface the field-level Pydantic errors so it can retry.
         except ValidationError as e:
             return ToolOutput(
                 tool_name=name,
@@ -48,12 +57,15 @@ class ToolRuntime:
                     "details": {"errors": e.errors()},
                 },
             )
+        # Anything unexpected: wrap as INTERNAL so the batch still returns cleanly.
+        # Attach the original as the cause so its type/message survive in to_dict.
         except Exception as e:
-            return ToolOutput(
-                tool_name=name,
-                ok=False,
-                error={"code": ErrorCode.INTERNAL.value, "message": str(e)},
+            err = BaseError(
+                ErrorCode.INTERNAL,
+                f"Unexpected error while running tool {name!r}.",
+                cause=e,
             )
+            return ToolOutput(tool_name=name, ok=False, error=err.to_dict())
 
 
 tool_runtime = ToolRuntime()

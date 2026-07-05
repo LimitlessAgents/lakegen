@@ -1,7 +1,7 @@
 from lakegen.core.catalog.base import BaseCatalog
 from lakegen.core.catalog.model import (
-    CatalogConnectionSpec,
     CatalogSpec,
+    CatalogSpecParams,
     GlueCatalogSpec,
     ResolvedCatalogSpec,
     RestCatalogSpec,
@@ -11,8 +11,8 @@ from lakegen.core.catalog.model import (
 
 __all__ = [
     "BaseCatalog",
-    "CatalogConnectionSpec",
     "CatalogSpec",
+    "CatalogSpecParams",
     "GlueCatalogSpec",
     "ResolvedCatalogSpec",
     "RestCatalogSpec",

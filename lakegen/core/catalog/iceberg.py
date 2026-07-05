@@ -18,17 +18,21 @@ class IcebergCatalog(BaseCatalog):
         return self.spec.name
 
     def connect(self) -> Self:
+        # Imported lazily so importing this module doesn't pull in PyIceberg
+        # (and its heavy transitive deps) until a connection is actually opened.
         from pyiceberg.catalog import load_catalog
 
         try:
-            name, properties = self.spec.pyiceberg_kwargs()
+            name, properties = self.spec.iceberg_kwargs()
             self.catalog = load_catalog(name, **properties)
             return self
         except Exception as e:
+            # print("============")
+            # print(e)
+            # print("============")
             raise BaseError(
                 ErrorCode.CONNECTION_FAILED,
                 "Failed to connect to the catalog.",
-                cause=e,
             ) from e
 
     def list_namespaces(self):
@@ -37,8 +41,7 @@ class IcebergCatalog(BaseCatalog):
         except Exception as e:
             raise BaseError(
                 ErrorCode.INTERNAL,
-                f"Failed to list namespaces: {e}",
-                cause=e,
+                "Failed to list namespaces.",
             ) from e
 
     def list_tables(self, namespace: str):
@@ -48,7 +51,6 @@ class IcebergCatalog(BaseCatalog):
             raise BaseError(
                 ErrorCode.INTERNAL,
                 "Failed to list tables.",
-                cause=e,
             ) from e
 
     def load_table(self, table_name: str):
@@ -58,10 +60,11 @@ class IcebergCatalog(BaseCatalog):
             raise BaseError(
                 ErrorCode.INTERNAL,
                 "Failed to load table.",
-                cause=e,
             ) from e
 
     def close(self) -> None:
+        # Best-effort teardown: close() failures are ignored because the goal is
+        # simply to drop the handle, which the final assignment guarantees.
         try:
             self.catalog.close()
         except Exception:

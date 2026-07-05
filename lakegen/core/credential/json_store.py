@@ -2,7 +2,7 @@
 
 Credentials are nested by kind and name in ``~/.lakegen/credentials.json``::
 
-    {"catalogs": {"prod": {...}}, "databases": {"prod": {...}}}
+    {"catalog": {"prod": {...}}, "database": {"prod": {...}}}
 
 The file must already exist before writes (created at app startup).
 
@@ -37,13 +37,11 @@ def _read(path: str) -> dict[str, Any]:
         raise BaseError(
             ErrorCode.JSON,
             "Credentials file is corrupt.",
-            cause=e,
         ) from e
     except OSError as e:
         raise BaseError(
             ErrorCode.JSON,
             "Failed to read credentials file.",
-            cause=e,
         ) from e
 
 
@@ -60,7 +58,6 @@ def _write(path: str, data: dict[str, Any]) -> None:
         raise BaseError(
             ErrorCode.JSON,
             "Failed to write credentials file.",
-            cause=e,
         ) from e
 
 

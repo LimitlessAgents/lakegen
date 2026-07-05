@@ -1,4 +1,10 @@
-from lakegen.core.catalog.model import CatalogConnectionSpec, ResolvedCatalogSpec
+"""``add_catalog`` tool: register and open a new catalog connection.
+
+Importing this module registers the tool as a side effect. ``_DESCRIPTION`` is
+shown to the agent, so it is written as guidance for when/how to call the tool.
+"""
+
+from lakegen.core.catalog.model import CatalogSpecParams, ResolvedCatalogSpec
 from lakegen.core.connection.registry import conreg
 from lakegen.tool.registry import registry
 
@@ -18,7 +24,7 @@ registry.register(
     toolset=_TOOLSET,
     name="add_catalog",
     description=_DESCRIPTION,
-    params_model=CatalogConnectionSpec,
+    params_model=CatalogSpecParams,
     handler=add_catalog,
     requires_env=True,
 )

@@ -6,7 +6,7 @@ Specs stay as objects in memory; they are serialized to JSON only when saved.
 
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, computed_field
+from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
 
 
 class BaseCatalogSpec(BaseModel):
@@ -46,11 +46,17 @@ class BaseCatalogSpec(BaseModel):
 
     warehouse: str = Field(description="S3 warehouse path or bucket.")
 
-    def pyiceberg_kwargs(self) -> tuple[str, dict[str, Any]]:
-        """Build the name and properties dict expected by PyIceberg."""
+    def iceberg_kwargs(self) -> tuple[str, dict[str, Any]]:
+        """Build the (name, properties) pair PyIceberg's ``load_catalog`` expects.
+
+        Dumped ``by_alias`` so field names become PyIceberg's dotted property
+        keys (e.g. ``access_key`` -> ``s3.access-key-id``). The connection
+        identity fields are excluded since they are not catalog properties.
+        """
         props = self.model_dump(
             by_alias=True,
             exclude_none=True,
+            exclude_unset=True,
             exclude={"lakehouse", "catalog_type", "name"},
         )
         return self.name, props
@@ -76,6 +82,9 @@ class GlueCatalogSpec(BaseCatalogSpec):
         serialization_alias="glue.id",
         description="AWS Glue catalog ID.",
     )
+    # The base S3 keys apply when storage and Glue live in the same account;
+    # these glue_* keys cover the cross-account case where the catalog account
+    # differs from the storage account. Both map to the same s3.* properties.
     glue_access_key: str | None = Field(
         default=None,
         serialization_alias="s3.access-key-id",
@@ -123,7 +132,6 @@ class RestCatalogSpec(BaseCatalogSpec):
     )
     rest_auth_type: str | None = Field(
         default=None,
-        exclude=True,
         description="REST auth type.",
     )
     token: str | None = Field(
@@ -137,22 +145,18 @@ class RestCatalogSpec(BaseCatalogSpec):
 
     rest_signing_name: str | None = Field(
         default=None,
-        exclude=True,
         description="AWS SigV4 service name.",
     )
     rest_signing_region: str | None = Field(
         default=None,
-        exclude=True,
         description="AWS SigV4 region.",
     )
     rest_signing_v_4: bool = Field(
         default=True,
-        exclude=True,
         description="Use AWS SigV4 signing.",
     )
     no_identifier_fields: bool = Field(
         default=False,
-        exclude=True,
         description="Omit identifier fields in REST requests.",
     )
 
@@ -176,18 +180,24 @@ class SqlCatalogSpec(BaseCatalogSpec):
     database: str = Field(description="Database name.")
 
     def uri(self) -> str:
-        """JDBC URI built from the connection fields above."""
+        """Assemble the DB connection URI from the individual fields above."""
         return (
             f"{self.database_type}://{self.username}:{self.password}"
             f"@{self.host}:{self.port}/{self.database}"
         )
 
-    def pyiceberg_kwargs(self) -> tuple[str, dict[str, Any]]:
-        name, props = super().pyiceberg_kwargs()
-        for field in ("database_type", "host", "port", "username", "password", "database"):
-            props.pop(field, None)
+    def iceberg_kwargs(self) -> tuple[str, dict[str, Any]]:
+        # PyIceberg's SQL catalog takes a single ``uri``, so the individual DB
+        # component fields are excluded and collapsed into it here.
+        props = self.model_dump(
+            by_alias=True,
+            exclude_none=True,
+            exclude_unset=True,
+            exclude={"lakehouse", "catalog_type", "name",
+                    "database_type", "username", "password", "host", "port", "database"},
+        )
         props["uri"] = self.uri()
-        return name, props
+        return self.name, props
 
 
 # Discriminated union of all catalog backends.
@@ -206,9 +216,19 @@ def resolve_catalog_spec(data: dict[str, Any]) -> ResolvedCatalogSpec:
     return _catalog_spec_adapter.validate_python(data)
 
 
-class CatalogConnectionSpec(BaseModel):
-    """Tool params model. Validates input and returns a ResolvedCatalogSpec."""
+class CatalogSpecParams:
+    """Tool params provider for the catalog discriminated union.
 
-    @classmethod
-    def model_validate(cls, value, /, **kwargs) -> ResolvedCatalogSpec:
-        return resolve_catalog_spec(value)
+    Presents the ``model_validate`` / ``model_json_schema`` surface the tool
+    registry and runtime expect, but delegates to the union ``TypeAdapter`` so
+    validation dispatches on ``catalog_type`` and the advertised schema covers
+    every backend variant.
+    """
+
+    @staticmethod
+    def model_validate(value: Any) -> ResolvedCatalogSpec:
+        return _catalog_spec_adapter.validate_python(value)
+
+    @staticmethod
+    def model_json_schema() -> dict[str, Any]:
+        return _catalog_spec_adapter.json_schema()

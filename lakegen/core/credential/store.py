@@ -41,11 +41,13 @@ def store_credentials(kind: str, name: str, creds: dict[str, Any]) -> None:
         try:
             json_store.store(kind, name, creds)
         except BaseError as je:
+            # Both backends failed. Chain the JSON fallback error as the cause
+            # and carry the earlier keyring error structurally so neither root
+            # is lost.
             raise BaseError(
                 ErrorCode.UNAVAILABLE,
-                "Failed to store credentials.",
-                details={"keyring": ke.message, "json": je.message},
-                cause=je,
+                "Failed to store credentials in keyring and JSON fallback.",
+                details={"keyring_error": ke.to_dict()},
             ) from je
         return
 
@@ -60,8 +62,6 @@ def store_credentials(kind: str, name: str, creds: dict[str, Any]) -> None:
         raise BaseError(
             ErrorCode.JSON,
             "Secrets written to keyring but JSON write failed; rolled back keyring.",
-            details={"cause": e.message},
-            cause=e,
         ) from e
 
 

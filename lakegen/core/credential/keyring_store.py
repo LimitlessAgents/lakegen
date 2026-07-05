@@ -28,8 +28,8 @@ def _get_backend() -> Any:
         return _backend
     try:
         import keyring
-    except ImportError:
-        raise BaseError(ErrorCode.KEYRING, "keyring backend unavailable")
+    except ImportError as e:
+        raise BaseError(ErrorCode.KEYRING, "keyring backend unavailable") from e
     _backend = keyring
     return _backend
 
@@ -53,8 +53,7 @@ def set_secret(connection_name: str, field: str, value: Any) -> None:
         raise BaseError(
             ErrorCode.KEYRING,
             f"Failed to store field '{field}' in keyring for connection '{connection_name}'.",
-            cause=e,
-        )
+        ) from e
 
 
 def get_secret(connection_name: str, field: str) -> str | None:
@@ -72,8 +71,7 @@ def get_secret(connection_name: str, field: str) -> str | None:
         raise BaseError(
             ErrorCode.KEYRING,
             f"Failed to read field '{field}' from keyring for connection '{connection_name}'.",
-            cause=e,
-        )
+        ) from e
 
 
 def delete_secret(connection_name: str, field: str) -> None:
@@ -90,8 +88,7 @@ def delete_secret(connection_name: str, field: str) -> None:
         raise BaseError(
             ErrorCode.KEYRING,
             f"Failed to delete field '{field}' from keyring for connection '{connection_name}'.",
-            cause=e,
-        )
+        ) from e
 
 
 def store(connection_name: str, secrets: dict[str, Any]) -> None:

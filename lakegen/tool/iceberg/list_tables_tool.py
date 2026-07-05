@@ -1,3 +1,9 @@
+"""``list_tables`` tool: list tables in a namespace of a registered catalog.
+
+Importing this module registers the tool as a side effect. ``_DESCRIPTION`` is
+shown to the agent, so it is written as guidance for when/how to call the tool.
+"""
+
 from pydantic import BaseModel, ConfigDict, Field
 
 from lakegen.core.connection.registry import conreg

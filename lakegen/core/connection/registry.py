@@ -11,7 +11,16 @@ from lakegen.core.error.code import ErrorCode
 
 
 class ConnectionRegistry:
-    """Keeps open connections in memory and persists creds on first connect."""
+    """Keeps open connections in memory and persists creds on first connect.
+
+    Everything is keyed by ``kind`` (currently only ``"catalog"``) across three
+    parallel maps, so new connection kinds are added by registering an entry in
+    each:
+
+    - ``_open``: live, cached connection objects by name.
+    - ``_connection_type``: factory that turns a spec into a connection client.
+    - ``_resolvers``: validator that turns stored JSON back into a spec.
+    """
 
     def __init__(self):
         self._open: dict[str, dict[str, Any]] = {
@@ -25,10 +34,12 @@ class ConnectionRegistry:
         }
 
     def get_connection(self, kind: str, connection_name: str):
-        """Return a cached connection or open one from stored credentials."""
+        """Return a cached connection, else rebuild one from stored credentials."""
 
         if connection_name in self._open[kind]:
             return self._open[kind][connection_name]
+
+        # Not cached (e.g. first use after restart): reload creds and reconnect.
 
         try:
             stored = get_credentials(kind, connection_name)
@@ -36,29 +47,27 @@ class ConnectionRegistry:
             raise BaseError(
                 ErrorCode.NOT_FOUND,
                 f"Failed to get credentials for {connection_name!r}.",
-                details=e.to_dict(),
             ) from e
 
         spec = self.resolve_stored_params(kind, stored)
 
         try:
             return self.open_new_connection(kind, spec)
-        except BaseError as e:
-            raise BaseError(
-                ErrorCode.CONNECTION_FAILED,
-                f"No cached connection for {connection_name!r}. Failed to open a new connection.",
-                details=e.to_dict(),
-            ) from e
         except Exception as e:
             raise BaseError(
                 ErrorCode.CONNECTION_FAILED,
                 f"Unable to open connection for {connection_name!r}.",
-                cause=e,
             ) from e
 
     def open_new_connection(self, kind: str, params: BaseModel):
-        """Open a connection from a validated spec and save credentials."""
-        json_params = params.model_dump()
+        """Open a connection from a validated spec and save its credentials.
+
+        If a connection with the same name is already open it is closed and
+        replaced, so this doubles as a reconnect/update path.
+        """
+        # Store by field name (not alias): the resolvers expect the same field
+        # names back when rebuilding the spec from JSON.
+        json_params = params.model_dump(exclude_unset=True, exclude_none=True)
         name = params.name
 
         if name in self._open[kind]:

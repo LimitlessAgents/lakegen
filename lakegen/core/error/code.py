@@ -2,41 +2,36 @@ from enum import Enum
 
 
 class ErrorCode(str, Enum):
+    """Stable, machine-readable error identifiers.
 
-    # Client/Input Errors
+    Subclasses ``str`` so a code serializes as its plain value in JSON payloads.
+    The set is intentionally scoped to lakegen's real failure modes (agent
+    input, resource state, catalog connectivity/auth, credential storage) rather
+    than a generic status taxonomy.
+    """
+
+    # Invalid input from the caller/agent.
     INVALID_ARGUMENT = "INVALID_ARGUMENT"
-    FAILED_PRECONDITION = "FAILED_PRECONDITION"
+    INVALID_TYPE = "INVALID_TYPE"
 
-    # Auth
-    UNAUTHENTICATED = "UNAUTHENTICATED"
-    PERMISSION_DENIED = "PERMISSION_DENIED"
-
-    # Resource Errors
+    # Resource state.
     NOT_FOUND = "NOT_FOUND"
     ALREADY_EXISTS = "ALREADY_EXISTS"
 
-    # Execution
-    ABORTED = "ABORTED"
-    CANCELLED = "CANCELLED"
+    # Auth when reaching an external catalog or its storage.
+    UNAUTHENTICATED = "UNAUTHENTICATED"
+    PERMISSION_DENIED = "PERMISSION_DENIED"
 
-    # Availability
+    # Connecting to an external catalog.
+    CONNECTION_FAILED = "CONNECTION_FAILED"
+    CONNECTION_TIMEOUT = "CONNECTION_TIMEOUT"
+
+    # A dependency or backend was unavailable.
     UNAVAILABLE = "UNAVAILABLE"
 
-    # Capability
-    UNIMPLEMENTED = "UNIMPLEMENTED"
-
-    # Internal/System
-    INTERNAL = "INTERNAL"
-    DATA_LOSS = "DATA_LOSS"
-
-    # Unknown
-    UNKNOWN = "UNKNOWN"
-
-    # Credential backends
+    # Credential storage backends.
     KEYRING = "KEYRING"
     JSON = "JSON"
 
-    CONNECTION_TIMEOUT = "CONNECTION_TIMEOUT"
-    CONNECTION_FAILED = "CONNECTION_FAILED"
-
-    INVALID_TYPE = "INVALID_TYPE"
+    # Catch-all for unexpected/unclassified failures.
+    INTERNAL = "INTERNAL"
