@@ -1,3 +1,4 @@
+import json
 from typing import Any
 
 from pydantic import ValidationError
@@ -38,6 +39,19 @@ class ToolRuntime:
             # handler expects (e.g. a specific catalog spec for add_catalog).
             validated = tool.params_model.model_validate(params)
             result = tool.handler(validated)
+
+            # Safety net: verify the result is JSON-serializable before handing
+            # it back. A tool that forgets to normalize its output gets caught
+            # here rather than producing an unreadable response to the agent.
+            try:
+                json.dumps(result)
+            except (TypeError, ValueError) as e:
+                raise BaseError(
+                    ErrorCode.INTERNAL,
+                    f"Tool {name!r} returned a non-serializable result.",
+                    cause=e,
+                )
+
             return ToolOutput(
                 tool_name=name,
                 ok=True,

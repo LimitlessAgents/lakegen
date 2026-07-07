@@ -8,7 +8,7 @@ from lakegen.core.catalog.model import CatalogSpecParams, ResolvedCatalogSpec
 from lakegen.core.connection.registry import conreg
 from lakegen.tool.registry import registry
 
-_TOOLSET = "catalog"
+_CONNECTION_KIND = "catalog"
 _DESCRIPTION = (
     "Registers and opens a new catalog connection and saves credentials for reuse. "
     "Use for an unregistered catalog after choosing glue, rest, or sql and collecting "
@@ -17,11 +17,11 @@ _DESCRIPTION = (
 
 
 def add_catalog(params: ResolvedCatalogSpec) -> None:
-    conreg.open_new_connection(_TOOLSET, params)
+    conreg.open_new_connection(_CONNECTION_KIND, params)
 
 
 registry.register(
-    toolset=_TOOLSET,
+    toolset=_CONNECTION_KIND,
     name="add_catalog",
     description=_DESCRIPTION,
     params_model=CatalogSpecParams,

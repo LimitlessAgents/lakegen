@@ -102,4 +102,4 @@ def list_connections(kind: str | None = None) -> dict[str, list[str]] | list[str
     Raises:
         ``BaseError`` if the credentials file cannot be read.
     """
-    return json_store.list(kind)
+    return json_store.list_connections(kind)

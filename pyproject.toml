@@ -9,6 +9,7 @@ description = "Autonomous AI Agent For Managing Lakehouses"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
+    "filelock>=3.16.0",
     "keyring>=25.7.0",
     "pyiceberg[glue,pyarrow,s3fs]>=0.11.1",
     "pydantic>=2.0",
@@ -17,3 +18,12 @@ dependencies = [
 
 [tool.hatch.build.targets.wheel]
 packages = ["lakegen"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+    "pytest-mock>=3.15.1",
+]

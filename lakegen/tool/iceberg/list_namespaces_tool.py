@@ -9,7 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from lakegen.core.connection.registry import conreg
 from lakegen.tool.registry import registry
 
-_TOOLSET = "catalog"
+_CONNECTION_KIND = "catalog"
 _DESCRIPTION = (
     "Returns namespace names in an Iceberg catalog for a given connection name. "
     "Use to list namespaces in a registered catalog connection. "
@@ -23,12 +23,12 @@ class ListNamespacesParams(BaseModel):
 
 
 def list_namespaces(params: ListNamespacesParams):
-    catalog = conreg.get_connection(_TOOLSET, params.name)
+    catalog = conreg.get_connection(_CONNECTION_KIND, params.name)
     return catalog.list_namespaces()
 
 
 registry.register(
-    toolset=_TOOLSET,
+    toolset=_CONNECTION_KIND,
     name="list_namespaces",
     description=_DESCRIPTION,
     params_model=ListNamespacesParams,

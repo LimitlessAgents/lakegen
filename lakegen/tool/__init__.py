@@ -1,4 +1,6 @@
-from lakegen.tool import iceberg  # noqa: F401
+from lakegen.tool.discovery import discover_tools
+
+discover_tools()
 
 from lakegen.tool.model import ToolDefinition, ToolOutput
 from lakegen.tool.registry import ToolRegistry, registry

@@ -9,7 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from lakegen.core.connection.registry import conreg
 from lakegen.tool.registry import registry
 
-_TOOLSET = "catalog"
+_CONNECTION_KIND = "catalog"
 _DESCRIPTION = (
     "Returns table names in a namespace for a given catalog connection. "
     "Use to list tables in a namespace of a registered catalog connection. "
@@ -25,12 +25,12 @@ class ListTablesParams(BaseModel):
 
 
 def list_tables(params: ListTablesParams):
-    catalog = conreg.get_connection(_TOOLSET, params.name)
+    catalog = conreg.get_connection(_CONNECTION_KIND, params.name)
     return catalog.list_tables(params.namespace)
 
 
 registry.register(
-    toolset=_TOOLSET,
+    toolset=_CONNECTION_KIND,
     name="list_tables",
     description=_DESCRIPTION,
     params_model=ListTablesParams,

@@ -1,16 +1,16 @@
-"""Common catalog interface for all lakehouse backends."""
+"""Common catalog interface for all lakehouse backends.
+
+All methods that return catalog data must return JSON-native types only
+(strings, dicts, lists of strings/dicts). Implementations must not return
+backend-specific objects; the conversion is the implementation's responsibility.
+"""
 
 from abc import ABC, abstractmethod
 from typing import Any, Self
 
 
-
 class BaseCatalog(ABC):
-    """Operations exposed to tools (list namespaces, tables, etc.).
-
-    Note: listing/loading methods currently return backend-native objects (e.g.
-    PyIceberg types), so callers should not assume a normalized shape yet.
-    """
+    """Operations exposed to tools (list namespaces, tables, etc.)."""
 
     @property
     @abstractmethod
@@ -30,15 +30,15 @@ class BaseCatalog(ABC):
 
     @abstractmethod
     def list_namespaces(self) -> list[str]:
-        """List all namespaces."""
+        """Return all namespace names as dotted strings (e.g. ``"sales.q1"``)."""
         ...
 
     @abstractmethod
-    def list_tables(self, namespace: str) -> list[Any]:
-        """List tables in a namespace."""
+    def list_tables(self, namespace: str) -> list[str]:
+        """Return table names in a namespace as dotted strings."""
         ...
 
     @abstractmethod
-    def load_table(self, table_name: str) -> Any:
-        """Load a table by name."""
+    def load_table(self, table_name: str) -> dict[str, Any]:
+        """Return table metadata as a plain dict (name, location, schema)."""
         ...
