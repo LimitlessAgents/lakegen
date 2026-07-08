@@ -28,11 +28,29 @@ class ToolRuntime:
     def use_tool(self, toolset: str, name: str, params: dict[str, Any]) -> ToolOutput:
         try:
             if not isinstance(params, dict):
-                raise BaseError(
-                    ErrorCode.INVALID_TYPE,
-                    "Tool parameters must be a dict.",
-                    details={"got_type": type(params).__name__},
-                )
+                if isinstance(params, (str, bytes, bytearray)):
+                    try:
+                        params = json.loads(params)
+                    except json.JSONDecodeError:
+                        return ToolOutput(
+                            tool_name=name,
+                            ok=False,
+                            error=BaseError(
+                                ErrorCode.INVALID_TYPE,
+                                "Tool parameters must be a dict.",
+                                details={"got_type": type(params).__name__},
+                            ).to_dict()
+                        )
+                if not isinstance(params, dict):
+                    return ToolOutput(
+                        tool_name=name,
+                        ok=False,
+                        error=BaseError(
+                            ErrorCode.INVALID_TYPE,
+                            "Tool parameters must be a dict.",
+                            details={"got_type": type(params).__name__},
+                        ).to_dict()
+                    )
 
             tool = registry.get_tool_definition(toolset, name)
             # Validation turns raw input into the concrete params object the
@@ -74,12 +92,15 @@ class ToolRuntime:
         # Anything unexpected: wrap as INTERNAL so the batch still returns cleanly.
         # Attach the original as the cause so its type/message survive in to_dict.
         except Exception as e:
-            err = BaseError(
-                ErrorCode.INTERNAL,
-                f"Unexpected error while running tool {name!r}.",
-                cause=e,
+            return ToolOutput(
+                tool_name=name,
+                ok=False,
+                error=BaseError(
+                    ErrorCode.INTERNAL,
+                    f"Unexpected error while running tool {name!r}.",
+                    cause=e,
+                ).to_dict()
             )
-            return ToolOutput(tool_name=name, ok=False, error=err.to_dict())
 
 
 tool_runtime = ToolRuntime()
