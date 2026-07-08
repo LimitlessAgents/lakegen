@@ -15,7 +15,6 @@ from .model import KEYRING_PLACEHOLDER, SENSITIVE_FIELDS
 from lakegen.core.error.base import BaseError
 from lakegen.core.error.code import ErrorCode
 
-
 def _keyring_id(kind: str, name: str) -> str:
     """Return the keyring namespace for a kind/name connection."""
     return f"{kind}/{name}"

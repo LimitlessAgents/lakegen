@@ -36,21 +36,34 @@ def _lock(path: str) -> FileLock:
     return FileLock(path + ".lock", timeout=10)
 
 
+def _read_or_repair(path: str) -> dict[str, Any]:
+    """Try to recover a corrupt credentials file; fall back to an empty object."""
+    from .helper import recreate_json_file, repair_json_file
+
+    try:
+        data = repair_json_file(path)
+    except Exception:
+        return recreate_json_file(path)
+
+    _write(path, data)
+    return data
+
+
 def _read(path: str) -> dict[str, Any]:
     """Read the full credentials file.
 
-    Raises ``BaseError`` if the file does not exist, is corrupt, or cannot be read.
+    If the file is corrupt, attempts a one-time repair and persists the fixed
+    content. Unrecoverable files are replaced with ``{}`` so callers can proceed.
+
+    Raises ``BaseError`` if the file does not exist or cannot be read.
     """
     try:
         with open(path, "r") as f:
             return json.load(f)
     except FileNotFoundError:
         raise BaseError(ErrorCode.JSON, "Credentials file does not exist.")
-    except json.JSONDecodeError as e:
-        raise BaseError(
-            ErrorCode.JSON,
-            "Credentials file is corrupt.",
-        ) from e
+    except json.JSONDecodeError:
+        return _read_or_repair(path)
     except OSError as e:
         raise BaseError(
             ErrorCode.JSON,

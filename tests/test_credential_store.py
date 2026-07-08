@@ -110,6 +110,35 @@ def test_atomic_write_no_tmp_file_left(cred_file):
 
 
 # ---------------------------------------------------------------------------
+# json_store: corrupt file recovery
+# ---------------------------------------------------------------------------
+
+def test_read_empty_file_recreates_and_returns_empty_dict(cred_file):
+    cred_file.write_text("")
+    from lakegen.core.credential.json_store import _read
+
+    result = _read(str(cred_file))
+    assert result == {}
+    assert json.loads(cred_file.read_text()) == {}
+
+
+def test_read_corrupt_json_repairs_and_persists(cred_file):
+    cred_file.write_text('{"catalog": {"prod": {"host": "localhost"')
+    from lakegen.core.credential.json_store import _read
+
+    result = _read(str(cred_file))
+    assert isinstance(result, dict)
+    # Repaired content should be valid JSON on disk.
+    assert json.loads(cred_file.read_text()) == result
+
+
+def test_store_succeeds_after_empty_file(cred_file):
+    cred_file.write_text("")
+    json_store.store("catalog", "prod", {"host": "localhost"})
+    assert json_store.load("catalog", "prod") == {"host": "localhost"}
+
+
+# ---------------------------------------------------------------------------
 # store facade: keyring + JSON interaction
 # ---------------------------------------------------------------------------
 

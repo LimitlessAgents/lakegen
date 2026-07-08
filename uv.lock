@@ -495,6 +495,15 @@ wheels = [
 ]
 
 [[package]]
+name = "json-repair"
+version = "0.61.2"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/ff/7c/6d7c931fb6348f957154f9af926a77777a03ef0f6108c51cc2d7c9876a22/json_repair-0.61.2.tar.gz", hash = "sha256:b63ae5ad44c8720158e24bdd7e33506f7036174c287831b187a51619a6f58a34", size = 50539, upload-time = "2026-07-05T11:53:08.137Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/ac/ba/c90076ab3fb22d43a31e2e53f56ffbaea25d524d8db3b38082779a562789/json_repair-0.61.2-py3-none-any.whl", hash = "sha256:779a0cdb48f609d6eb669273023cf4c92b5ac6d80a496eb919ee93c84c351ec8", size = 48977, upload-time = "2026-07-05T11:53:06.774Z" },
+]
+
+[[package]]
 name = "jsonschema"
 version = "4.26.0"
 source = { registry = "https://pypi.org/simple" }
@@ -544,6 +553,7 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "filelock" },
+    { name = "json-repair" },
     { name = "jsonschema" },
     { name = "keyring" },
     { name = "pydantic" },
@@ -559,6 +569,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "filelock", specifier = ">=3.16.0" },
+    { name = "json-repair", specifier = ">=0.61.2" },
     { name = "jsonschema", specifier = ">=4.26.0" },
     { name = "keyring", specifier = ">=25.7.0" },
     { name = "pydantic", specifier = ">=2.0" },
