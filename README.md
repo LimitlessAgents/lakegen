@@ -1,16 +1,8 @@
 # lakegen
 
-A smart lakehouse operator — one place to ask questions about your lakehouses, databases, and tables, and optionally manage them.
+An AI agent for interacting with lakehouses.
 
-## What it does
-
-lakegen aims to be the go-to tool for working with lakehouses:
-
-- **Ask questions** across catalogs, databases, and tables
-- **Manage** lakehouse resources when you want it to
-- **Connect** with popular orchestration and data tools
-
-The goal is a simple, reliable way to interact with and operate lakehouses without jumping between many systems.
+The current focus is Apache Iceberg.
 
 ## Status
 
