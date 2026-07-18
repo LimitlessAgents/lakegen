@@ -33,5 +33,10 @@ class ErrorCode(str, Enum):
     KEYRING = "KEYRING"
     JSON = "JSON"
 
+    # Inference / LLM provider failures.
+    INFERENCE_FAILED = "INFERENCE_FAILED"
+    RATE_LIMITED = "RATE_LIMITED"
+    MODEL_NOT_FOUND = "MODEL_NOT_FOUND"
+
     # Catch-all for unexpected/unclassified failures.
     INTERNAL = "INTERNAL"
