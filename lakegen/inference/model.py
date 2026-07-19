@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from typing import Any
 from enum import StrEnum
 
-from lakegen.tool.model import ToolDefinition
+from lakegen.tool.model import ToolDefinition, ToolCall
 
 
 class Role(StrEnum):
@@ -10,15 +10,6 @@ class Role(StrEnum):
     USER = "user"
     ASSISTANT = "assistant"
     TOOL = "tool"
-
-
-@dataclass
-class ToolCall:
-    """One tool the model wants to run."""
-
-    id: str
-    name: str
-    arguments: dict[str, Any]
 
 
 @dataclass

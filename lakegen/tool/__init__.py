@@ -4,7 +4,7 @@ discover_tools()
 
 from lakegen.tool.model import ToolDefinition, ToolOutput
 from lakegen.tool.registry import ToolRegistry, registry
-from lakegen.tool.runtime import ToolRuntime, tool_runtime
+from lakegen.tool.runtime import ToolRuntime, runtime
 
 __all__ = [
     "ToolDefinition",
@@ -12,5 +12,5 @@ __all__ = [
     "ToolRegistry",
     "registry",
     "ToolRuntime",
-    "tool_runtime",
+    "runtime",
 ]

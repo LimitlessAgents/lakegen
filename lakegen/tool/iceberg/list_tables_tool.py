@@ -17,22 +17,22 @@ _DESCRIPTION = (
 )
 
 
-class ListTablesParams(BaseModel):
+class ListTablesArguments(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     name: str = Field(description="Name of the catalog connection.")
     namespace: str = Field(description="Namespace to list tables from.")
 
 
-def list_tables(params: ListTablesParams):
-    catalog = conreg.get_connection(_CONNECTION_KIND, params.name)
-    return catalog.list_tables(params.namespace)
+def list_tables(arguments: ListTablesArguments):
+    catalog = conreg.get_connection(_CONNECTION_KIND, arguments.name)
+    return catalog.list_tables(arguments.namespace)
 
 
 registry.register(
     toolset=_CONNECTION_KIND,
     name="list_tables",
     description=_DESCRIPTION,
-    params_model=ListTablesParams,
+    arguments_model=ListTablesArguments,
     handler=list_tables,
 )

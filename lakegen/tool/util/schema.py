@@ -1,29 +1,29 @@
-"""Build tool metadata dicts from tool parameter providers.
+"""Build tool metadata dicts from tool argument providers.
 
-Each tool's params provider is converted to JSON Schema via
+Each tool's arguments provider is converted to JSON Schema via
 ``model_json_schema()`` and wrapped with ``name`` and ``description`` for
 ``ToolDefinition``.
 """
 
 from typing import Any
 
-from lakegen.tool.model import ToolParams
+from lakegen.tool.model import ToolArguments
 
 
-def params_model_to_tool_dict(
+def arguments_model_to_tool_dict(
     name: str,
     description: str,
-    params_model: ToolParams,
+    arguments_model: ToolArguments,
 ) -> dict[str, Any]:
     """Build the tool schema dict used at registration time.
 
-    Calls ``params_model.model_json_schema()`` and returns a dict suitable for
+    Calls ``arguments_model.model_json_schema()`` and returns a dict suitable for
     ``ToolDefinition``. The agent later receives this via
     ``ToolDefinition.to_dict()``. Works for both Pydantic ``BaseModel``
-    subclasses and union adapters such as ``CatalogSpecParams``.
+    subclasses and union adapters such as ``CatalogSpecArguments``.
     """
     return {
         "name": name,
         "description": description,
-        "params": params_model.model_json_schema(),
+        "arguments": arguments_model.model_json_schema(),
     }

@@ -5,7 +5,7 @@ from pydantic import ValidationError
 
 from lakegen.core.error.base import BaseError
 from lakegen.core.error.code import ErrorCode
-from lakegen.tool.model import ToolOutput
+from lakegen.tool.model import ToolOutput, ToolCall
 from lakegen.tool.registry import registry
 
 
@@ -16,46 +16,46 @@ class ToolRuntime:
     tool never aborts a batch and the agent always gets a structured result.
     """
 
-    def dispatch(self, toolset: str, tools_to_call: dict[str, Any]) -> list[ToolOutput]:
+    def dispatch(self, toolset: str, tools_to_call: list[ToolCall]) -> list[ToolOutput]:
         """Run each requested tool and collect one ``ToolOutput`` per call."""
         if not tools_to_call:
             return []
         return [
-            self.use_tool(toolset, name, params)
-            for name, params in tools_to_call.items()
+            self._run_one(toolset, tool.name, tool.arguments)
+            for tool in tools_to_call
         ]
 
-    def use_tool(self, toolset: str, name: str, params: dict[str, Any]) -> ToolOutput:
+    def _run_one(self, toolset: str, name: str, arguments: dict[str, Any]) -> ToolOutput:
         try:
-            if not isinstance(params, dict):
-                if isinstance(params, (str, bytes, bytearray)):
+            if not isinstance(arguments, dict):
+                if isinstance(arguments, (str, bytes, bytearray)):
                     try:
-                        params = json.loads(params)
+                        arguments = json.loads(arguments)
                     except json.JSONDecodeError:
                         return ToolOutput(
                             tool_name=name,
                             ok=False,
                             error=BaseError(
                                 ErrorCode.INVALID_TYPE,
-                                "Tool parameters must be a dict.",
-                                details={"got_type": type(params).__name__},
+                                "Tool arguments must be a dict.",
+                                details={"got_type": type(arguments).__name__},
                             ).to_dict()
                         )
-                if not isinstance(params, dict):
+                if not isinstance(arguments, dict):
                     return ToolOutput(
                         tool_name=name,
                         ok=False,
                         error=BaseError(
                             ErrorCode.INVALID_TYPE,
-                            "Tool parameters must be a dict.",
-                            details={"got_type": type(params).__name__},
+                            "Tool arguments must be a dict.",
+                            details={"got_type": type(arguments).__name__},
                         ).to_dict()
                     )
 
             tool = registry.get_tool_definition(toolset, name)
-            # Validation turns raw input into the concrete params object the
+            # Validation turns raw input into the concrete arguments object the
             # handler expects (e.g. a specific catalog spec for add_catalog).
-            validated = tool.params_model.model_validate(params)
+            validated = tool.arguments_model.model_validate(arguments)
             result = tool.handler(validated)
 
             # Safety net: verify the result is JSON-serializable before handing
@@ -85,7 +85,7 @@ class ToolRuntime:
                 ok=False,
                 error={
                     "code": ErrorCode.INVALID_ARGUMENT.value,
-                    "message": f"Invalid parameters for tool {name!r}.",
+                    "message": f"Invalid arguments for tool {name!r}.",
                     "details": {"errors": e.errors()},
                 },
             )
@@ -103,4 +103,4 @@ class ToolRuntime:
             )
 
 
-tool_runtime = ToolRuntime()
+runtime = ToolRuntime()

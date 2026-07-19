@@ -2,7 +2,7 @@ from typing import Any, Callable
 
 from lakegen.core.error.base import BaseError
 from lakegen.core.error.code import ErrorCode
-from lakegen.tool.model import ToolDefinition, ToolParams
+from lakegen.tool.model import ToolDefinition, ToolArguments
 
 
 class ToolRegistry:
@@ -24,26 +24,26 @@ class ToolRegistry:
         name: str,
         *,
         description: str,
-        params_model: ToolParams,
+        arguments_model: ToolArguments,
         handler: Callable,
         requires_env: bool = False,
     ):
-        """Build a tool's schema from ``params_model`` and store its definition."""
-        from lakegen.tool.util.schema import params_model_to_tool_dict
+        """Build a tool's schema from ``arguments_model`` and store its definition."""
+        from lakegen.tool.util.schema import arguments_model_to_tool_dict
 
         # Fail loudly at registration (import time) if a tool is wired up wrong:
         # this is a developer error, not something an agent should ever see.
-        if not isinstance(params_model, ToolParams):
+        if not isinstance(arguments_model, ToolArguments):
             raise TypeError(
-                "params_model must provide 'model_validate' and 'model_json_schema'."
+                "arguments_model must provide 'model_validate' and 'model_json_schema'."
             )
 
-        tool_dict = params_model_to_tool_dict(name, description, params_model)
+        tool_dict = arguments_model_to_tool_dict(name, description, arguments_model)
         self.__all_available_tools.setdefault(toolset, {})[name] = ToolDefinition(
             name=tool_dict["name"],
             description=tool_dict["description"],
-            params=tool_dict["params"],
-            params_model=params_model,
+            arguments=tool_dict["arguments"],
+            arguments_model=arguments_model,
             handler=handler,
             requires_env=requires_env,
         )

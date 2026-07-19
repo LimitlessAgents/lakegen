@@ -4,7 +4,7 @@ Importing this module registers the tool as a side effect. ``_DESCRIPTION`` is
 shown to the agent, so it is written as guidance for when/how to call the tool.
 """
 
-from lakegen.core.catalog.model import CatalogSpecParams, ResolvedCatalogSpec
+from lakegen.core.catalog.model import CatalogSpecArguments, ResolvedCatalogSpec
 from lakegen.core.connection.registry import conreg
 from lakegen.tool.registry import registry
 
@@ -16,15 +16,15 @@ _DESCRIPTION = (
 )
 
 
-def add_catalog(params: ResolvedCatalogSpec) -> None:
-    conreg.open_new_connection(_CONNECTION_KIND, params)
+def add_catalog(arguments: ResolvedCatalogSpec) -> None:
+    conreg.open_new_connection(_CONNECTION_KIND, arguments)
 
 
 registry.register(
     toolset=_CONNECTION_KIND,
     name="add_catalog",
     description=_DESCRIPTION,
-    params_model=CatalogSpecParams,
+    arguments_model=CatalogSpecArguments,
     handler=add_catalog,
     requires_env=True,
 )

@@ -8,10 +8,10 @@ from lakegen.inference.model import (
     Role,
     TokenUsage,
     ToolCall,
+    ToolDefinition,
 )
 from lakegen.inference.protocol import ProviderCapabilities
 from lakegen.inference.registry import registry
-from lakegen.tool.model import ToolDefinition
 
 
 class _OpenAI:
@@ -47,7 +47,7 @@ class _OpenAI:
                 "type": "function",
                 "name": tool.name,
                 "description": tool.description,
-                "parameters": tool.params,
+                "parameters": tool.arguments,
             }
             for tool in tools
         ]

@@ -16,14 +16,14 @@ _DESCRIPTION = (
 )
 
 
-class ListNamespacesParams(BaseModel):
+class ListNamespacesArguments(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     name: str = Field(description="Name of the catalog connection.")
 
 
-def list_namespaces(params: ListNamespacesParams):
-    catalog = conreg.get_connection(_CONNECTION_KIND, params.name)
+def list_namespaces(arguments: ListNamespacesArguments):
+    catalog = conreg.get_connection(_CONNECTION_KIND, arguments.name)
     return catalog.list_namespaces()
 
 
@@ -31,6 +31,6 @@ registry.register(
     toolset=_CONNECTION_KIND,
     name="list_namespaces",
     description=_DESCRIPTION,
-    params_model=ListNamespacesParams,
+    arguments_model=ListNamespacesArguments,
     handler=list_namespaces,
 )

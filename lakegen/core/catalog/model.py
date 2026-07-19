@@ -216,8 +216,8 @@ def resolve_catalog_spec(data: dict[str, Any]) -> ResolvedCatalogSpec:
     return _catalog_spec_adapter.validate_python(data)
 
 
-class CatalogSpecParams:
-    """Tool params provider for the catalog discriminated union.
+class CatalogSpecArguments:
+    """Tool arguments provider for the catalog discriminated union.
 
     Presents the ``model_validate`` / ``model_json_schema`` surface the tool
     registry and runtime expect, but delegates to the union ``TypeAdapter`` so

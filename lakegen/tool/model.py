@@ -3,8 +3,8 @@ from typing import Any, Callable, Protocol, runtime_checkable
 
 
 @runtime_checkable
-class ToolParams(Protocol):
-    """Params provider a tool registers.
+class ToolArguments(Protocol):
+    """Arguments provider a tool registers.
 
     Any Pydantic ``BaseModel`` subclass satisfies this, as does a lightweight
     adapter that delegates to a ``TypeAdapter`` (e.g. a discriminated union).
@@ -21,17 +21,17 @@ class ToolParams(Protocol):
 class ToolDefinition:
     """A registered tool: what the agent sees plus how to run it.
 
-    ``params`` is the JSON Schema shown to the agent, while ``params_model`` is
-    the provider used at call time to validate raw input. They are derived from
-    the same source at registration but kept separate so ``to_dict`` can expose
-    the agent-facing view without leaking the handler or validator.
+    ``arguments`` is the JSON Schema shown to the agent, while ``arguments_model``
+    is the provider used at call time to validate raw input. They are derived
+    from the same source at registration but kept separate so ``to_dict`` can
+    expose the agent-facing view without leaking the handler or validator.
     """
 
     name: str
     description: str
-    params: dict[str, Any]
+    arguments: dict[str, Any]
     handler: Callable = field(repr=False, compare=False)
-    params_model: ToolParams = field(repr=False, compare=False)
+    arguments_model: ToolArguments = field(repr=False, compare=False)
     # Whether the tool needs external environment/config to be present.
     requires_env: bool = False
 
@@ -40,7 +40,7 @@ class ToolDefinition:
         return {
             "name": self.name,
             "description": self.description,
-            "params": self.params,
+            "arguments": self.arguments,
         }
 
 
@@ -58,3 +58,12 @@ class ToolOutput:
     ok: bool
     response: Any = None
     error: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class ToolCall:
+    """One tool the model wants to run."""
+
+    id: str
+    name: str
+    arguments: dict[str, Any]
