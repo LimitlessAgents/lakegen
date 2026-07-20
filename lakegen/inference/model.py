@@ -47,3 +47,11 @@ class ChatResponse:
 
     message: Message
     tokens: TokenUsage | None = None
+
+
+@dataclass
+class StreamChunk:
+    text: str | None = None
+    tool_calls: list[ToolCall] | None = None
+    done: bool = False
+    tokens: TokenUsage | None = None

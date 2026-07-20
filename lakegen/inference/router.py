@@ -11,6 +11,9 @@ class Router:
             )
         response = resolved_provider.complete(request)
         return response
+    
+    def stream(self, provider: str, request: ChatRequest) -> ChatResponse:
+        return inference_registry.get(provider).stream(request)
 
 
 router = Router()
