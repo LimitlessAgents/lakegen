@@ -1,11 +1,12 @@
 import json
-from typing import Any
+from typing import Any, Iterator
 
 from lakegen.inference.model import (
     ChatRequest,
     ChatResponse,
     Message,
     Role,
+    StreamChunk,
     TokenUsage,
     ToolCall,
     ToolDefinition,
@@ -29,7 +30,7 @@ class _OpenAI:
         return ProviderCapabilities(
             chat=True,
             tools=True,
-            streaming=False,
+            streaming=True,
             json_schema=True,
         )
 
@@ -95,13 +96,11 @@ class _OpenAI:
         return native
 
     def complete(self, request: ChatRequest) -> ChatResponse:
-        client = self._get_client()
-        tools = self._tools_to_native(request.tools) or None
 
-        response = client.responses.create(
+        response = self._get_client().responses.create(
             model=request.model,
             instructions=request.system_prompt,
-            tools=tools,
+            tools=self._tools_to_native(request.tools) or None,
             input=self._message_to_native(request.messages),
             temperature=request.temperature,
         )
@@ -115,13 +114,11 @@ class _OpenAI:
                     args = json.loads(args)
                 tool_calls.append(ToolCall(item.call_id, item.name, args))
 
-        tokens = None
-        if response.usage is not None:
-            tokens = TokenUsage(
-                prompt_tokens=response.usage.input_tokens,
-                completion_tokens=response.usage.output_tokens,
-                total_tokens=response.usage.total_tokens,
-            )
+        tokens = TokenUsage(
+            prompt_tokens=response.usage.input_tokens,
+            completion_tokens=response.usage.output_tokens,
+            total_tokens=response.usage.total_tokens,
+        ) if response.usage else None
 
         return ChatResponse(
             message=Message(
@@ -132,8 +129,44 @@ class _OpenAI:
             tokens=tokens,
         )
 
-    def stream(self, request: ChatRequest):
-        raise NotImplementedError("streaming not implemented yet")
+    def stream(self, request: ChatRequest) -> Iterator[StreamChunk]:
+        stream = self._get_client().responses.create(
+            model=request.model,
+            instructions=request.system_prompt,
+            tools=self._tools_to_native(request.tools) or None,
+            input=self._message_to_native(request.messages),
+            temperature=request.temperature,
+            stream=True,
+        )
+
+        text_parts: list[str] = []
+        tool_calls: list[ToolCall] = []
+
+        for event in stream:
+            if event.type == "response.output_text.delta":
+                text_parts.append(event.delta)
+                yield StreamChunk(text=event.delta)
+
+            elif event.type == "response.output_item.done":
+                item = event.item
+                if item.type == "function_call":
+                    args = json.loads(item.arguments) if isinstance(item.arguments, str) else item.arguments
+                    tool_calls.append(ToolCall(item.call_id, item.name, args))
+
+            elif event.type == "response.completed":
+                usage = event.response.usage
+                
+                tokens = TokenUsage(
+                    prompt_tokens=usage.input_tokens,
+                    completion_tokens=usage.output_tokens,
+                    total_tokens=usage.total_tokens,
+                ) if usage else None
+
+                yield StreamChunk(
+                    done=True,
+                    tool_calls=tool_calls or None,
+                    tokens=tokens,
+                )
 
 
 registry.register(_OpenAI())
