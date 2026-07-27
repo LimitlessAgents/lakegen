@@ -33,12 +33,11 @@ class Message:
 @dataclass
 class ChatRequest:
     """What we send to a provider."""
-
     model: str
     system_prompt: str
     messages: list[Message]
     tools: list[ToolDefinition]
-    temperature: float
+    temperature: float = 0.2
 
 
 @dataclass
