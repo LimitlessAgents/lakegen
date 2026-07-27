@@ -21,11 +21,16 @@ class ToolRuntime:
         if not tools_to_call:
             return []
         return [
-            self._run_one(toolset, tool.name, tool.arguments)
-            for tool in tools_to_call
+            self._run_one(toolset, call)
+            for call in tools_to_call
         ]
 
-    def _run_one(self, toolset: str, name: str, arguments: dict[str, Any]) -> ToolOutput:
+    def _run_one(self, toolset: str, call: ToolCall) -> ToolOutput:
+
+        call_id=call.id
+        name=call.name
+        arguments=call.arguments
+
         try:
             if not isinstance(arguments, dict):
                 if isinstance(arguments, (str, bytes, bytearray)):
@@ -34,6 +39,7 @@ class ToolRuntime:
                     except json.JSONDecodeError:
                         return ToolOutput(
                             tool_name=name,
+                            tool_call_id=call_id,
                             ok=False,
                             error=BaseError(
                                 ErrorCode.INVALID_TYPE,
@@ -44,6 +50,7 @@ class ToolRuntime:
                 if not isinstance(arguments, dict):
                     return ToolOutput(
                         tool_name=name,
+                        tool_call_id=call_id,
                         ok=False,
                         error=BaseError(
                             ErrorCode.INVALID_TYPE,
@@ -72,16 +79,23 @@ class ToolRuntime:
 
             return ToolOutput(
                 tool_name=name,
+                tool_call_id=call_id,
                 ok=True,
                 response=result,
             )
         # Application errors already carry a structured, agent-readable payload.
         except BaseError as e:
-            return ToolOutput(tool_name=name, ok=False, error=e.to_dict())
+            return ToolOutput(
+                tool_name=name,
+                tool_call_id=call_id,
+                ok=False,
+                error=e.to_dict()
+            )
         # Bad agent input: surface the field-level Pydantic errors so it can retry.
         except ValidationError as e:
             return ToolOutput(
                 tool_name=name,
+                tool_call_id=call_id,
                 ok=False,
                 error={
                     "code": ErrorCode.INVALID_ARGUMENT.value,
@@ -94,6 +108,7 @@ class ToolRuntime:
         except Exception as e:
             return ToolOutput(
                 tool_name=name,
+                tool_call_id=call_id,
                 ok=False,
                 error=BaseError(
                     ErrorCode.INTERNAL,
