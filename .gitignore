@@ -10,3 +10,6 @@ wheels/
 .venv
 
 test/
+
+.env
+.cursor
