@@ -1,0 +1,32 @@
+from dataclasses import dataclass, field
+from enum import StrEnum
+from typing import Any
+
+from lakegen.inference import Message
+
+class StopReason(StrEnum):
+    COMPLETED = "completed"
+    MAX_ITERATIONS_EXCEEDED = "max_iterations_exceeded"
+    KEYBOARD_INTERRUPTION = "keyboard_interruption"
+    INTERNAL_ERROR = "internal_error"
+
+
+@dataclass
+class Conversation:
+    messages: list[Message] = field(default_factory=list)
+
+@dataclass(frozen=True)
+class AgentLoopResult:
+    final_message: str
+    transcript: Conversation
+    stop_reason: StopReason
+
+@dataclass(frozen=True)
+class AgentConfig:
+    model: str
+    system_prompt: str
+    tools: list[dict[str, Any]]
+
+    name: str = "lakegen"
+    provider: str = "openai"
+    max_turns: int = 20
