@@ -21,7 +21,6 @@ def add_catalog(arguments: ResolvedCatalogSpec) -> None:
 
 
 registry.register(
-    toolset=_CONNECTION_KIND,
     name="add_catalog",
     description=_DESCRIPTION,
     arguments_model=CatalogSpecArguments,

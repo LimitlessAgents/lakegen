@@ -30,7 +30,6 @@ def list_tables(arguments: ListTablesArguments):
 
 
 registry.register(
-    toolset=_CONNECTION_KIND,
     name="list_tables",
     description=_DESCRIPTION,
     arguments_model=ListTablesArguments,

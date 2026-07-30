@@ -16,16 +16,13 @@ class ToolRuntime:
     tool never aborts a batch and the agent always gets a structured result.
     """
 
-    def dispatch(self, toolset: str, tools_to_call: list[ToolCall]) -> list[ToolOutput]:
+    def dispatch(self, tools_to_call: list[ToolCall]) -> list[ToolOutput]:
         """Run each requested tool and collect one ``ToolOutput`` per call."""
         if not tools_to_call:
             return []
-        return [
-            self._run_one(toolset, call)
-            for call in tools_to_call
-        ]
+        return [self._run_one(call) for call in tools_to_call]
 
-    def _run_one(self, toolset: str, call: ToolCall) -> ToolOutput:
+    def _run_one(self, call: ToolCall) -> ToolOutput:
 
         call_id=call.id
         name=call.name
@@ -59,7 +56,7 @@ class ToolRuntime:
                         ).to_dict()
                     )
 
-            tool = registry.get_tool_definition(toolset, name)
+            tool = registry.get_tool_definition(name)
             # Validation turns raw input into the concrete arguments object the
             # handler expects (e.g. a specific catalog spec for add_catalog).
             validated = tool.arguments_model.model_validate(arguments)

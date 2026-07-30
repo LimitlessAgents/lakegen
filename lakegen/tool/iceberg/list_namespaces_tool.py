@@ -28,7 +28,6 @@ def list_namespaces(arguments: ListNamespacesArguments):
 
 
 registry.register(
-    toolset=_CONNECTION_KIND,
     name="list_namespaces",
     description=_DESCRIPTION,
     arguments_model=ListNamespacesArguments,

@@ -58,6 +58,16 @@ class ToolOutput:
     ok: bool
     response: Any = None
     error: dict[str, Any] = field(default_factory=dict)
+    tool_call_id: str | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "tool_name": self.tool_name,
+            "ok": self.ok,
+            "response": self.response,
+            "error": self.error,
+            "tool_call_id": self.tool_call_id
+        }
 
 
 @dataclass

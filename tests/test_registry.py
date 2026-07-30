@@ -36,13 +36,12 @@ def _noop_handler(arguments):
 def test_register_and_retrieve():
     reg = _make_registry()
     reg.register(
-        "mytoolset",
         "my_tool",
         description="does things",
         arguments_model=_Arguments,
         handler=_noop_handler,
     )
-    defn = reg.get_tool_definition("mytoolset", "my_tool")
+    defn = reg.get_tool_definition("my_tool")
     assert defn.name == "my_tool"
     assert defn.description == "does things"
 
@@ -55,7 +54,6 @@ def test_register_bad_arguments_model_raises_type_error():
 
     with pytest.raises(TypeError, match="model_validate"):
         reg.register(
-            "ts",
             "bad_tool",
             description="x",
             arguments_model=_Bad,
@@ -65,9 +63,9 @@ def test_register_bad_arguments_model_raises_type_error():
 
 def test_register_overwrites_existing():
     reg = _make_registry()
-    reg.register("ts", "t", description="v1", arguments_model=_Arguments, handler=_noop_handler)
-    reg.register("ts", "t", description="v2", arguments_model=_Arguments, handler=_noop_handler)
-    assert reg.get_tool_definition("ts", "t").description == "v2"
+    reg.register("t", description="v1", arguments_model=_Arguments, handler=_noop_handler)
+    reg.register("t", description="v2", arguments_model=_Arguments, handler=_noop_handler)
+    assert reg.get_tool_definition("t").description == "v2"
 
 
 # ---------------------------------------------------------------------------
@@ -76,50 +74,34 @@ def test_register_overwrites_existing():
 
 def test_get_tool_definition_unknown_tool_raises_not_found():
     reg = _make_registry()
-    reg.register("ts", "real", description="x", arguments_model=_Arguments, handler=_noop_handler)
+    reg.register("real", description="x", arguments_model=_Arguments, handler=_noop_handler)
     with pytest.raises(BaseError) as exc_info:
-        reg.get_tool_definition("ts", "ghost")
+        reg.get_tool_definition("ghost")
     assert exc_info.value.code == ErrorCode.NOT_FOUND
 
 
 def test_get_tool_definition_empty_name_raises_invalid():
     reg = _make_registry()
     with pytest.raises(BaseError) as exc_info:
-        reg.get_tool_definition("ts", "")
+        reg.get_tool_definition("")
     assert exc_info.value.code == ErrorCode.INVALID_ARGUMENT
-
-
-def test_get_tool_schema_returns_dict():
-    reg = _make_registry()
-    reg.register("ts", "t", description="desc", arguments_model=_Arguments, handler=_noop_handler)
-    schema = reg.get_tool_schema("ts", "t")
-    assert schema["name"] == "t"
-    assert schema["description"] == "desc"
-    assert "arguments" in schema
 
 
 def test_list_tool_names():
     reg = _make_registry()
-    reg.register("ts", "a", description="x", arguments_model=_Arguments, handler=_noop_handler)
-    reg.register("ts", "b", description="y", arguments_model=_Arguments, handler=_noop_handler)
+    reg.register("a", description="x", arguments_model=_Arguments, handler=_noop_handler)
+    reg.register("b", description="y", arguments_model=_Arguments, handler=_noop_handler)
     names = reg.list_tool_names()
     assert set(names) == {"a", "b"}
 
 
-def test_get_tools_description_by_toolset():
+def test_get_all_tools_info():
     reg = _make_registry()
-    reg.register("ts1", "t1", description="d1", arguments_model=_Arguments, handler=_noop_handler)
-    reg.register("ts2", "t2", description="d2", arguments_model=_Arguments, handler=_noop_handler)
-    descs = reg.get_tools_description("ts1")
-    assert "t1" in descs
-    assert "t2" not in descs
-
-
-def test_get_tools_description_unknown_toolset_raises_not_found():
-    reg = _make_registry()
-    with pytest.raises(BaseError) as exc_info:
-        reg.get_tools_description("ghost")
-    assert exc_info.value.code == ErrorCode.NOT_FOUND
+    reg.register("t1", description="d1", arguments_model=_Arguments, handler=_noop_handler)
+    reg.register("t2", description="d2", arguments_model=_Arguments, handler=_noop_handler)
+    tools = reg.get_all_tools_info()
+    assert set(tools) == {"t1", "t2"}
+    assert tools["t1"].description == "d1"
 
 
 # ---------------------------------------------------------------------------
