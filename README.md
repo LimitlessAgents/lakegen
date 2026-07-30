@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="static/logo.png" alt="LakeGen logo" width="180" />
+  <img src="static/logo.webp" alt="LakeGen logo" width="180" />
 </p>
 
 <h1 align="center">LakeGen</h1>
