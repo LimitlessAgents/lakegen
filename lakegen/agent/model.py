@@ -27,6 +27,5 @@ class AgentConfig:
     system_prompt: str
     tools: list[dict[str, Any]]
 
-    name: str = "lakegen"
-    provider: str = "openai"
-    max_turns: int = 20
+    provider: str
+    max_turns: int
