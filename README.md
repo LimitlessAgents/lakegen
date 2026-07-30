@@ -1,4 +1,8 @@
-# LakeGen
+<p align="center">
+  <img src="static/logo.png" alt="LakeGen logo" width="180" />
+</p>
+
+<h1 align="center">LakeGen</h1>
 
 Lakehouses are powerful — and often painful to manage. Catalogs, namespaces, tables, credentials, connectors… there's a lot to keep straight, and it gets messy fast.
 
