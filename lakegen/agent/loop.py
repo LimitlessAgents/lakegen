@@ -13,13 +13,22 @@ from lakegen.inference import (
     Message,
     Role,
     StreamChunk,
-    router as inference_router,
+    Router,
+    router as default_router,
 )
 from lakegen.tool.model import ToolOutput
-from lakegen.tool.runtime import runtime as tool_runtime
+from lakegen.tool.runtime import ToolRuntime, runtime as default_tool_runtime
 
 
 class AgentLoop:
+    def __init__(
+        self,
+        router: Router | None = None,
+        tool_runtime: ToolRuntime | None = None,
+    ) -> None:
+        self._router = router if router is not None else default_router
+        self._tools = tool_runtime if tool_runtime is not None else default_tool_runtime
+
     def invoke(
         self,
         agent_config: AgentConfig,
@@ -39,7 +48,7 @@ class AgentLoop:
             chat_request = ChatRequest(
                 model=agent_config.model,
                 system_prompt=agent_config.system_prompt,
-                tools=agent_config.tools,
+                tools=self._tools.list_definitions(),
                 messages=conversation.messages,
             )
 
@@ -62,7 +71,7 @@ class AgentLoop:
                     stop_reason=StopReason.COMPLETED,
                 )
 
-            tools_output: list[ToolOutput] = tool_runtime.dispatch(tool_calls)
+            tools_output: list[ToolOutput] = self._tools.dispatch(tool_calls)
 
             for output in tools_output:
                 conversation.messages.append(
@@ -94,10 +103,10 @@ class AgentLoop:
         on_chunk: Callable[[StreamChunk], None] | None,
     ) -> ChatResponse:
         if not stream:
-            return inference_router.complete(provider, request)
+            return self._router.complete(provider, request)
 
         return self._consume_stream(
-            inference_router.stream(provider, request),
+            self._router.stream(provider, request),
             on_chunk=on_chunk,
         )
 

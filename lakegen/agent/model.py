@@ -1,6 +1,5 @@
 from dataclasses import dataclass, field
 from enum import StrEnum
-from typing import Any
 
 from lakegen.inference import Message
 
@@ -25,7 +24,5 @@ class AgentLoopResult:
 class AgentConfig:
     model: str
     system_prompt: str
-    tools: list[dict[str, Any]]
-
     provider: str
     max_turns: int

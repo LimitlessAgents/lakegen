@@ -1,3 +1,3 @@
-from lakegen.core.connection.registry import ConnectionRegistry
+from lakegen.core.connection.registry import ConnectionRegistry, conreg
 
-__all__ = ["ConnectionRegistry"]
+__all__ = ["ConnectionRegistry", "conreg"]
