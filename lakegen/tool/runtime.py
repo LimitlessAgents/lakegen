@@ -5,8 +5,8 @@ from pydantic import ValidationError
 
 from lakegen.core.error.base import BaseError
 from lakegen.core.error.code import ErrorCode
-from lakegen.tool.model import ToolOutput, ToolCall
-from lakegen.tool.registry import registry
+from lakegen.tool.model import ToolDefinition, ToolOutput, ToolCall
+from lakegen.tool.registry import ToolRegistry, registry as default_registry
 
 
 class ToolRuntime:
@@ -14,7 +14,17 @@ class ToolRuntime:
 
     Every call returns a ``ToolOutput`` instead of raising, so a failure in one
     tool never aborts a batch and the agent always gets a structured result.
+
+    The runtime is also the authority for which tools a session may advertise
+    to the model (via ``list_definitions``) and execute (via ``dispatch``).
     """
+
+    def __init__(self, registry: ToolRegistry | None = None) -> None:
+        self._registry = registry if registry is not None else default_registry
+
+    def list_definitions(self) -> list[ToolDefinition]:
+        """Tools this runtime will expose to the model."""
+        return list(self._registry.get_all_tools_info().values())
 
     def dispatch(self, tools_to_call: list[ToolCall]) -> list[ToolOutput]:
         """Run each requested tool and collect one ``ToolOutput`` per call."""
@@ -56,7 +66,7 @@ class ToolRuntime:
                         ).to_dict()
                     )
 
-            tool = registry.get_tool_definition(name)
+            tool = self._registry.get_tool_definition(name)
             # Validation turns raw input into the concrete arguments object the
             # handler expects (e.g. a specific catalog spec for add_catalog).
             validated = tool.arguments_model.model_validate(arguments)
