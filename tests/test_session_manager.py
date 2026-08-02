@@ -65,3 +65,48 @@ def test_create_with_missing_parent_raises():
     mgr = SessionManager(env=Environment.default())
     with pytest.raises(BaseError):
         mgr.create(_config(), parent_id=42)
+
+
+def test_delete_closes_session_so_send_and_spawn_fail():
+    mgr = SessionManager(env=Environment.default())
+    session = mgr.create(_config())
+
+    mgr.delete(session.id)
+
+    assert session.state.closed is True
+    with pytest.raises(BaseError, match="closed"):
+        session.send("hello")
+    with pytest.raises(BaseError, match="closed"):
+        session.spawn(_config())
+
+
+def test_delete_closes_cascaded_children():
+    mgr = SessionManager(env=Environment.default())
+    parent = mgr.create(_config())
+    child = parent.spawn(_config())
+    grandchild = child.spawn(_config())
+
+    mgr.delete(parent.id)
+
+    assert parent.state.closed is True
+    assert child.state.closed is True
+    assert grandchild.state.closed is True
+    with pytest.raises(BaseError, match="closed"):
+        child.send("hello")
+    with pytest.raises(BaseError, match="closed"):
+        grandchild.spawn(_config())
+
+
+def test_close_blocks_further_send_and_spawn():
+    mgr = SessionManager(env=Environment.default())
+    session = mgr.create(_config())
+
+    session.close()
+
+    assert session.state.closed is True
+    with pytest.raises(BaseError, match="closed"):
+        session.send("hello")
+    with pytest.raises(BaseError, match="closed"):
+        session.spawn(_config())
+    # Still registered until delete; close alone does not unregister.
+    assert mgr.get(session.id) is session

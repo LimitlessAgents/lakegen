@@ -8,6 +8,7 @@ from lakegen.agent import AgentConfig, Conversation
 class SessionState:
     id: int
     config: AgentConfig
+    closed: bool = False
     parent_id: int | None = None
     children: list[int] = field(default_factory=list)
     created_at: datetime = field(default_factory=datetime.now)

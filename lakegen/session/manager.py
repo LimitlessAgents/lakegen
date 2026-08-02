@@ -71,6 +71,8 @@ class SessionManager:
                     f"Session {session_id!r} not found.",
                 )
 
+            session.close()
+
             for child_id in list(session.state.children):
                 self._delete_unlocked(child_id)
 
@@ -84,5 +86,6 @@ class SessionManager:
         session = self._sessions.pop(session_id, None)
         if session is None:
             return
+        session.close()
         for child_id in list(session.state.children):
             self._delete_unlocked(child_id)
