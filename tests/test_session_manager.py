@@ -1,5 +1,8 @@
 """Tests for lakegen.session.manager.SessionManager."""
 
+import threading
+import time
+
 import pytest
 
 from lakegen.agent import AgentConfig
@@ -110,3 +113,56 @@ def test_close_blocks_further_send_and_spawn():
         session.spawn(_config())
     # Still registered until delete; close alone does not unregister.
     assert mgr.get(session.id) is session
+
+
+def test_delete_does_not_hold_manager_lock_while_closing():
+    """Other sessions stay usable while delete waits on an in-flight turn lock."""
+    mgr = SessionManager(env=Environment.default())
+    active = mgr.create(_config())
+    other = mgr.create(_config())
+
+    holding = threading.Event()
+    release = threading.Event()
+
+    def hold_session_lock() -> None:
+        with active._lock:
+            holding.set()
+            release.wait(timeout=5)
+
+    holder = threading.Thread(target=hold_session_lock)
+    holder.start()
+    assert holding.wait(timeout=1)
+
+    delete_done = threading.Event()
+
+    def do_delete() -> None:
+        mgr.delete(active.id)
+        delete_done.set()
+
+    deleter = threading.Thread(target=do_delete)
+    deleter.start()
+
+    deadline = time.time() + 2
+    while time.time() < deadline:
+        try:
+            mgr.get(active.id)
+        except BaseError:
+            break
+        time.sleep(0.01)
+    else:
+        release.set()
+        holder.join(timeout=1)
+        deleter.join(timeout=1)
+        pytest.fail("delete never unregistered the active session")
+
+    # Unregistered but not yet closed — close is blocked on session._lock.
+    assert active.state.closed is False
+    assert mgr.get(other.id) is other
+    created = mgr.create(_config())
+    assert mgr.get(created.id) is created
+
+    release.set()
+    holder.join(timeout=2)
+    deleter.join(timeout=2)
+    assert delete_done.is_set()
+    assert active.state.closed is True

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import threading
 
 from lakegen.agent import AgentConfig
@@ -62,7 +64,18 @@ class SessionManager:
             return list(self._sessions.values())
 
     def delete(self, session_id: int) -> None:
-        """Remove a session. Children are deleted with it."""
+        """Remove a session. Children are deleted with it.
+
+        The manager lock is only held while updating the registry. ``close()``
+        runs afterward so an in-flight ``send`` on the deleted session cannot
+        freeze create/get/list for other sessions.
+        """
+        to_close = self._unregister_tree(session_id)
+        for session in to_close:
+            session.close()
+
+    def _unregister_tree(self, session_id: int) -> list[Session]:
+        """Pop a session and its descendants from the registry. Caller closes them."""
         with self._lock:
             session = self._sessions.pop(session_id, None)
             if session is None:
@@ -71,21 +84,19 @@ class SessionManager:
                     f"Session {session_id!r} not found.",
                 )
 
-            session.close()
-
-            for child_id in list(session.state.children):
-                self._delete_unlocked(child_id)
-
             parent_id = session.state.parent_id
             if parent_id is not None:
                 parent = self._sessions.get(parent_id)
                 if parent is not None and session_id in parent.state.children:
                     parent.state.children.remove(session_id)
 
-    def _delete_unlocked(self, session_id: int) -> None:
-        session = self._sessions.pop(session_id, None)
-        if session is None:
-            return
-        session.close()
-        for child_id in list(session.state.children):
-            self._delete_unlocked(child_id)
+            to_close: list[Session] = []
+            stack = [session]
+            while stack:
+                current = stack.pop()
+                to_close.append(current)
+                for child_id in list(current.state.children):
+                    child = self._sessions.pop(child_id, None)
+                    if child is not None:
+                        stack.append(child)
+            return to_close
