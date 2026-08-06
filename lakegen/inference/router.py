@@ -59,7 +59,7 @@ class Router:
             except BaseError as error:
                 if not self._should_retry(error, attempt):
                     raise
-                self._backoff(attempt)
+                self._backoff(attempt, error)
             except Exception as error:
                 # Catch unexpected/unhandled errors and expose a structured BaseError.
                 raise BaseError(
@@ -98,7 +98,7 @@ class Router:
             except BaseError as error:
                 if yielded or not self._should_retry(error, attempt):
                     raise
-                self._backoff(attempt)
+                self._backoff(attempt, error)
             except Exception as error:
                 # Catch unexpected errors and expose a structured BaseError.
                 raise BaseError(
@@ -130,14 +130,23 @@ class Router:
             and attempt < self.policy.max_attempts
         )
 
-    def _backoff(self, attempt: int) -> None:
-        """Sleep with capped exponential delay, optionally jittered."""
-        delay = min(
-            self.policy.backoff_base * (2 ** (attempt - 1)),
-            self.policy.backoff_cap,
-        )
-        if self.policy.jitter:
-            delay *= self._random()
+    def _backoff(self, attempt: int, error: BaseError) -> None:
+        """Sleep before the next attempt.
+
+        Prefer a numeric ``retry_after`` from the error details when present
+        (e.g. from an HTTP ``Retry-After`` header), capped by ``backoff_cap``.
+        Otherwise use capped exponential delay, optionally with full jitter.
+        """
+        retry_after = error.details.get("retry_after")
+        if isinstance(retry_after, (int, float)) and retry_after >= 0:
+            delay = float(retry_after)
+        else:
+            delay = min(
+                self.policy.backoff_base * (2 ** (attempt - 1)),
+                self.policy.backoff_cap,
+            )
+            if self.policy.jitter:
+                delay *= self._random()
         self._sleep(delay)
 
 

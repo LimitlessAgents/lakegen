@@ -51,11 +51,27 @@ class _OpenAI:
             self.client = OpenAI(max_retries=0)
         return self.client
 
+    def _parse_retry_after(self, error: Exception) -> float | None:
+        """Read numeric ``Retry-After`` seconds from an API status error, if present."""
+        if not isinstance(error, openai.APIStatusError):
+            return None
+        header = error.response.headers.get("retry-after")
+        if header is None:
+            return None
+        try:
+            value = float(header)
+        except (TypeError, ValueError):
+            return None
+        if value < 0:
+            return None
+        return value
+
     def _map_error(self, error: Exception, model: str) -> BaseError:
         """Translate an OpenAI SDK exception into a structured BaseError.
 
-        Details include provider, model, HTTP status, and request id when
-        available. Response bodies and credentials are never attached.
+        Details include provider, model, HTTP status, request id, and numeric
+        ``retry_after`` seconds when the response provides ``Retry-After``.
+        Response bodies and credentials are never attached.
         """
         status = (
             error.status_code
@@ -75,6 +91,11 @@ class _OpenAI:
             details["status"] = status
         if request_id is not None:
             details["request_id"] = request_id
+
+        # Seconds form only; HTTP-date Retry-After values are ignored.
+        retry_after = self._parse_retry_after(error)
+        if retry_after is not None:
+            details["retry_after"] = retry_after
 
         if (
             isinstance(error, openai.NotFoundError)

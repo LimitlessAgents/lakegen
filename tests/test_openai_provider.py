@@ -30,9 +30,13 @@ def _status_error(
     status: int,
     *,
     request_id: str = "req-123",
+    retry_after: str | None = None,
 ):
     request = _http_request()
-    response = httpx.Response(status, request=request, headers={"x-request-id": request_id})
+    headers = {"x-request-id": request_id}
+    if retry_after is not None:
+        headers["retry-after"] = retry_after
+    response = httpx.Response(status, request=request, headers=headers)
     return exc_type("boom", response=response, body={"error": {"message": "secret"}})
 
 
@@ -147,6 +151,26 @@ def test_maps_status_details_without_response_body(provider):
         "request_id": "req-999",
     }
     assert "secret" not in str(mapped.details)
+
+
+def test_maps_numeric_retry_after(provider):
+    error = _status_error(openai.RateLimitError, 429, retry_after="12")
+
+    mapped = provider._map_error(error, "gpt-test")
+
+    assert mapped.details["retry_after"] == 12.0
+
+
+def test_ignores_non_numeric_retry_after(provider):
+    error = _status_error(
+        openai.RateLimitError,
+        429,
+        retry_after="Wed, 21 Oct 2015 07:28:00 GMT",
+    )
+
+    mapped = provider._map_error(error, "gpt-test")
+
+    assert "retry_after" not in mapped.details
 
 
 def test_complete_preserves_sdk_cause(provider, mocker):
