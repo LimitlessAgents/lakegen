@@ -175,7 +175,7 @@ def test_retries_retryable_errors_up_to_max_attempts():
     assert delays == [0.5, 1.0]
 
 
-def test_honors_retry_after_capped_by_backoff_cap():
+def test_honors_retry_after_from_provider():
     attempts = {"count": 0}
 
     def fail(request, *, inactivity_timeout):
@@ -200,8 +200,7 @@ def test_honors_retry_after_capped_by_backoff_cap():
         router.complete("fake", _request())
 
     assert attempts["count"] == 2
-    # Prefer Retry-After, but never wait longer than backoff_cap.
-    assert delays == [8.0]
+    assert delays == [30.0]
 
 
 def test_recovers_on_later_attempt():

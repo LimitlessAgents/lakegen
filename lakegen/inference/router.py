@@ -134,11 +134,12 @@ class Router:
         """Sleep before the next attempt.
 
         Prefer a numeric ``retry_after`` from the error details when present
-        (e.g. from an HTTP ``Retry-After`` header), capped by ``backoff_cap``.
-        Otherwise use capped exponential delay, optionally with full jitter.
+        (e.g. from an HTTP ``Retry-After`` header). Otherwise use capped
+        exponential delay, optionally with full jitter.
         """
         retry_after = error.details.get("retry_after")
         if isinstance(retry_after, (int, float)) and retry_after >= 0:
+            # Retry-After is a provider minimum; retrying sooner usually fails again.
             delay = float(retry_after)
         else:
             delay = min(
