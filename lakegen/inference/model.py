@@ -50,6 +50,12 @@ class ChatResponse:
 
 @dataclass
 class StreamChunk:
+    """One unit of a streaming inference response.
+
+    Text deltas arrive with ``text`` set. The final chunk sets ``done=True``
+    and may include accumulated ``tool_calls`` and ``tokens``.
+    """
+
     text: str | None = None
     tool_calls: list[ToolCall] | None = None
     done: bool = False
