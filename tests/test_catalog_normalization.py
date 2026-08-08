@@ -126,3 +126,86 @@ def test_get_table_metadata_error_wrapped():
     with pytest.raises(BaseError) as exc_info:
         cat.get_table_metadata("ghost.table")
     assert exc_info.value.code == ErrorCode.INTERNAL
+
+
+# ---------------------------------------------------------------------------
+# inspect_snapshots / inspect_partitions
+# ---------------------------------------------------------------------------
+
+def test_inspect_snapshots_returns_json_rows():
+    import pyarrow as pa
+    from datetime import datetime
+
+    cat = _make_catalog()
+    mock_table = MagicMock()
+    mock_table.inspect.snapshots.return_value = pa.table(
+        {
+            "committed_at": pa.array(
+                [datetime(2024, 3, 15, 15, 1, 25)],
+                type=pa.timestamp("ms"),
+            ),
+            "snapshot_id": [805611270568163028],
+            "parent_id": pa.array([None], type=pa.int64()),
+            "operation": ["append"],
+            "summary": pa.array(
+                [{"added-records": "3"}],
+                type=pa.map_(pa.string(), pa.string()),
+            ),
+        }
+    )
+    cat.catalog.load_table.return_value = mock_table
+
+    result = cat.inspect_snapshots("sales.orders")
+    assert result == [
+        {
+            "committed_at": "2024-03-15T15:01:25",
+            "snapshot_id": 805611270568163028,
+            "parent_id": None,
+            "operation": "append",
+            "summary": {"added-records": "3"},
+        }
+    ]
+    cat.catalog.load_table.assert_called_once_with("sales.orders")
+
+
+def test_inspect_partitions_returns_json_rows():
+    import pyarrow as pa
+    from datetime import date
+
+    cat = _make_catalog()
+    mock_table = MagicMock()
+    mock_table.inspect.partitions.return_value = pa.table(
+        {
+            "partition": [{"dt_day": date(2021, 2, 1)}],
+            "record_count": [10],
+            "file_count": [2],
+            "total_data_file_size_in_bytes": [1024],
+        }
+    )
+    cat.catalog.load_table.return_value = mock_table
+
+    result = cat.inspect_partitions("sales.orders")
+    assert result == [
+        {
+            "partition": {"dt_day": "2021-02-01"},
+            "record_count": 10,
+            "file_count": 2,
+            "total_data_file_size_in_bytes": 1024,
+        }
+    ]
+
+
+def test_inspect_snapshots_error_wrapped():
+    cat = _make_catalog()
+    cat.catalog.load_table.side_effect = RuntimeError("boom")
+    with pytest.raises(BaseError) as exc_info:
+        cat.inspect_snapshots("sales.orders")
+    assert exc_info.value.code == ErrorCode.INTERNAL
+
+
+def test_inspect_partitions_error_wrapped():
+    cat = _make_catalog()
+    cat.catalog.load_table.side_effect = RuntimeError("boom")
+    with pytest.raises(BaseError) as exc_info:
+        cat.inspect_partitions("sales.orders")
+    assert exc_info.value.code == ErrorCode.INTERNAL

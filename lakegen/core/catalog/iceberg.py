@@ -3,6 +3,7 @@ from typing import Any, Self
 
 from lakegen.core.catalog.base import BaseCatalog
 from lakegen.core.catalog.model import ResolvedCatalogSpec
+from lakegen.core.catalog.serialize import arrow_table_to_rows
 from lakegen.core.error.base import BaseError
 from lakegen.core.error.code import ErrorCode
 
@@ -75,6 +76,28 @@ class IcebergCatalog(BaseCatalog):
             raise BaseError(
                 ErrorCode.INTERNAL,
                 "Failed to fetch table metadata.",
+            ) from e
+
+    def inspect_snapshots(self, table_name: str) -> list[dict[str, Any]]:
+        """Return snapshot history as JSON-native rows."""
+        try:
+            table = self.catalog.load_table(table_name)
+            return arrow_table_to_rows(table.inspect.snapshots())
+        except Exception as e:
+            raise BaseError(
+                ErrorCode.INTERNAL,
+                "Failed to inspect snapshots.",
+            ) from e
+
+    def inspect_partitions(self, table_name: str) -> list[dict[str, Any]]:
+        """Return partition summaries as JSON-native rows."""
+        try:
+            table = self.catalog.load_table(table_name)
+            return arrow_table_to_rows(table.inspect.partitions())
+        except Exception as e:
+            raise BaseError(
+                ErrorCode.INTERNAL,
+                "Failed to inspect partitions.",
             ) from e
 
     def close(self) -> None:

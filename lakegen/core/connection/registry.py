@@ -78,6 +78,10 @@ class ConnectionRegistry:
         self._open[kind][name] = connection
         return connection
 
+    def list_open(self, kind: str) -> list[str]:
+        """Return names of connections currently open in this process."""
+        return list(self._open.get(kind, {}))
+
     def resolve_stored_params(self, kind: str, params: dict[str, Any]) -> BaseModel:
         """Validate stored JSON into a connection spec for the given kind."""
         return self._resolvers[kind](params)
