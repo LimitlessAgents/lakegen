@@ -77,7 +77,7 @@ def test_list_tables_error_wrapped():
 
 
 # ---------------------------------------------------------------------------
-# load_table
+# get_table_metadata
 # ---------------------------------------------------------------------------
 
 def _mock_field(name, field_type_str):
@@ -87,7 +87,7 @@ def _mock_field(name, field_type_str):
     return f
 
 
-def test_load_table_returns_plain_dict():
+def test_get_table_metadata_returns_plain_dict():
     cat = _make_catalog()
     mock_table = MagicMock()
     mock_table.name.return_value = "sales.orders"
@@ -98,13 +98,13 @@ def test_load_table_returns_plain_dict():
     ]
     cat.catalog.load_table.return_value = mock_table
 
-    result = cat.load_table("sales.orders")
+    result = cat.get_table_metadata("sales.orders")
     assert result["name"] == "sales.orders"
     assert result["location"] == "s3://bucket/sales/orders"
     assert result["schema"] == {"id": "long", "amount": "double"}
 
 
-def test_load_table_is_json_serializable():
+def test_get_table_metadata_is_json_serializable():
     import json
 
     cat = _make_catalog()
@@ -114,15 +114,15 @@ def test_load_table_is_json_serializable():
     mock_table.schema.return_value.fields = [_mock_field("col", "string")]
     cat.catalog.load_table.return_value = mock_table
 
-    result = cat.load_table("ns.tbl")
+    result = cat.get_table_metadata("ns.tbl")
     # Must not raise.
     serialized = json.dumps(result)
     assert "ns.tbl" in serialized
 
 
-def test_load_table_error_wrapped():
+def test_get_table_metadata_error_wrapped():
     cat = _make_catalog()
     cat.catalog.load_table.side_effect = RuntimeError("not found")
     with pytest.raises(BaseError) as exc_info:
-        cat.load_table("ghost.table")
+        cat.get_table_metadata("ghost.table")
     assert exc_info.value.code == ErrorCode.INTERNAL
