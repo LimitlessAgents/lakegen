@@ -129,7 +129,7 @@ class AgentLoop:
             if chunk.done:
                 tool_calls = chunk.tool_calls
                 tokens = chunk.tokens
-        print("Tokens:", tokens)
+
         return ChatResponse(
             message=Message(
                 role=Role.ASSISTANT,
