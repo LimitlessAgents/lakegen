@@ -42,3 +42,13 @@ class BaseCatalog(ABC):
     def get_table_metadata(self, table_name: str) -> dict[str, Any]:
         """Return table metadata as a plain dict (name, location, schema)."""
         ...
+
+    @abstractmethod
+    def inspect_snapshots(self, table_name: str) -> list[dict[str, Any]]:
+        """Return snapshot history rows for a table."""
+        ...
+
+    @abstractmethod
+    def inspect_partitions(self, table_name: str) -> list[dict[str, Any]]:
+        """Return partition summary rows for a table."""
+        ...

@@ -102,3 +102,17 @@ def list_connections(kind: str | None = None) -> dict[str, list[str]] | list[str
         ``BaseError`` if the credentials file cannot be read.
     """
     return json_store.list_connections(kind)
+
+
+def get_connection_metadata(kind: str, name: str) -> dict[str, Any]:
+    """Return non-secret stored fields for a connection.
+
+    Reads the JSON store only (no keyring). Secret fields and keyring
+    placeholders are omitted so callers can safely expose the result.
+    """
+    creds = json_store.load(kind, name)
+    return {
+        key: value
+        for key, value in creds.items()
+        if key not in SENSITIVE_FIELDS and value != KEYRING_PLACEHOLDER
+    }

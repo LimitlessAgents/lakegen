@@ -115,5 +115,9 @@ def test_discovery_registers_catalog_tools():
 
     names = registry.list_tool_names()
     assert "add_catalog" in names
+    assert "list_catalogs" in names
     assert "list_namespaces" in names
     assert "list_tables" in names
+    assert "describe_table" in names
+    assert "inspect_snapshots" in names
+    assert "inspect_partitions" in names
