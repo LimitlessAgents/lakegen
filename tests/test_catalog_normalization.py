@@ -185,14 +185,78 @@ def test_inspect_partitions_returns_json_rows():
     cat.catalog.load_table.return_value = mock_table
 
     result = cat.inspect_partitions("sales.orders")
-    assert result == [
-        {
-            "partition": {"dt_day": "2021-02-01"},
-            "record_count": 10,
-            "file_count": 2,
-            "total_data_file_size_in_bytes": 1024,
-        }
-    ]
+    assert result == {
+        "rows": [
+            {
+                "partition": {"dt_day": "2021-02-01"},
+                "record_count": 10,
+                "file_count": 2,
+                "total_data_file_size_in_bytes": 1024,
+            }
+        ],
+        "truncated": False,
+        "total": 1,
+    }
+    mock_table.inspect.partitions.assert_called_once_with(snapshot_id=None)
+
+
+def test_inspect_partitions_passes_snapshot_id():
+    import pyarrow as pa
+
+    cat = _make_catalog()
+    mock_table = MagicMock()
+    mock_table.inspect.partitions.return_value = pa.table({"record_count": [1]})
+    cat.catalog.load_table.return_value = mock_table
+
+    cat.inspect_partitions("sales.orders", snapshot_id=123)
+
+    mock_table.inspect.partitions.assert_called_once_with(snapshot_id=123)
+
+
+def test_inspect_history_returns_limited_rows():
+    import pyarrow as pa
+
+    cat = _make_catalog()
+    mock_table = MagicMock()
+    mock_table.inspect.history.return_value = pa.table(
+        {"snapshot_id": list(range(3))}
+    )
+    cat.catalog.load_table.return_value = mock_table
+
+    result = cat.inspect_history("sales.orders", limit=2)
+
+    assert result["truncated"] is True
+    assert result["total"] == 3
+    assert len(result["rows"]) == 2
+
+
+def test_inspect_files_passes_snapshot_id():
+    import pyarrow as pa
+
+    cat = _make_catalog()
+    mock_table = MagicMock()
+    mock_table.inspect.files.return_value = pa.table({"file_path": ["s3://x"]})
+    cat.catalog.load_table.return_value = mock_table
+
+    cat.inspect_files("sales.orders", snapshot_id=999)
+
+    mock_table.inspect.files.assert_called_once_with(snapshot_id=999)
+
+
+def test_inspect_metadata_log_delegates_to_pyiceberg():
+    import pyarrow as pa
+
+    cat = _make_catalog()
+    mock_table = MagicMock()
+    mock_table.inspect.metadata_log_entries.return_value = pa.table(
+        {"file": ["s3://wh/meta.json"]}
+    )
+    cat.catalog.load_table.return_value = mock_table
+
+    result = cat.inspect_metadata_log("sales.orders")
+
+    assert result["rows"] == [{"file": "s3://wh/meta.json"}]
+    assert result["truncated"] is False
 
 
 def test_inspect_snapshots_error_wrapped():

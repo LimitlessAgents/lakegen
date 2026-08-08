@@ -1,4 +1,4 @@
-"""``inspect_partitions`` tool: summarize partition layout for a table.
+"""``inspect_entries`` tool: list manifest entries for a table snapshot.
 
 Importing this module registers the tool as a side effect. ``_DESCRIPTION`` is
 shown to the agent, so it is written as guidance for when/how to call the tool.
@@ -10,16 +10,16 @@ from lakegen.tool.registry import registry
 
 _CONNECTION_KIND = "catalog"
 _DESCRIPTION = (
-    "Returns partition summaries for a table (partition values, record and file "
-    "counts, data file sizes). "
-    "Use to understand how a table is partitioned and how large each partition is. "
-    "Optionally pass snapshot_id to inspect partitions at a historical snapshot. "
+    "Returns manifest entries for a table snapshot, including data and delete "
+    "files with readable column metrics. "
+    "Use for deeper debugging of table contents at the manifest level. "
+    "Optionally pass snapshot_id to inspect entries at a historical snapshot. "
 )
 
 
-def inspect_partitions(arguments: TimeTravelInspectArguments):
+def inspect_entries(arguments: TimeTravelInspectArguments):
     catalog = conreg.get_connection(_CONNECTION_KIND, arguments.name)
-    return catalog.inspect_partitions(
+    return catalog.inspect_entries(
         arguments.table,
         snapshot_id=arguments.snapshot_id,
         limit=arguments.limit,
@@ -27,8 +27,8 @@ def inspect_partitions(arguments: TimeTravelInspectArguments):
 
 
 registry.register(
-    name="inspect_partitions",
+    name="inspect_entries",
     description=_DESCRIPTION,
     arguments_model=TimeTravelInspectArguments,
-    handler=inspect_partitions,
+    handler=inspect_entries,
 )

@@ -4,9 +4,8 @@ Importing this module registers the tool as a side effect. ``_DESCRIPTION`` is
 shown to the agent, so it is written as guidance for when/how to call the tool.
 """
 
-from pydantic import BaseModel, ConfigDict, Field
-
 from lakegen.core.connection.registry import conreg
+from lakegen.tool.iceberg.model import CatalogTableArguments
 from lakegen.tool.registry import registry
 
 _CONNECTION_KIND = "catalog"
@@ -17,16 +16,7 @@ _DESCRIPTION = (
 )
 
 
-class InspectSnapshotsArguments(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    name: str = Field(description="Name of the catalog connection.")
-    table: str = Field(
-        description="Fully qualified table name (e.g. 'sales.orders').",
-    )
-
-
-def inspect_snapshots(arguments: InspectSnapshotsArguments):
+def inspect_snapshots(arguments: CatalogTableArguments):
     catalog = conreg.get_connection(_CONNECTION_KIND, arguments.name)
     return catalog.inspect_snapshots(arguments.table)
 
@@ -34,6 +24,6 @@ def inspect_snapshots(arguments: InspectSnapshotsArguments):
 registry.register(
     name="inspect_snapshots",
     description=_DESCRIPTION,
-    arguments_model=InspectSnapshotsArguments,
+    arguments_model=CatalogTableArguments,
     handler=inspect_snapshots,
 )

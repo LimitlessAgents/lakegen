@@ -5,7 +5,11 @@ from datetime import date, datetime
 
 import pyarrow as pa
 
-from lakegen.core.catalog.serialize import arrow_table_to_rows
+from lakegen.core.catalog.serialize import (
+    DEFAULT_INSPECT_LIMIT,
+    arrow_table_to_rows,
+    limit_inspect_rows,
+)
 
 
 def test_arrow_table_to_rows_converts_timestamps_and_maps():
@@ -53,3 +57,31 @@ def test_arrow_table_to_rows_converts_nested_structs_and_dates():
 def test_arrow_table_to_rows_empty():
     table = pa.table({"snapshot_id": pa.array([], type=pa.int64())})
     assert arrow_table_to_rows(table) == []
+
+
+def test_limit_inspect_rows_uses_default():
+    rows = [{"id": index} for index in range(DEFAULT_INSPECT_LIMIT + 5)]
+    result = limit_inspect_rows(rows)
+    assert result["truncated"] is True
+    assert result["total"] == DEFAULT_INSPECT_LIMIT + 5
+    assert len(result["rows"]) == DEFAULT_INSPECT_LIMIT
+
+
+def test_limit_inspect_rows_custom_limit():
+    rows = [{"id": 1}, {"id": 2}, {"id": 3}]
+    result = limit_inspect_rows(rows, limit=2)
+    assert result == {
+        "rows": [{"id": 1}, {"id": 2}],
+        "truncated": True,
+        "total": 3,
+    }
+
+
+def test_limit_inspect_rows_not_truncated():
+    rows = [{"id": 1}]
+    result = limit_inspect_rows(rows, limit=10)
+    assert result == {
+        "rows": [{"id": 1}],
+        "truncated": False,
+        "total": 1,
+    }
