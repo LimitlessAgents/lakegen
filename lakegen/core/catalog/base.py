@@ -39,6 +39,6 @@ class BaseCatalog(ABC):
         ...
 
     @abstractmethod
-    def load_table(self, table_name: str) -> dict[str, Any]:
+    def get_table_metadata(self, table_name: str) -> dict[str, Any]:
         """Return table metadata as a plain dict (name, location, schema)."""
         ...

@@ -59,7 +59,7 @@ class IcebergCatalog(BaseCatalog):
                 "Failed to list tables.",
             ) from e
 
-    def load_table(self, table_name: str) -> dict[str, Any]:
+    def get_table_metadata(self, table_name: str) -> dict[str, Any]:
         """Return table metadata as a plain dict safe for JSON serialization."""
         try:
             table = self.catalog.load_table(table_name)
@@ -74,7 +74,7 @@ class IcebergCatalog(BaseCatalog):
         except Exception as e:
             raise BaseError(
                 ErrorCode.INTERNAL,
-                "Failed to load table.",
+                "Failed to fetch table metadata.",
             ) from e
 
     def close(self) -> None:
