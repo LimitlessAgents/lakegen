@@ -49,6 +49,74 @@ class BaseCatalog(ABC):
         ...
 
     @abstractmethod
-    def inspect_partitions(self, table_name: str) -> list[dict[str, Any]]:
+    def inspect_partitions(
+        self,
+        table_name: str,
+        *,
+        snapshot_id: int | None = None,
+        limit: int | None = None,
+    ) -> dict[str, Any]:
         """Return partition summary rows for a table."""
+        ...
+
+    @abstractmethod
+    def inspect_history(
+        self,
+        table_name: str,
+        *,
+        limit: int | None = None,
+    ) -> dict[str, Any]:
+        """Return snapshot ancestry history rows for a table."""
+        ...
+
+    @abstractmethod
+    def inspect_refs(
+        self,
+        table_name: str,
+        *,
+        limit: int | None = None,
+    ) -> dict[str, Any]:
+        """Return branch and tag references for a table."""
+        ...
+
+    @abstractmethod
+    def inspect_files(
+        self,
+        table_name: str,
+        *,
+        snapshot_id: int | None = None,
+        limit: int | None = None,
+    ) -> dict[str, Any]:
+        """Return data file rows for a table snapshot."""
+        ...
+
+    @abstractmethod
+    def inspect_entries(
+        self,
+        table_name: str,
+        *,
+        snapshot_id: int | None = None,
+        limit: int | None = None,
+    ) -> dict[str, Any]:
+        """Return manifest entry rows for a table snapshot."""
+        ...
+
+    @abstractmethod
+    def inspect_manifests(
+        self,
+        table_name: str,
+        *,
+        limit: int | None = None,
+    ) -> dict[str, Any]:
+        """Return manifest file rows for a table."""
+        ...
+
+    @abstractmethod
+    def inspect_metadata_log(
+        self,
+        table_name: str,
+        *,
+        limit: int | None = None,
+    ) -> dict[str, Any]:
+        """Return metadata log entry rows for a table."""
         ...

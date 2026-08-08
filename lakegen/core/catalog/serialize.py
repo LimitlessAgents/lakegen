@@ -5,6 +5,8 @@ from __future__ import annotations
 from datetime import date, datetime, time
 from typing import Any
 
+DEFAULT_INSPECT_LIMIT = 100
+
 
 def arrow_table_to_rows(table: Any) -> list[dict[str, Any]]:
     """Convert a ``pyarrow.Table`` to a list of JSON-serializable dicts.
@@ -14,6 +16,18 @@ def arrow_table_to_rows(table: Any) -> list[dict[str, Any]]:
     object with ``to_pylist``).
     """
     return [_json_safe(row) for row in table.to_pylist()]
+
+
+def limit_inspect_rows(
+    rows: list[dict[str, Any]],
+    limit: int | None = None,
+) -> dict[str, Any]:
+    """Cap inspect output and report whether rows were truncated."""
+    cap = DEFAULT_INSPECT_LIMIT if limit is None else limit
+    total = len(rows)
+    if total <= cap:
+        return {"rows": rows, "truncated": False, "total": total}
+    return {"rows": rows[:cap], "truncated": True, "total": total}
 
 
 def _json_safe(value: Any) -> Any:
