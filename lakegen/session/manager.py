@@ -3,6 +3,7 @@ from __future__ import annotations
 import threading
 
 from lakegen.agent import AgentConfig
+from lakegen.core.catalog.service import catalog_service
 from lakegen.core.error.base import BaseError
 from lakegen.core.error.code import ErrorCode
 from lakegen.session.environment import Environment
@@ -23,9 +24,14 @@ class SessionManager:
         self,
         config: AgentConfig,
         *,
+        catalog_name: str | None = None,
         parent_id: int | None = None,
     ) -> Session:
-        """Create a new session. Pass ``parent_id`` for a subagent thread."""
+        """Create a new session. Pass ``parent_id`` for a subagent thread.
+
+        Root sessions require ``catalog_name``. Child sessions inherit the
+        parent's active catalog.
+        """
         with self._lock:
             if parent_id is not None and parent_id not in self._sessions:
                 raise BaseError(
@@ -33,12 +39,23 @@ class SessionManager:
                     f"Parent session {parent_id!r} not found.",
                 )
 
+            if parent_id is not None:
+                catalog_name = self._sessions[parent_id].state.catalog_name
+            elif catalog_name is None:
+                raise BaseError(
+                    ErrorCode.INVALID_ARGUMENT,
+                    "catalog_name is required.",
+                )
+            else:
+                catalog_service.require(catalog_name)
+
             session_id = self._next_id
             self._next_id += 1
 
             state = SessionState(
                 id=session_id,
                 config=config,
+                catalog_name=catalog_name,
                 parent_id=parent_id,
             )
             session = Session(state=state, env=self.env, manager=self)

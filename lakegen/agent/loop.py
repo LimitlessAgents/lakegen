@@ -34,10 +34,31 @@ class AgentLoop:
         agent_config: AgentConfig,
         conversation: Conversation,
         user_text: str,
+        *,
+        catalog_name: str,
+        catalog_switched_from: str | None = None,
         stream: bool = False,
         on_chunk: Callable[[StreamChunk], None] | None = None,
     ) -> AgentLoopResult:
+        if catalog_switched_from is not None:
+            conversation.messages.append(
+                Message(
+                    role=Role.SYSTEM,
+                    content=(
+                        f"Catalog switched from {catalog_switched_from!r} "
+                        f"to {catalog_name!r}."
+                    ),
+                )
+            )
+
         conversation.messages.append(Message(role=Role.USER, content=user_text))
+
+        system_prompt = (
+            f"{agent_config.system_prompt}\n\n"
+            f"Active catalog: {catalog_name!r}. "
+            "All tools operate on this catalog. "
+            "Do not ask which catalog to use."
+        )
 
         turns = 0
         response_text = ""
@@ -47,7 +68,7 @@ class AgentLoop:
 
             chat_request = ChatRequest(
                 model=agent_config.model,
-                system_prompt=agent_config.system_prompt,
+                system_prompt=system_prompt,
                 tools=self._tools.list_definitions(),
                 messages=conversation.messages,
             )
@@ -71,7 +92,10 @@ class AgentLoop:
                     stop_reason=StopReason.COMPLETED,
                 )
 
-            tools_output: list[ToolOutput] = self._tools.dispatch(tool_calls)
+            tools_output: list[ToolOutput] = self._tools.dispatch(
+                tool_calls,
+                catalog_name=catalog_name,
+            )
 
             for output in tools_output:
                 conversation.messages.append(

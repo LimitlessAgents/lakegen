@@ -1,11 +1,10 @@
 import json
-from typing import Any
 
 from pydantic import ValidationError
 
 from lakegen.core.error.base import BaseError
 from lakegen.core.error.code import ErrorCode
-from lakegen.tool.model import ToolDefinition, ToolOutput, ToolCall
+from lakegen.tool.model import ToolCall, ToolOutput
 from lakegen.tool.registry import ToolRegistry, registry as default_registry
 
 
@@ -17,26 +16,37 @@ class ToolRuntime:
 
     The runtime is also the authority for which tools a session may advertise
     to the model (via ``list_definitions``) and execute (via ``dispatch``).
+
+    Catalog-scoped sessions always inject ``catalog_name`` as ``name`` on tool
+    arguments before validation.
     """
 
     def __init__(self, registry: ToolRegistry | None = None) -> None:
         self._registry = registry if registry is not None else default_registry
 
-    def list_definitions(self) -> list[ToolDefinition]:
+    def list_definitions(self):
         """Tools this runtime will expose to the model."""
         return list(self._registry.get_all_tools_info().values())
 
-    def dispatch(self, tools_to_call: list[ToolCall]) -> list[ToolOutput]:
+    def dispatch(
+        self,
+        tools_to_call: list[ToolCall],
+        *,
+        catalog_name: str,
+    ) -> list[ToolOutput]:
         """Run each requested tool and collect one ``ToolOutput`` per call."""
         if not tools_to_call:
             return []
-        return [self._run_one(call) for call in tools_to_call]
+        return [
+            self._run_one(call, catalog_name=catalog_name)
+            for call in tools_to_call
+        ]
 
-    def _run_one(self, call: ToolCall) -> ToolOutput:
+    def _run_one(self, call: ToolCall, *, catalog_name: str) -> ToolOutput:
 
-        call_id=call.id
-        name=call.name
-        arguments=call.arguments
+        call_id = call.id
+        name = call.name
+        arguments = call.arguments
 
         try:
             if not isinstance(arguments, dict):
@@ -52,7 +62,7 @@ class ToolRuntime:
                                 ErrorCode.INVALID_TYPE,
                                 "Tool arguments must be a dict.",
                                 details={"got_type": type(arguments).__name__},
-                            ).to_dict()
+                            ).to_dict(),
                         )
                 if not isinstance(arguments, dict):
                     return ToolOutput(
@@ -63,12 +73,13 @@ class ToolRuntime:
                             ErrorCode.INVALID_TYPE,
                             "Tool arguments must be a dict.",
                             details={"got_type": type(arguments).__name__},
-                        ).to_dict()
+                        ).to_dict(),
                     )
 
             tool = self._registry.get_tool_definition(name)
-            # Validation turns raw input into the concrete arguments object the
-            # handler expects (e.g. a specific catalog spec for add_catalog).
+            fields = getattr(tool.arguments_model, "model_fields", None)
+            if fields is not None and "name" in fields:
+                arguments = {**arguments, "name": catalog_name}
             validated = tool.arguments_model.model_validate(arguments)
             result = tool.handler(validated)
 
@@ -96,7 +107,7 @@ class ToolRuntime:
                 tool_name=name,
                 tool_call_id=call_id,
                 ok=False,
-                error=e.to_dict()
+                error=e.to_dict(),
             )
         # Bad agent input: surface the field-level Pydantic errors so it can retry.
         except ValidationError as e:
@@ -121,7 +132,7 @@ class ToolRuntime:
                     ErrorCode.INTERNAL,
                     f"Unexpected error while running tool {name!r}.",
                     cause=e,
-                ).to_dict()
+                ).to_dict(),
             )
 
 

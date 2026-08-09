@@ -1,4 +1,4 @@
-"""``list_namespaces`` tool: list namespaces in a registered catalog.
+"""``list_namespaces`` tool: list namespaces in the session catalog.
 
 Importing this module registers the tool as a side effect. ``_DESCRIPTION`` is
 shown to the agent, so it is written as guidance for when/how to call the tool.
@@ -10,8 +10,8 @@ from lakegen.tool.registry import registry
 
 _CONNECTION_KIND = "catalog"
 _DESCRIPTION = (
-    "Returns namespace names in an Iceberg catalog for a given connection name. "
-    "Use to list namespaces in a registered catalog connection. "
+    "Returns namespace names in the session's active Iceberg catalog. "
+    "Use to discover namespaces before listing tables. "
 )
 
 
