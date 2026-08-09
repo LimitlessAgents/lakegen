@@ -31,7 +31,10 @@ def _make_runtime_with_tool(handler, *, name="my_tool"):
 
 
 def _run(rt: ToolRuntime, name: str, arguments):
-    return rt._run_one(ToolCall(id="call_1", name=name, arguments=arguments))
+    return rt._run_one(
+        ToolCall(id="call_1", name=name, arguments=arguments),
+        catalog_name="prod",
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -54,7 +57,10 @@ def test_dispatch_returns_list():
         return {"echo": arguments.value}
 
     rt, name = _make_runtime_with_tool(handler)
-    results = rt.dispatch([ToolCall(id="call_1", name=name, arguments={"value": "hi"})])
+    results = rt.dispatch(
+        [ToolCall(id="call_1", name=name, arguments={"value": "hi"})],
+        catalog_name="prod",
+    )
     assert isinstance(results, list)
     assert len(results) == 1
     assert results[0].ok is True
@@ -62,7 +68,32 @@ def test_dispatch_returns_list():
 
 def test_dispatch_empty_returns_empty():
     rt = ToolRuntime()
-    assert rt.dispatch([]) == []
+    assert rt.dispatch([], catalog_name="prod") == []
+
+
+def test_dispatch_injects_catalog_name():
+    from lakegen.tool.iceberg.model import CatalogConnectionArguments
+
+    seen = {}
+
+    def handler(arguments: CatalogConnectionArguments):
+        seen["name"] = arguments.name
+        return {"ok": True}
+
+    reg = ToolRegistry()
+    reg.register(
+        "list_namespaces",
+        description="test",
+        arguments_model=CatalogConnectionArguments,
+        handler=handler,
+    )
+    rt = ToolRuntime(registry=reg)
+    out = rt.dispatch(
+        [ToolCall(id="c1", name="list_namespaces", arguments={})],
+        catalog_name="prod",
+    )
+    assert out[0].ok is True
+    assert seen["name"] == "prod"
 
 
 # ---------------------------------------------------------------------------

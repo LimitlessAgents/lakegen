@@ -114,8 +114,8 @@ def test_discovery_registers_catalog_tools():
     from lakegen.tool.registry import registry
 
     names = registry.list_tool_names()
-    assert "add_catalog" in names
-    assert "list_catalogs" in names
+    assert "add_catalog" not in names
+    assert "list_catalogs" not in names
     assert "list_namespaces" in names
     assert "list_tables" in names
     assert "describe_table" in names
@@ -127,3 +127,7 @@ def test_discovery_registers_catalog_tools():
     assert "inspect_entries" in names
     assert "inspect_manifests" in names
     assert "inspect_metadata_log" in names
+
+    # Agent schemas must not expose catalog name — session injects it.
+    describe = registry.get_tool_definition("describe_table")
+    assert "name" not in describe.arguments.get("properties", {})

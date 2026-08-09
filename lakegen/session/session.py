@@ -5,6 +5,7 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING
 
 from lakegen.agent import AgentConfig, AgentLoop, AgentLoopResult
+from lakegen.core.catalog.service import catalog_service
 from lakegen.core.error.base import BaseError
 from lakegen.core.error.code import ErrorCode
 from lakegen.inference import StreamChunk
@@ -54,16 +55,27 @@ class Session:
         self,
         user_text: str,
         *,
+        catalog_name: str | None = None,
         stream: bool = False,
         on_chunk: Callable[[StreamChunk], None] | None = None,
     ) -> AgentLoopResult:
-        """Run one user turn. Serialized per session so messages stay consistent."""
+        """Run one user turn. Serialized per session so messages stay consistent.
+
+        Pass ``catalog_name`` to switch the session's active catalog mid-chat.
+        """
         with self._lock:
             self._ensure_open()
+            switched_from: str | None = None
+            if catalog_name is not None and catalog_name != self.state.catalog_name:
+                catalog_service.require(catalog_name)
+                switched_from = self.state.catalog_name
+                self.state.catalog_name = catalog_name
             return self._loop.invoke(
                 agent_config=self.state.config,
                 conversation=self.state.messages,
                 user_text=user_text,
+                catalog_name=self.state.catalog_name,
+                catalog_switched_from=switched_from,
                 stream=stream,
                 on_chunk=on_chunk,
             )

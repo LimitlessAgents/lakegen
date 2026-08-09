@@ -82,6 +82,12 @@ class ConnectionRegistry:
         """Return names of connections currently open in this process."""
         return list(self._open.get(kind, {}))
 
+    def close_connection(self, kind: str, connection_name: str) -> None:
+        """Close and drop a cached connection if it is open. No-op if absent."""
+        connection = self._open.get(kind, {}).pop(connection_name, None)
+        if connection is not None:
+            connection.close()
+
     def resolve_stored_params(self, kind: str, params: dict[str, Any]) -> BaseModel:
         """Validate stored JSON into a connection spec for the given kind."""
         return self._resolvers[kind](params)
