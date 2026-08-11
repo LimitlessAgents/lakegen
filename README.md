@@ -14,6 +14,21 @@ This project is still in its early stages. Things will change. APIs will shift. 
 
 That's okay. We're building in the open, and we'd love for you to be part of it.
 
+## API server (BFF)
+
+```bash
+uvicorn lakegen.api.app:app --reload
+```
+
+Useful env vars:
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `LAKEGEN_CORS_ORIGINS` | `http://localhost:3000` | Comma-separated browser origins |
+| `LAKEGEN_MAX_IN_FLIGHT_TURNS` | `8` | Cap concurrent agent turns |
+
+Health: `GET /health`. Catalog and session routes live under `/v1/…`. Agent turns stream as SSE from `POST /v1/sessions/{id}/turns`.
+
 ## Contributing
 
 Whether you're fixing a typo, raising an issue, sketching an idea, or diving into the code — you're welcome here.
