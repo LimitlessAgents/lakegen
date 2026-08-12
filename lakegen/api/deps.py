@@ -43,6 +43,8 @@ def build_app_state(
     max_in_flight_turns: int | None = None,
 ) -> AppState:
     return AppState(
+        # TODO(real-auth): LocalAuth trusts X-User with no verification. Replace
+        # with a verified Authenticator before any shared/multi-tenant deployment.
         authenticator=authenticator if authenticator is not None else LocalAuth(),
         agent_runner=agent_runner if agent_runner is not None else LocalRunAdapter(),
         catalogs=catalogs if catalogs is not None else catalog_service,
