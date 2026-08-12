@@ -35,13 +35,14 @@ class TurnResult:
 class AgentRunner(Protocol):
     def create_session(self, *, owner_id: str) -> str: ...
 
-    def delete_session(self, session_id: str) -> None: ...
+    def delete_session(self, session_id: str, *, owner_id: str) -> None: ...
 
     def run_turn(
         self,
         session_id: str,
         user_text: str,
         *,
+        owner_id: str,
         catalog_name: str | None = None,
         model: str | None = None,
         provider: str | None = None,

@@ -3,8 +3,10 @@ from __future__ import annotations
 from collections.abc import Callable
 
 from lakegen.api.run.runner import AgentEvent, AgentEventType, TurnResult
+from lakegen.core.error.base import BaseError
+from lakegen.core.error.code import ErrorCode
 from lakegen.inference import StreamChunk
-from lakegen.session import SessionManager
+from lakegen.session import Session, SessionManager
 from lakegen.session.environment import Environment
 
 
@@ -27,7 +29,8 @@ class LocalRunAdapter:
         session = self._manager.create(owner_id=owner_id)
         return session.id
 
-    def delete_session(self, session_id: str) -> None:
+    def delete_session(self, session_id: str, *, owner_id: str) -> None:
+        self._require_owner(session_id, owner_id)
         self._manager.delete(session_id)
 
     def run_turn(
@@ -35,12 +38,13 @@ class LocalRunAdapter:
         session_id: str,
         user_text: str,
         *,
+        owner_id: str,
         catalog_name: str | None = None,
         model: str | None = None,
         provider: str | None = None,
         on_event: Callable[[AgentEvent], None] | None = None,
     ) -> TurnResult:
-        session = self._manager.get(session_id)
+        session = self._require_owner(session_id, owner_id)
 
         def _on_chunk(chunk: StreamChunk) -> None:
             if on_event is None:
@@ -77,3 +81,12 @@ class LocalRunAdapter:
                 )
             )
         return turn
+
+    def _require_owner(self, session_id: str, owner_id: str) -> Session:
+        session = self._manager.get(session_id)
+        if session.state.owner_id != owner_id:
+            raise BaseError(
+                ErrorCode.NOT_FOUND,
+                f"Session {session_id!r} not found.",
+            )
+        return session

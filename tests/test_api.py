@@ -56,6 +56,7 @@ def agent_runner() -> MagicMock:
         session_id,
         user_text,
         *,
+        owner_id=None,
         catalog_name=None,
         model=None,
         provider=None,
@@ -165,7 +166,21 @@ def test_create_session(client: TestClient, agent_runner: MagicMock) -> None:
 def test_delete_session(client: TestClient, agent_runner: MagicMock) -> None:
     res = client.delete(f"/v1/sessions/{_SESSION_ID}")
     assert res.status_code == 204
-    agent_runner.delete_session.assert_called_once_with(_SESSION_ID)
+    agent_runner.delete_session.assert_called_once_with(
+        _SESSION_ID, owner_id="local"
+    )
+
+
+def test_delete_session_passes_x_user(
+    client: TestClient, agent_runner: MagicMock
+) -> None:
+    res = client.delete(
+        f"/v1/sessions/{_SESSION_ID}", headers={"X-User": "alice"}
+    )
+    assert res.status_code == 204
+    agent_runner.delete_session.assert_called_once_with(
+        _SESSION_ID, owner_id="alice"
+    )
 
 
 def test_local_auth_x_user_header(client: TestClient, agent_runner: MagicMock) -> None:
@@ -194,6 +209,7 @@ def test_turn_sse(client: TestClient, agent_runner: MagicMock) -> None:
     kwargs = agent_runner.run_turn.call_args.kwargs
     assert agent_runner.run_turn.call_args.args[0] == _SESSION_ID
     assert agent_runner.run_turn.call_args.args[1] == "hi"
+    assert kwargs["owner_id"] == "local"
     assert kwargs["catalog_name"] == "prod"
     assert kwargs["model"] == "test-model"
 
@@ -222,6 +238,7 @@ def test_local_run_adapter_create_and_turn() -> None:
     manager = MagicMock(spec=SessionManager)
     session = MagicMock()
     session.id = _SESSION_ID
+    session.state.owner_id = "alice"
     manager.create.return_value = session
 
     def _send(text, *, catalog_name=None, model=None, provider=None, stream=False, on_chunk=None):
@@ -248,6 +265,7 @@ def test_local_run_adapter_create_and_turn() -> None:
     result = adapter.run_turn(
         _SESSION_ID,
         "hi",
+        owner_id="alice",
         catalog_name="prod",
         model="m",
         on_event=events.append,
@@ -260,3 +278,35 @@ def test_local_run_adapter_create_and_turn() -> None:
         AgentEventType.TEXT_DELTA,
         AgentEventType.TURN_DONE,
     ]
+
+
+def test_local_run_adapter_rejects_non_owner_delete() -> None:
+    from lakegen.api.run.local import LocalRunAdapter
+    from lakegen.session import SessionManager
+
+    manager = MagicMock(spec=SessionManager)
+    session = MagicMock()
+    session.state.owner_id = "alice"
+    manager.get.return_value = session
+
+    adapter = LocalRunAdapter(manager=manager)
+    with pytest.raises(BaseError) as exc_info:
+        adapter.delete_session(_SESSION_ID, owner_id="bob")
+    assert exc_info.value.code == ErrorCode.NOT_FOUND
+    manager.delete.assert_not_called()
+
+
+def test_local_run_adapter_rejects_non_owner_turn() -> None:
+    from lakegen.api.run.local import LocalRunAdapter
+    from lakegen.session import SessionManager
+
+    manager = MagicMock(spec=SessionManager)
+    session = MagicMock()
+    session.state.owner_id = "alice"
+    manager.get.return_value = session
+
+    adapter = LocalRunAdapter(manager=manager)
+    with pytest.raises(BaseError) as exc_info:
+        adapter.run_turn(_SESSION_ID, "hi", owner_id="bob")
+    assert exc_info.value.code == ErrorCode.NOT_FOUND
+    session.send.assert_not_called()

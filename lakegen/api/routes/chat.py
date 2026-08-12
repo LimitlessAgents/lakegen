@@ -49,7 +49,7 @@ async def run_turn(
     session_id: str,
     body: TurnRequest,
     request: Request,
-    _principal: Principal = Depends(require_principal),
+    principal: Principal = Depends(require_principal),
     agent_runner: AgentRunner = Depends(get_agent_runner),
     state: AppState = Depends(get_app_state),
 ) -> EventSourceResponse:
@@ -69,6 +69,7 @@ async def run_turn(
                     agent_runner.run_turn,
                     session_id,
                     body.text,
+                    owner_id=principal.id,
                     catalog_name=body.catalog_name,
                     model=body.model,
                     provider=body.provider,
@@ -100,11 +101,12 @@ async def run_turn(
                     break
                 yield _sse_event(item)
         finally:
-            if not task.done():
-                task.cancel()
-                try:
-                    await task
-                except asyncio.CancelledError:
-                    pass
+            # TODO(cancel-in-flight-turns): When turns become cancellable, cancel
+            # the worker here on disconnect (and roll back or avoid committing
+            # conversation mutations the client never saw). Until then: do not
+            # cancel — asyncio.to_thread is not stopped by CancelledError, so
+            # cancelling would release the semaphore while the turn still runs.
+            # Hold the slot until the worker finishes; SSE just stops yielding.
+            await asyncio.shield(task)
 
     return EventSourceResponse(event_stream())

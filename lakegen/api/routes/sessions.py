@@ -28,8 +28,8 @@ def create_session(
 @router.delete("/{session_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_session(
     session_id: str,
-    _principal: Principal = Depends(require_principal),
+    principal: Principal = Depends(require_principal),
     agent_runner: AgentRunner = Depends(get_agent_runner),
 ) -> Response:
-    agent_runner.delete_session(session_id)
+    agent_runner.delete_session(session_id, owner_id=principal.id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
