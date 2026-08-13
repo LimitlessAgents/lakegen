@@ -37,11 +37,11 @@ class Session:
         )
 
     @property
-    def id(self) -> int:
+    def id(self) -> str:
         return self.state.id
 
     @property
-    def parent_id(self) -> int | None:
+    def parent_id(self) -> str | None:
         return self.state.parent_id
 
     def _ensure_open(self) -> None:
@@ -56,22 +56,42 @@ class Session:
         user_text: str,
         *,
         catalog_name: str | None = None,
+        model: str | None = None,
+        provider: str | None = None,
         stream: bool = False,
         on_chunk: Callable[[StreamChunk], None] | None = None,
     ) -> AgentLoopResult:
         """Run one user turn. Serialized per session so messages stay consistent.
 
-        Pass ``catalog_name`` to switch the session's active catalog mid-chat.
+        ``catalog_name`` is required on the first turn if the session has none yet.
+        ``model`` and ``provider`` apply to this turn only.
         """
         with self._lock:
             self._ensure_open()
             switched_from: str | None = None
+            effective_catalog = catalog_name if catalog_name is not None else self.state.catalog_name
+            if effective_catalog is None:
+                raise BaseError(
+                    ErrorCode.INVALID_ARGUMENT,
+                    "catalog_name is required.",
+                )
             if catalog_name is not None and catalog_name != self.state.catalog_name:
                 catalog_service.require(catalog_name)
                 switched_from = self.state.catalog_name
                 self.state.catalog_name = catalog_name
+            elif self.state.catalog_name is None:
+                catalog_service.require(effective_catalog)
+                self.state.catalog_name = effective_catalog
+
+            base = self.state.config
+            agent_config = AgentConfig(
+                model=model if model is not None else base.model,
+                system_prompt=base.system_prompt,
+                provider=provider if provider is not None else base.provider,
+                max_turns=base.max_turns,
+            )
             return self._loop.invoke(
-                agent_config=self.state.config,
+                agent_config=agent_config,
                 conversation=self.state.messages,
                 user_text=user_text,
                 catalog_name=self.state.catalog_name,
@@ -88,7 +108,11 @@ class Session:
                 raise RuntimeError(
                     "Session has no manager; create sessions via SessionManager."
                 )
-        return self._manager.create(config, parent_id=self.id)
+        return self._manager.create(
+            config,
+            owner_id=self.state.owner_id,
+            parent_id=self.id,
+        )
 
     def close(self) -> None:
         with self._lock:

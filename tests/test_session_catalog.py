@@ -38,9 +38,30 @@ def _config() -> AgentConfig:
     )
 
 
+def test_send_uses_per_turn_model(registered_catalogs, monkeypatch):
+    mgr = SessionManager(env=Environment.default())
+    session = mgr.create(_config(), owner_id="user-1", catalog_name="prod")
+
+    captured: dict = {}
+
+    def fake_invoke(*, agent_config, **kwargs):
+        captured["model"] = agent_config.model
+        return AgentLoopResult(
+            final_message="ok",
+            transcript=Conversation(),
+            stop_reason=StopReason.COMPLETED,
+        )
+
+    monkeypatch.setattr(session._loop, "invoke", fake_invoke)
+
+    session.send("hello", model="other-model")
+    assert captured["model"] == "other-model"
+    assert session.state.config.model == "test-model"
+
+
 def test_send_switches_catalog(registered_catalogs, monkeypatch):
     mgr = SessionManager(env=Environment.default())
-    session = mgr.create(_config(), catalog_name="prod")
+    session = mgr.create(_config(), owner_id="user-1", catalog_name="prod")
 
     captured: dict = {}
 
@@ -64,7 +85,7 @@ def test_send_switches_catalog(registered_catalogs, monkeypatch):
 
 def test_send_same_catalog_does_not_mark_switch(registered_catalogs, monkeypatch):
     mgr = SessionManager(env=Environment.default())
-    session = mgr.create(_config(), catalog_name="prod")
+    session = mgr.create(_config(), owner_id="user-1", catalog_name="prod")
 
     captured: dict = {}
 
@@ -84,6 +105,6 @@ def test_send_same_catalog_does_not_mark_switch(registered_catalogs, monkeypatch
 
 def test_send_unknown_catalog_raises(registered_catalogs):
     mgr = SessionManager(env=Environment.default())
-    session = mgr.create(_config(), catalog_name="prod")
+    session = mgr.create(_config(), owner_id="user-1", catalog_name="prod")
     with pytest.raises(BaseError, match="not registered"):
         session.send("hello", catalog_name="missing")

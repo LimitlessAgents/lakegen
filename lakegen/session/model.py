@@ -6,11 +6,12 @@ from lakegen.agent import AgentConfig, Conversation
 
 @dataclass
 class SessionState:
-    id: int
+    id: str
     config: AgentConfig
-    catalog_name: str
+    owner_id: str
+    catalog_name: str | None = None
     closed: bool = False
-    parent_id: int | None = None
-    children: list[int] = field(default_factory=list)
+    parent_id: str | None = None
+    children: list[str] = field(default_factory=list)
     created_at: datetime = field(default_factory=datetime.now)
     messages: Conversation = field(default_factory=Conversation)
