@@ -22,7 +22,10 @@ class AppState:
 
 
 def default_cors_origins() -> list[str]:
-    raw = os.environ.get("LAKEGEN_CORS_ORIGINS", "http://localhost:3000")
+    raw = os.environ.get(
+        "LAKEGEN_CORS_ORIGINS",
+        "http://localhost:3000,http://localhost:5173",
+    )
     return [o.strip() for o in raw.split(",") if o.strip()]
 
 

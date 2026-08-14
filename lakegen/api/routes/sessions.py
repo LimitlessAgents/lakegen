@@ -1,19 +1,13 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Response, status
-from pydantic import BaseModel, ConfigDict, Field
 
 from lakegen.api.auth.authenticator import Principal
 from lakegen.api.deps import get_agent_runner, require_principal
 from lakegen.api.run.runner import AgentRunner
+from lakegen.api.schema import CreateSessionResponse
 
 router = APIRouter(prefix="/v1/sessions", tags=["sessions"])
-
-
-class CreateSessionResponse(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    id: str
 
 
 @router.post("", status_code=status.HTTP_201_CREATED)

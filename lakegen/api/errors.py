@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from lakegen.core.error.base import BaseError
@@ -34,4 +35,18 @@ def register_exception_handlers(app: FastAPI) -> None:
         return JSONResponse(
             status_code=http_status_for(exc.code),
             content=exc.to_dict(),
+        )
+
+    @app.exception_handler(RequestValidationError)
+    async def validation_error_handler(
+        _request: Request, exc: RequestValidationError
+    ) -> JSONResponse:
+        err = BaseError(
+            ErrorCode.INVALID_ARGUMENT,
+            "Invalid request.",
+            details={"errors": exc.errors()},
+        )
+        return JSONResponse(
+            status_code=http_status_for(err.code),
+            content=err.to_dict(),
         )

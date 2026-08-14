@@ -1,0 +1,916 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "LakeGen",
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/health": {
+      "get": {
+        "tags": [
+          "health"
+        ],
+        "summary": "Health",
+        "operationId": "health_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "type": "object",
+                  "title": "Response Health Health Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/catalogs": {
+      "get": {
+        "tags": [
+          "catalogs"
+        ],
+        "summary": "List Catalogs",
+        "operationId": "list_catalogs_v1_catalogs_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/CatalogResponse"
+                  },
+                  "type": "array",
+                  "title": "Response List Catalogs V1 Catalogs Get"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "catalogs"
+        ],
+        "summary": "Add Catalog",
+        "operationId": "add_catalog_v1_catalogs_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/GlueCatalogSpec"
+                  },
+                  {
+                    "$ref": "#/components/schemas/RestCatalogSpec"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SqlCatalogSpec"
+                  }
+                ],
+                "title": "Body",
+                "discriminator": {
+                  "propertyName": "catalog_type",
+                  "mapping": {
+                    "glue": "#/components/schemas/GlueCatalogSpec",
+                    "rest": "#/components/schemas/RestCatalogSpec",
+                    "sql": "#/components/schemas/SqlCatalogSpec"
+                  }
+                }
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/catalogs/{name}": {
+      "get": {
+        "tags": [
+          "catalogs"
+        ],
+        "summary": "Get Catalog",
+        "operationId": "get_catalog_v1_catalogs__name__get",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Name"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "catalogs"
+        ],
+        "summary": "Delete Catalog",
+        "operationId": "delete_catalog_v1_catalogs__name__delete",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Name"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/sessions": {
+      "post": {
+        "tags": [
+          "sessions"
+        ],
+        "summary": "Create Session",
+        "operationId": "create_session_v1_sessions_post",
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreateSessionResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/sessions/{session_id}": {
+      "delete": {
+        "tags": [
+          "sessions"
+        ],
+        "summary": "Delete Session",
+        "operationId": "delete_session_v1_sessions__session_id__delete",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Session Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/sessions/{session_id}/turns": {
+      "post": {
+        "tags": [
+          "chat"
+        ],
+        "summary": "Run Turn",
+        "operationId": "run_turn_v1_sessions__session_id__turns_post",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Session Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TurnRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "CatalogResponse": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "connected": {
+            "type": "boolean",
+            "title": "Connected"
+          },
+          "lakehouse": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lakehouse"
+          },
+          "catalog_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Catalog Type"
+          },
+          "warehouse": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Warehouse"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name",
+          "connected"
+        ],
+        "title": "CatalogResponse",
+        "description": "Non-secret catalog view. Write path is ``CatalogSpec``."
+      },
+      "CreateSessionResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "title": "CreateSessionResponse"
+      },
+      "GlueCatalogSpec": {
+        "properties": {
+          "lakehouse": {
+            "type": "string",
+            "const": "iceberg",
+            "title": "Lakehouse",
+            "description": "Lakehouse type. Use 'iceberg'."
+          },
+          "catalog_type": {
+            "type": "string",
+            "const": "glue",
+            "title": "Catalog Type",
+            "description": "Catalog backend. Use 'glue'.",
+            "default": "glue"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "description": "Unique name for this connection."
+          },
+          "access_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Access Key",
+            "description": "S3 access key ID."
+          },
+          "secret_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Secret Key",
+            "description": "S3 secret access key."
+          },
+          "region": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Region",
+            "description": "S3 region."
+          },
+          "endpoint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Endpoint",
+            "description": "S3 endpoint URL."
+          },
+          "warehouse": {
+            "type": "string",
+            "title": "Warehouse",
+            "description": "S3 warehouse path or bucket."
+          },
+          "glue_additional_config": {
+            "type": "boolean",
+            "title": "Glue Additional Config",
+            "description": "Enable extra Glue settings.",
+            "default": false
+          },
+          "glue_catalog_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Glue Catalog Id",
+            "description": "AWS Glue catalog ID."
+          },
+          "glue_access_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Glue Access Key",
+            "description": "S3 access key for Glue."
+          },
+          "glue_secret_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Glue Secret Key",
+            "description": "S3 secret key for Glue."
+          },
+          "glue_endpoint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Glue Endpoint",
+            "description": "S3 endpoint for Glue."
+          },
+          "glue_region": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Glue Region",
+            "description": "S3 region for Glue."
+          }
+        },
+        "type": "object",
+        "required": [
+          "lakehouse",
+          "name",
+          "warehouse"
+        ],
+        "title": "GlueCatalogSpec",
+        "description": "Catalog specification for the Glue catalog implementation."
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "RestCatalogSpec": {
+        "properties": {
+          "lakehouse": {
+            "type": "string",
+            "const": "iceberg",
+            "title": "Lakehouse",
+            "description": "Lakehouse type. Use 'iceberg'."
+          },
+          "catalog_type": {
+            "type": "string",
+            "const": "rest",
+            "title": "Catalog Type",
+            "description": "Catalog backend. Use 'rest'.",
+            "default": "rest"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "description": "Unique name for this connection."
+          },
+          "access_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Access Key",
+            "description": "S3 access key ID."
+          },
+          "secret_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Secret Key",
+            "description": "S3 secret access key."
+          },
+          "region": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Region",
+            "description": "S3 region."
+          },
+          "endpoint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Endpoint",
+            "description": "S3 endpoint URL."
+          },
+          "warehouse": {
+            "type": "string",
+            "title": "Warehouse",
+            "description": "S3 warehouse path or bucket."
+          },
+          "rest_catalog_url": {
+            "type": "string",
+            "title": "Rest Catalog Url",
+            "description": "REST catalog URI."
+          },
+          "credential": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Credential",
+            "description": "Auth credential."
+          },
+          "oauth2_uri": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Oauth2 Uri",
+            "description": "OAuth2 server URI."
+          },
+          "rest_auth_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rest Auth Type",
+            "description": "REST auth type."
+          },
+          "token": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Token",
+            "description": "Bearer token."
+          },
+          "scope": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scope",
+            "description": "OAuth2 scope."
+          },
+          "rest_signing_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rest Signing Name",
+            "description": "AWS SigV4 service name."
+          },
+          "rest_signing_region": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rest Signing Region",
+            "description": "AWS SigV4 region."
+          },
+          "rest_signing_v_4": {
+            "type": "boolean",
+            "title": "Rest Signing V 4",
+            "description": "Use AWS SigV4 signing.",
+            "default": true
+          },
+          "no_identifier_fields": {
+            "type": "boolean",
+            "title": "No Identifier Fields",
+            "description": "Omit identifier fields in REST requests.",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "lakehouse",
+          "name",
+          "warehouse",
+          "rest_catalog_url"
+        ],
+        "title": "RestCatalogSpec",
+        "description": "Catalog specification for the REST catalog implementation."
+      },
+      "SqlCatalogSpec": {
+        "properties": {
+          "lakehouse": {
+            "type": "string",
+            "const": "iceberg",
+            "title": "Lakehouse",
+            "description": "Lakehouse type. Use 'iceberg'."
+          },
+          "catalog_type": {
+            "type": "string",
+            "const": "sql",
+            "title": "Catalog Type",
+            "description": "Catalog backend. Use 'sql'.",
+            "default": "sql"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "description": "Unique name for this connection."
+          },
+          "access_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Access Key",
+            "description": "S3 access key ID."
+          },
+          "secret_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Secret Key",
+            "description": "S3 secret access key."
+          },
+          "region": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Region",
+            "description": "S3 region."
+          },
+          "endpoint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Endpoint",
+            "description": "S3 endpoint URL."
+          },
+          "warehouse": {
+            "type": "string",
+            "title": "Warehouse",
+            "description": "S3 warehouse path or bucket."
+          },
+          "database_type": {
+            "type": "string",
+            "enum": [
+              "postgresql",
+              "mysql",
+              "sqlite"
+            ],
+            "title": "Database Type",
+            "description": "Database type."
+          },
+          "host": {
+            "type": "string",
+            "title": "Host",
+            "description": "Database host."
+          },
+          "port": {
+            "type": "integer",
+            "title": "Port",
+            "description": "Database port.",
+            "default": 5432
+          },
+          "username": {
+            "type": "string",
+            "title": "Username",
+            "description": "Database username."
+          },
+          "password": {
+            "type": "string",
+            "title": "Password",
+            "description": "Database password."
+          },
+          "database": {
+            "type": "string",
+            "title": "Database",
+            "description": "Database name."
+          }
+        },
+        "type": "object",
+        "required": [
+          "lakehouse",
+          "name",
+          "warehouse",
+          "database_type",
+          "host",
+          "username",
+          "password",
+          "database"
+        ],
+        "title": "SqlCatalogSpec",
+        "description": "Catalog specification for the SQL catalog implementation."
+      },
+      "TurnRequest": {
+        "properties": {
+          "text": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Text"
+          },
+          "catalog_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Catalog Name"
+          },
+          "model": {
+            "type": "string",
+            "title": "Model",
+            "default": "openrouter/free"
+          },
+          "provider": {
+            "type": "string",
+            "title": "Provider",
+            "default": "openai"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "text"
+        ],
+        "title": "TurnRequest"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      }
+    }
+  }
+}

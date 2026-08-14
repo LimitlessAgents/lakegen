@@ -6,27 +6,18 @@ from collections.abc import AsyncIterator
 from queue import Queue
 
 from fastapi import APIRouter, Depends, Request
-from pydantic import BaseModel, ConfigDict, Field
 from sse_starlette.sse import EventSourceResponse
 
 from lakegen.api.auth.authenticator import Principal
 from lakegen.api.deps import AppState, get_agent_runner, get_app_state, require_principal
 from lakegen.api.run.runner import AgentEvent, AgentEventType, AgentRunner
+from lakegen.api.schema import TurnRequest
 from lakegen.core.error.base import BaseError
 
 router = APIRouter(prefix="/v1/sessions", tags=["chat"])
 
 _turn_semaphore: asyncio.Semaphore | None = None
 _turn_semaphore_limit: int | None = None
-
-
-class TurnRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    text: str = Field(min_length=1)
-    catalog_name: str | None = None
-    model: str = Field(default="openrouter/free")
-    provider: str = Field(default="openai")
 
 
 def _get_turn_semaphore(limit: int) -> asyncio.Semaphore:
