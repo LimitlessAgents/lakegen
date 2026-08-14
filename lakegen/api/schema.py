@@ -7,13 +7,12 @@ error envelope.
 
 from __future__ import annotations
 
-from typing import Annotated, Any, Literal
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
 
 from lakegen.agent import StopReason
 from lakegen.api.run.runner import AgentEventType
-from lakegen.core.error.code import ErrorCode
 
 
 class APIModel(BaseModel):
@@ -21,14 +20,9 @@ class APIModel(BaseModel):
 
 
 class ErrorBody(APIModel):
-    """JSON body for REST errors and SSE ``error`` events. Matches ``BaseError.to_dict()``."""
+    """Client-facing error returned by REST and SSE boundaries."""
 
-    code: ErrorCode
     message: str
-    details: dict[str, Any] | None = None
-    cause: dict[str, Any] | None = None
-    is_retryable: bool
-    is_user_fixable: bool
 
 
 class CatalogResponse(APIModel):

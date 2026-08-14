@@ -10,8 +10,9 @@ from sse_starlette.sse import EventSourceResponse
 
 from lakegen.api.auth.authenticator import Principal
 from lakegen.api.deps import AppState, get_agent_runner, get_app_state, require_principal
+from lakegen.api.errors import error_body_for
 from lakegen.api.run.runner import AgentEvent, AgentEventType, AgentRunner
-from lakegen.api.schema import TurnRequest
+from lakegen.api.schema import ErrorBody, TurnRequest
 from lakegen.core.error.base import BaseError
 
 router = APIRouter(prefix="/v1/sessions", tags=["chat"])
@@ -68,13 +69,18 @@ async def run_turn(
                 )
             except BaseError as exc:
                 events.put(
-                    AgentEvent(type=AgentEventType.ERROR, data=exc.to_dict())
+                    AgentEvent(
+                        type=AgentEventType.ERROR,
+                        data=error_body_for(exc).model_dump(mode="json"),
+                    )
                 )
-            except Exception as exc:  # noqa: BLE001
+            except Exception:  # noqa: BLE001
                 events.put(
                     AgentEvent(
                         type=AgentEventType.ERROR,
-                        data={"code": "INTERNAL", "message": str(exc)},
+                        data=ErrorBody(
+                            message="An unexpected error occurred."
+                        ).model_dump(mode="json"),
                     )
                 )
         finally:

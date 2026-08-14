@@ -15,8 +15,6 @@ from lakegen.api.schema import (
     TurnRequest,
     stream_event_adapter,
 )
-from lakegen.core.error.base import BaseError
-from lakegen.core.error.code import ErrorCode
 
 
 def test_catalog_response_has_no_secret_fields() -> None:
@@ -62,8 +60,6 @@ def test_stream_turn_done() -> None:
     assert event.data.stop_reason is StopReason.COMPLETED
 
 
-def test_error_body_matches_base_error() -> None:
-    dumped = BaseError(ErrorCode.NOT_FOUND, "Catalog 'x' is not registered.").to_dict()
-    body = ErrorBody.model_validate(dumped)
-    assert body.code is ErrorCode.NOT_FOUND
-    assert body.model_dump(mode="json") == dumped
+def test_error_body_is_client_facing() -> None:
+    body = ErrorBody(message="Catalog not found.")
+    assert body.model_dump(mode="json") == {"message": "Catalog not found."}

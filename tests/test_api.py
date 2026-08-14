@@ -136,8 +136,8 @@ def test_add_catalog(client: TestClient, catalogs: MagicMock) -> None:
 
 def test_add_catalog_invalid(client: TestClient) -> None:
     res = client.post("/v1/catalogs", json={"name": "x"})
-    assert res.status_code == 400
-    assert res.json()["code"] == ErrorCode.INVALID_ARGUMENT.value
+    assert res.status_code == 422
+    assert "detail" in res.json()
 
 
 def test_get_catalog_not_found(client: TestClient, catalogs: MagicMock) -> None:
@@ -147,7 +147,20 @@ def test_get_catalog_not_found(client: TestClient, catalogs: MagicMock) -> None:
     )
     res = client.get("/v1/catalogs/missing")
     assert res.status_code == 404
-    assert res.json()["code"] == ErrorCode.NOT_FOUND.value
+    assert res.json() == {"message": "Catalog 'missing' is not registered."}
+
+
+def test_server_error_hides_internal_error_context(
+    client: TestClient, catalogs: MagicMock
+) -> None:
+    catalogs.get.side_effect = BaseError(
+        ErrorCode.CONNECTION_FAILED,
+        "Connection to internal-host:8181 failed.",
+        details={"credential": "secret"},
+    )
+    res = client.get("/v1/catalogs/prod")
+    assert res.status_code == 502
+    assert res.json() == {"message": "The service is temporarily unavailable."}
 
 
 def test_delete_catalog(client: TestClient, catalogs: MagicMock) -> None:
@@ -228,7 +241,8 @@ def test_turn_sse_error(client: TestClient, agent_runner: MagicMock) -> None:
         body = "".join(res.iter_text())
 
     assert "event: error" in body
-    assert ErrorCode.NOT_FOUND.value in body
+    assert '"message": "Session not found."' in body
+    assert ErrorCode.NOT_FOUND.value not in body
 
 
 def test_local_run_adapter_create_and_turn() -> None:
