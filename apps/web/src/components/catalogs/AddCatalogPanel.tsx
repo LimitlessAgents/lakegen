@@ -41,9 +41,8 @@ export function AddCatalogPanel({ open, onClose }: AddCatalogPanelProps) {
   const [token, setToken] = useState('');
   const [credential, setCredential] = useState('');
 
-  const [engine, setEngine] = useState<'postgresql' | 'mysql' | 'sqlite'>('postgresql');
   const [host, setHost] = useState('');
-  const [port, setPort] = useState('3306');
+  const [port, setPort] = useState('');
   const [database, setDatabase] = useState('');
   const [user, setUser] = useState('');
   const [password, setPassword] = useState('');
@@ -99,7 +98,7 @@ export function AddCatalogPanel({ open, onClose }: AddCatalogPanelProps) {
     return {
       ...base,
       catalog_type: 'sql',
-      database_type: engine,
+      database_type: 'postgresql',
       host: host.trim(),
       port: Number(port) || 3306,
       username: user.trim(),
@@ -277,16 +276,6 @@ export function AddCatalogPanel({ open, onClose }: AddCatalogPanelProps) {
                     <h3 className="text-2xs font-medium uppercase tracking-wider text-ink-faint">
                       SQL backend
                     </h3>
-                    <Select
-                      label="Engine"
-                      value={engine}
-                      onChange={(value) => setEngine(value as 'postgresql' | 'mysql' | 'sqlite')}
-                      options={[
-                        { value: 'postgresql', label: 'PostgreSQL' },
-                        { value: 'mysql', label: 'MySQL' },
-                        { value: 'sqlite', label: 'SQLite' },
-                      ]}
-                    />
                     <div className="grid grid-cols-[1fr_96px] gap-3">
                       <Field label="Host" value={host} onChange={setHost} placeholder="db.internal" mono />
                       <Field label="Port" value={port} onChange={setPort} mono />
