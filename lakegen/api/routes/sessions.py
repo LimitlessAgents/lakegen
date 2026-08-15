@@ -4,10 +4,15 @@ from fastapi import APIRouter, Depends, Response, status
 
 from lakegen.api.auth.authenticator import Principal
 from lakegen.api.deps import get_agent_runner, require_principal
+from lakegen.api.responses import SERVICE_ERROR_RESPONSES
 from lakegen.api.run.runner import AgentRunner
 from lakegen.api.schema import CreateSessionResponse
 
-router = APIRouter(prefix="/v1/sessions", tags=["sessions"])
+router = APIRouter(
+    prefix="/v1/sessions",
+    tags=["sessions"],
+    responses=SERVICE_ERROR_RESPONSES,
+)
 
 
 @router.post("", status_code=status.HTTP_201_CREATED)

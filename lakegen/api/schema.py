@@ -13,6 +13,7 @@ from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
 
 from lakegen.agent import StopReason
 from lakegen.api.run.runner import AgentEventType
+from lakegen.core.error.code import ErrorCode
 
 
 class APIModel(BaseModel):
@@ -22,6 +23,7 @@ class APIModel(BaseModel):
 class ErrorBody(APIModel):
     """Client-facing error returned by REST and SSE boundaries."""
 
+    code: ErrorCode
     message: str
 
 

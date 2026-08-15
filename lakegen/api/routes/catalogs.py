@@ -4,11 +4,16 @@ from fastapi import APIRouter, Depends, Response, status
 
 from lakegen.api.auth.authenticator import Principal
 from lakegen.api.deps import get_catalogs, require_principal
+from lakegen.api.responses import SERVICE_ERROR_RESPONSES
 from lakegen.api.schema import CatalogResponse
 from lakegen.core.catalog.model import CatalogSpec
 from lakegen.core.catalog.service import CatalogInfo, CatalogService
 
-router = APIRouter(prefix="/v1/catalogs", tags=["catalogs"])
+router = APIRouter(
+    prefix="/v1/catalogs",
+    tags=["catalogs"],
+    responses=SERVICE_ERROR_RESPONSES,
+)
 
 
 def _to_response(info: CatalogInfo) -> CatalogResponse:

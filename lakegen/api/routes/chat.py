@@ -11,11 +11,17 @@ from sse_starlette.sse import EventSourceResponse
 from lakegen.api.auth.authenticator import Principal
 from lakegen.api.deps import AppState, get_agent_runner, get_app_state, require_principal
 from lakegen.api.errors import error_body_for
+from lakegen.api.responses import SERVICE_ERROR_RESPONSES
 from lakegen.api.run.runner import AgentEvent, AgentEventType, AgentRunner
 from lakegen.api.schema import ErrorBody, TurnRequest
 from lakegen.core.error.base import BaseError
+from lakegen.core.error.code import ErrorCode
 
-router = APIRouter(prefix="/v1/sessions", tags=["chat"])
+router = APIRouter(
+    prefix="/v1/sessions",
+    tags=["chat"],
+    responses=SERVICE_ERROR_RESPONSES,
+)
 
 _turn_semaphore: asyncio.Semaphore | None = None
 _turn_semaphore_limit: int | None = None
@@ -79,6 +85,7 @@ async def run_turn(
                     AgentEvent(
                         type=AgentEventType.ERROR,
                         data=ErrorBody(
+                            code=ErrorCode.INTERNAL,
                             message="An unexpected error occurred."
                         ).model_dump(mode="json"),
                     )

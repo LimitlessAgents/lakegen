@@ -136,8 +136,11 @@ def test_add_catalog(client: TestClient, catalogs: MagicMock) -> None:
 
 def test_add_catalog_invalid(client: TestClient) -> None:
     res = client.post("/v1/catalogs", json={"name": "x"})
-    assert res.status_code == 422
-    assert "detail" in res.json()
+    assert res.status_code == 400
+    assert res.json() == {
+        "code": "INVALID_ARGUMENT",
+        "message": "Request validation failed.",
+    }
 
 
 def test_get_catalog_not_found(client: TestClient, catalogs: MagicMock) -> None:
@@ -147,7 +150,10 @@ def test_get_catalog_not_found(client: TestClient, catalogs: MagicMock) -> None:
     )
     res = client.get("/v1/catalogs/missing")
     assert res.status_code == 404
-    assert res.json() == {"message": "Catalog 'missing' is not registered."}
+    assert res.json() == {
+        "code": "NOT_FOUND",
+        "message": "Catalog 'missing' is not registered.",
+    }
 
 
 def test_server_error_hides_internal_error_context(
@@ -160,7 +166,16 @@ def test_server_error_hides_internal_error_context(
     )
     res = client.get("/v1/catalogs/prod")
     assert res.status_code == 502
-    assert res.json() == {"message": "The service is temporarily unavailable."}
+    assert res.json() == {
+        "code": "CONNECTION_FAILED",
+        "message": "The service is temporarily unavailable.",
+    }
+
+
+def test_fastapi_http_error_uses_service_error_contract(client: TestClient) -> None:
+    res = client.get("/missing")
+    assert res.status_code == 404
+    assert res.json() == {"code": "NOT_FOUND", "message": "Not Found"}
 
 
 def test_delete_catalog(client: TestClient, catalogs: MagicMock) -> None:
@@ -242,7 +257,7 @@ def test_turn_sse_error(client: TestClient, agent_runner: MagicMock) -> None:
 
     assert "event: error" in body
     assert '"message": "Session not found."' in body
-    assert ErrorCode.NOT_FOUND.value not in body
+    assert f'"code": "{ErrorCode.NOT_FOUND.value}"' in body
 
 
 def test_local_run_adapter_create_and_turn() -> None:

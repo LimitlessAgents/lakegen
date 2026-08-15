@@ -19,3 +19,22 @@ def test_openapi_matches_snapshot() -> None:
         "from lakegen.api.openapi import openapi_document; "
         "Path('openapi/v1.json').write_text(json.dumps(openapi_document(), indent=2) + chr(10))\""
     )
+
+
+def test_openapi_declares_service_errors() -> None:
+    doc = openapi_document()
+    assert "ErrorBody" in doc["components"]["schemas"]
+    assert "HTTPValidationError" not in doc["components"]["schemas"]
+
+    get_catalog = doc["paths"]["/v1/catalogs/{name}"]["get"]["responses"]
+    assert get_catalog["404"]["content"]["application/json"]["schema"] == {
+        "$ref": "#/components/schemas/ErrorBody"
+    }
+    assert get_catalog["502"]["content"]["application/json"]["schema"] == {
+        "$ref": "#/components/schemas/ErrorBody"
+    }
+
+    add_catalog = doc["paths"]["/v1/catalogs"]["post"]["responses"]
+    assert add_catalog["400"]["content"]["application/json"]["schema"] == {
+        "$ref": "#/components/schemas/ErrorBody"
+    }
