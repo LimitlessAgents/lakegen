@@ -13,6 +13,7 @@ class ErrorCode(str, Enum):
     # Invalid input from the caller/agent.
     INVALID_ARGUMENT = "INVALID_ARGUMENT"
     INVALID_TYPE = "INVALID_TYPE"
+    METHOD_NOT_ALLOWED = "METHOD_NOT_ALLOWED"
 
     # Resource state.
     NOT_FOUND = "NOT_FOUND"

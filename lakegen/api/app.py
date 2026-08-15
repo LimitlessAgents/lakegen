@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from lakegen.api.auth.authenticator import Authenticator
 from lakegen.api.deps import build_app_state
 from lakegen.api.errors import register_exception_handlers
+from lakegen.api.openapi import install_openapi
 from lakegen.api.routes import catalogs, chat, health, sessions
 from lakegen.api.run.runner import AgentRunner
 from lakegen.core.catalog.service import CatalogService
@@ -51,6 +52,8 @@ def create_app(
     app.include_router(catalogs.router)
     app.include_router(sessions.router)
     app.include_router(chat.router)
+
+    install_openapi(app)
 
     return app
 

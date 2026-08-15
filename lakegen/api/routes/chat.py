@@ -6,27 +6,25 @@ from collections.abc import AsyncIterator
 from queue import Queue
 
 from fastapi import APIRouter, Depends, Request
-from pydantic import BaseModel, ConfigDict, Field
 from sse_starlette.sse import EventSourceResponse
 
 from lakegen.api.auth.authenticator import Principal
 from lakegen.api.deps import AppState, get_agent_runner, get_app_state, require_principal
+from lakegen.api.errors import error_body_for
+from lakegen.api.responses import SERVICE_ERROR_RESPONSES
 from lakegen.api.run.runner import AgentEvent, AgentEventType, AgentRunner
+from lakegen.api.schema import ErrorBody, TurnRequest
 from lakegen.core.error.base import BaseError
+from lakegen.core.error.code import ErrorCode
 
-router = APIRouter(prefix="/v1/sessions", tags=["chat"])
+router = APIRouter(
+    prefix="/v1/sessions",
+    tags=["chat"],
+    responses=SERVICE_ERROR_RESPONSES,
+)
 
 _turn_semaphore: asyncio.Semaphore | None = None
 _turn_semaphore_limit: int | None = None
-
-
-class TurnRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    text: str = Field(min_length=1)
-    catalog_name: str | None = None
-    model: str = Field(default="openrouter/free")
-    provider: str = Field(default="openai")
 
 
 def _get_turn_semaphore(limit: int) -> asyncio.Semaphore:
@@ -77,13 +75,19 @@ async def run_turn(
                 )
             except BaseError as exc:
                 events.put(
-                    AgentEvent(type=AgentEventType.ERROR, data=exc.to_dict())
+                    AgentEvent(
+                        type=AgentEventType.ERROR,
+                        data=error_body_for(exc).model_dump(mode="json"),
+                    )
                 )
-            except Exception as exc:  # noqa: BLE001
+            except Exception:  # noqa: BLE001
                 events.put(
                     AgentEvent(
                         type=AgentEventType.ERROR,
-                        data={"code": "INTERNAL", "message": str(exc)},
+                        data=ErrorBody(
+                            code=ErrorCode.INTERNAL,
+                            message="An unexpected error occurred."
+                        ).model_dump(mode="json"),
                     )
                 )
         finally:
