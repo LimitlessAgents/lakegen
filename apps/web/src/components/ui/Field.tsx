@@ -8,6 +8,7 @@ interface FieldProps {
   hint?: string;
   secret?: boolean;
   mono?: boolean;
+  required?: boolean;
   type?: string;
   className?: string;
 }
@@ -20,6 +21,7 @@ export function Field({
   hint,
   secret = false,
   mono = false,
+  required = false,
   type = 'text',
   className = '',
 }: FieldProps) {
@@ -29,6 +31,7 @@ export function Field({
     <div className={className}>
       <label htmlFor={id} className="mb-1 flex items-center gap-1.5 text-[12.5px] text-ink-muted">
         {label}
+        {required && <span className="text-ink-faint">required</span>}
         {secret && <LockIcon className="h-3 w-3 text-ink-faint" strokeWidth={2} />}
       </label>
       <input

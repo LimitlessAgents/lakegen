@@ -1,4 +1,5 @@
 export type CatalogType = 'glue' | 'rest' | 'sql';
+export type SqlDatabaseType = 'postgresql' | 'mysql' | 'sqlite';
 
 export interface CatalogResponse {
   name: string;
@@ -63,11 +64,12 @@ export interface RestCatalogCreate extends CatalogCreateBase {
   rest_signing_name?: string;
   rest_signing_region?: string;
   rest_signing_v_4?: boolean;
+  no_identifier_fields?: boolean;
 }
 
 export interface SqlCatalogCreate extends CatalogCreateBase {
   catalog_type: 'sql';
-  database_type: 'postgresql' | 'mysql' | 'sqlite';
+  database_type: SqlDatabaseType;
   host: string;
   port?: number;
   username: string;

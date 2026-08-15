@@ -1,18 +1,28 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { XIcon } from 'lucide-react';
-import type { CatalogCreateRequest, CatalogType } from '../../api/types';
+import type { CatalogCreateRequest, CatalogType, SqlDatabaseType } from '../../api/types';
 import { ApiError } from '../../api/client';
 import { useLakeGen } from '../../state/LakeGenContext';
 import { Button } from '../ui/Button';
+import { Checkbox } from '../ui/Checkbox';
 import { Field } from '../ui/Field';
 import { Select } from '../ui/Select';
+import { ConnectStatusDialog, type ConnectStatus } from './ConnectStatusDialog';
+
+const RESULT_VISIBLE_MS = 3000;
 
 const typeOptions: { value: CatalogType; title: string; description: string }[] = [
   { value: 'glue', title: 'Glue', description: 'AWS Glue Data Catalog' },
   { value: 'rest', title: 'REST', description: 'Iceberg REST catalog' },
   { value: 'sql', title: 'SQL', description: 'JDBC-backed catalog' },
 ];
+
+const SQL_DEFAULT_PORT: Record<SqlDatabaseType, number> = {
+  postgresql: 5432,
+  mysql: 3306,
+  sqlite: 5432,
+};
 
 interface AddCatalogPanelProps {
   open: boolean;
@@ -24,50 +34,115 @@ function omitEmpty(value: string): string | undefined {
   return trimmed.length > 0 ? trimmed : undefined;
 }
 
+function parsePort(raw: string, fallback: number): number | undefined {
+  const trimmed = raw.trim();
+  if (trimmed.length === 0) return fallback;
+  const n = Number(trimmed);
+  if (!Number.isInteger(n) || n < 1 || n > 65535) return undefined;
+  return n;
+}
+
 export function AddCatalogPanel({ open, onClose }: AddCatalogPanelProps) {
   const { addCatalog } = useLakeGen();
   const [type, setType] = useState<CatalogType>('glue');
   const [name, setName] = useState('');
   const [warehouse, setWarehouse] = useState('');
   const [error, setError] = useState<string | null>(null);
-  const [submitting, setSubmitting] = useState(false);
+  const [connectStatus, setConnectStatus] = useState<ConnectStatus | null>(null);
+  const resultTimerRef = useRef<number | null>(null);
 
-  const [glueId, setGlueId] = useState('');
-  const [region, setRegion] = useState('us-east-1');
+  useEffect(() => {
+    return () => {
+      if (resultTimerRef.current !== null) window.clearTimeout(resultTimerRef.current);
+    };
+  }, []);
+
+  function clearResultTimer() {
+    if (resultTimerRef.current !== null) {
+      window.clearTimeout(resultTimerRef.current);
+      resultTimerRef.current = null;
+    }
+  }
+
+  const [region, setRegion] = useState('');
+  const [endpoint, setEndpoint] = useState('');
   const [accessKey, setAccessKey] = useState('');
   const [secretKey, setSecretKey] = useState('');
+
+  const [glueId, setGlueId] = useState('');
 
   const [uri, setUri] = useState('');
   const [token, setToken] = useState('');
   const [credential, setCredential] = useState('');
+  const [oauth2Uri, setOauth2Uri] = useState('');
+  const [restAuthType, setRestAuthType] = useState('');
+  const [scope, setScope] = useState('');
+  const [signingName, setSigningName] = useState('');
+  const [signingRegion, setSigningRegion] = useState('');
+  const [signingV4, setSigningV4] = useState(true);
+  const [noIdentifierFields, setNoIdentifierFields] = useState(false);
 
+  const [databaseType, setDatabaseType] = useState<SqlDatabaseType>('postgresql');
   const [host, setHost] = useState('');
-  const [port, setPort] = useState('');
+  const [port, setPort] = useState(String(SQL_DEFAULT_PORT.postgresql));
   const [database, setDatabase] = useState('');
   const [user, setUser] = useState('');
   const [password, setPassword] = useState('');
 
+  const sqlPort = parsePort(port, SQL_DEFAULT_PORT[databaseType]);
   const canSubmit =
     name.trim().length > 0 &&
     warehouse.trim().length > 0 &&
     (type !== 'rest' || uri.trim().length > 0) &&
     (type !== 'sql' ||
-      (host.trim().length > 0 && database.trim().length > 0 && user.trim().length > 0));
+      (host.trim().length > 0 &&
+        database.trim().length > 0 &&
+        user.trim().length > 0 &&
+        sqlPort !== undefined));
+
+  function changeDatabaseType(next: SqlDatabaseType) {
+    const previousDefault = String(SQL_DEFAULT_PORT[databaseType]);
+    setDatabaseType(next);
+    if (port.trim() === '' || port.trim() === previousDefault) {
+      setPort(String(SQL_DEFAULT_PORT[next]));
+    }
+  }
 
   function reset() {
     setName('');
     setWarehouse('');
     setError(null);
-    setGlueId('');
+    setConnectStatus(null);
+    setRegion('');
+    setEndpoint('');
     setAccessKey('');
     setSecretKey('');
+    setGlueId('');
     setUri('');
     setToken('');
     setCredential('');
+    setOauth2Uri('');
+    setRestAuthType('');
+    setScope('');
+    setSigningName('');
+    setSigningRegion('');
+    setSigningV4(true);
+    setNoIdentifierFields(false);
+    setDatabaseType('postgresql');
     setHost('');
+    setPort(String(SQL_DEFAULT_PORT.postgresql));
     setDatabase('');
     setUser('');
     setPassword('');
+  }
+
+  function s3Fields() {
+    return {
+      region: omitEmpty(region),
+      endpoint: omitEmpty(endpoint),
+      access_key: omitEmpty(accessKey),
+      secret_key: omitEmpty(secretKey),
+    };
   }
 
   function buildBody(): CatalogCreateRequest {
@@ -75,15 +150,13 @@ export function AddCatalogPanel({ open, onClose }: AddCatalogPanelProps) {
       lakehouse: 'iceberg' as const,
       name: name.trim(),
       warehouse: warehouse.trim(),
+      ...s3Fields(),
     };
     if (type === 'glue') {
       return {
         ...base,
         catalog_type: 'glue',
         glue_catalog_id: omitEmpty(glueId),
-        region: omitEmpty(region),
-        access_key: omitEmpty(accessKey),
-        secret_key: omitEmpty(secretKey),
       };
     }
     if (type === 'rest') {
@@ -93,14 +166,21 @@ export function AddCatalogPanel({ open, onClose }: AddCatalogPanelProps) {
         rest_catalog_url: uri.trim(),
         token: omitEmpty(token),
         credential: omitEmpty(credential),
+        oauth2_uri: omitEmpty(oauth2Uri),
+        rest_auth_type: omitEmpty(restAuthType),
+        scope: omitEmpty(scope),
+        rest_signing_name: omitEmpty(signingName),
+        rest_signing_region: omitEmpty(signingRegion),
+        rest_signing_v_4: signingV4,
+        no_identifier_fields: noIdentifierFields,
       };
     }
     return {
       ...base,
       catalog_type: 'sql',
-      database_type: 'postgresql',
+      database_type: databaseType,
       host: host.trim(),
-      port: Number(port) || 3306,
+      port: sqlPort,
       username: user.trim(),
       password,
       database: database.trim(),
@@ -109,19 +189,30 @@ export function AddCatalogPanel({ open, onClose }: AddCatalogPanelProps) {
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
-    if (!canSubmit || submitting) return;
-    setSubmitting(true);
+    if (!canSubmit || connectStatus) return;
+    clearResultTimer();
+    setConnectStatus('connecting');
     setError(null);
     try {
       await addCatalog(buildBody());
-      reset();
-      onClose();
+      setConnectStatus('success');
+      resultTimerRef.current = window.setTimeout(() => {
+        resultTimerRef.current = null;
+        reset();
+        onClose();
+      }, RESULT_VISIBLE_MS);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Failed to add catalog');
-    } finally {
-      setSubmitting(false);
+      const message = err instanceof ApiError ? err.message : 'Failed to connect to the catalog.';
+      setError(message);
+      setConnectStatus('error');
+      resultTimerRef.current = window.setTimeout(() => {
+        resultTimerRef.current = null;
+        setConnectStatus(null);
+      }, RESULT_VISIBLE_MS);
     }
   }
+
+  const busy = connectStatus !== null;
 
   return (
     <AnimatePresence>
@@ -132,7 +223,9 @@ export function AddCatalogPanel({ open, onClose }: AddCatalogPanelProps) {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.15 }}
-            onClick={onClose}
+            onClick={() => {
+              if (!busy) onClose();
+            }}
             className="fixed inset-0 z-30 bg-ink/10"
           />
 
@@ -151,7 +244,8 @@ export function AddCatalogPanel({ open, onClose }: AddCatalogPanelProps) {
                 type="button"
                 onClick={onClose}
                 aria-label="Close"
-                className="ml-auto flex h-6 w-6 items-center justify-center rounded text-ink-faint transition-colors hover:bg-line-soft hover:text-ink"
+                disabled={busy}
+                className="ml-auto flex h-6 w-6 items-center justify-center rounded text-ink-faint transition-colors hover:bg-line-soft hover:text-ink disabled:pointer-events-none disabled:opacity-40"
               >
                 <XIcon className="h-4 w-4" strokeWidth={2} />
               </button>
@@ -189,55 +283,70 @@ export function AddCatalogPanel({ open, onClose }: AddCatalogPanelProps) {
                   <h3 className="text-2xs font-medium uppercase tracking-wider text-ink-faint">
                     Identity
                   </h3>
-                  <Field label="Catalog name" value={name} onChange={setName} placeholder="production" mono />
+                  <Field
+                    label="Catalog name"
+                    value={name}
+                    onChange={setName}
+                    placeholder="production"
+                    mono
+                    required
+                  />
                   <Field
                     label="Warehouse location"
                     value={warehouse}
                     onChange={setWarehouse}
                     placeholder="s3://bucket/warehouse"
                     mono
+                    required
+                  />
+                </section>
+
+                <section className="space-y-3">
+                  <h3 className="text-2xs font-medium uppercase tracking-wider text-ink-faint">
+                    Object storage
+                  </h3>
+                  <Field
+                    label="Region"
+                    value={region}
+                    onChange={setRegion}
+                    placeholder="us-east-1"
+                    mono
+                  />
+                  <Field
+                    label="S3 endpoint"
+                    value={endpoint}
+                    onChange={setEndpoint}
+                    placeholder="https://s3.amazonaws.com"
+                    mono
+                  />
+                  <Field
+                    label="Access key ID"
+                    value={accessKey}
+                    onChange={setAccessKey}
+                    placeholder="AKIA…"
+                    mono
+                    hint="Leave blank to use the default AWS credential chain."
+                  />
+                  <Field
+                    label="Secret access key"
+                    value={secretKey}
+                    onChange={setSecretKey}
+                    placeholder="••••••••••••••••"
+                    secret
                   />
                 </section>
 
                 {type === 'glue' && (
                   <section className="space-y-3">
                     <h3 className="text-2xs font-medium uppercase tracking-wider text-ink-faint">
-                      Glue &amp; S3
+                      Glue
                     </h3>
-                    <div className="grid grid-cols-2 gap-3">
-                      <Field
-                        label="Glue catalog ID"
-                        value={glueId}
-                        onChange={setGlueId}
-                        placeholder="123456789012"
-                        mono
-                      />
-                      <Select
-                        label="Region"
-                        value={region}
-                        onChange={setRegion}
-                        options={[
-                          { value: 'us-east-1', label: 'us-east-1' },
-                          { value: 'us-west-2', label: 'us-west-2' },
-                          { value: 'eu-west-1', label: 'eu-west-1' },
-                          { value: 'ap-south-1', label: 'ap-south-1' },
-                        ]}
-                      />
-                    </div>
                     <Field
-                      label="Access key ID"
-                      value={accessKey}
-                      onChange={setAccessKey}
-                      placeholder="AKIA…"
+                      label="Glue catalog ID"
+                      value={glueId}
+                      onChange={setGlueId}
+                      placeholder="123456789012"
                       mono
-                      hint="Leave blank to use the default AWS credential chain."
-                    />
-                    <Field
-                      label="Secret access key"
-                      value={secretKey}
-                      onChange={setSecretKey}
-                      placeholder="••••••••••••••••"
-                      secret
                     />
                   </section>
                 )}
@@ -245,13 +354,21 @@ export function AddCatalogPanel({ open, onClose }: AddCatalogPanelProps) {
                 {type === 'rest' && (
                   <section className="space-y-3">
                     <h3 className="text-2xs font-medium uppercase tracking-wider text-ink-faint">
-                      REST endpoint
+                      REST catalog
                     </h3>
                     <Field
                       label="Catalog URI"
                       value={uri}
                       onChange={setUri}
                       placeholder="https://catalog.internal/api"
+                      mono
+                      required
+                    />
+                    <Field
+                      label="Auth type"
+                      value={restAuthType}
+                      onChange={setRestAuthType}
+                      placeholder="oauth2"
                       mono
                     />
                     <Field
@@ -265,8 +382,46 @@ export function AddCatalogPanel({ open, onClose }: AddCatalogPanelProps) {
                       label="Credential"
                       value={credential}
                       onChange={setCredential}
-                      placeholder="optional client:secret"
+                      placeholder="client:secret"
                       secret
+                    />
+                    <Field
+                      label="OAuth2 server URI"
+                      value={oauth2Uri}
+                      onChange={setOauth2Uri}
+                      placeholder="https://auth.internal/oauth2/token"
+                      mono
+                    />
+                    <Field
+                      label="OAuth2 scope"
+                      value={scope}
+                      onChange={setScope}
+                      placeholder="catalog"
+                      mono
+                    />
+                    <Field
+                      label="SigV4 signing name"
+                      value={signingName}
+                      onChange={setSigningName}
+                      placeholder="execute-api"
+                      mono
+                    />
+                    <Field
+                      label="SigV4 signing region"
+                      value={signingRegion}
+                      onChange={setSigningRegion}
+                      placeholder="us-east-1"
+                      mono
+                    />
+                    <Checkbox
+                      label="Sign REST requests with AWS SigV4"
+                      checked={signingV4}
+                      onChange={setSigningV4}
+                    />
+                    <Checkbox
+                      label="Omit identifier fields in REST requests"
+                      checked={noIdentifierFields}
+                      onChange={setNoIdentifierFields}
                     />
                   </section>
                 )}
@@ -276,19 +431,51 @@ export function AddCatalogPanel({ open, onClose }: AddCatalogPanelProps) {
                     <h3 className="text-2xs font-medium uppercase tracking-wider text-ink-faint">
                       SQL backend
                     </h3>
+                    <Select
+                      label="Database type"
+                      value={databaseType}
+                      onChange={(value) => changeDatabaseType(value as SqlDatabaseType)}
+                      options={[
+                        { value: 'postgresql', label: 'PostgreSQL' },
+                        { value: 'mysql', label: 'MySQL' },
+                        { value: 'sqlite', label: 'SQLite' },
+                      ]}
+                    />
                     <div className="grid grid-cols-[1fr_96px] gap-3">
-                      <Field label="Host" value={host} onChange={setHost} placeholder="db.internal" mono />
-                      <Field label="Port" value={port} onChange={setPort} mono />
+                      <Field
+                        label="Host"
+                        value={host}
+                        onChange={setHost}
+                        placeholder="db.internal"
+                        mono
+                        required
+                      />
+                      <Field
+                        label="Port"
+                        value={port}
+                        onChange={setPort}
+                        placeholder={String(SQL_DEFAULT_PORT[databaseType])}
+                        mono
+                        hint={sqlPort === undefined ? 'Port must be 1–65535.' : undefined}
+                      />
                     </div>
                     <Field
                       label="Database"
                       value={database}
                       onChange={setDatabase}
-                      placeholder="iceberg_catalog"
+                      placeholder={databaseType === 'sqlite' ? '/path/to/catalog.db' : 'iceberg_catalog'}
                       mono
+                      required
                     />
                     <div className="grid grid-cols-2 gap-3">
-                      <Field label="Username" value={user} onChange={setUser} placeholder="lakegen" mono />
+                      <Field
+                        label="Username"
+                        value={user}
+                        onChange={setUser}
+                        placeholder="lakegen"
+                        mono
+                        required
+                      />
                       <Field
                         label="Password"
                         value={password}
@@ -300,20 +487,26 @@ export function AddCatalogPanel({ open, onClose }: AddCatalogPanelProps) {
                   </section>
                 )}
 
-                {error && <p className="text-[13px] text-err">{error}</p>}
+                {error && !connectStatus && <p className="text-[13px] text-err">{error}</p>}
               </div>
 
               <div className="flex shrink-0 items-center gap-2 border-t border-line px-5 py-3">
-                <Button variant="ghost" onClick={onClose}>
+                <Button variant="ghost" onClick={onClose} disabled={busy}>
                   Cancel
                 </Button>
                 <span className="ml-auto" />
-                <Button type="submit" variant="primary" disabled={!canSubmit || submitting}>
-                  {submitting ? 'Adding…' : 'Add catalog'}
+                <Button type="submit" variant="primary" disabled={!canSubmit || busy}>
+                  Connect
                 </Button>
               </div>
             </form>
           </motion.aside>
+
+          <ConnectStatusDialog
+            status={connectStatus}
+            catalogName={name.trim()}
+            message={error}
+          />
         </>
       )}
     </AnimatePresence>
