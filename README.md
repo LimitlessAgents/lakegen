@@ -24,7 +24,7 @@ Useful env vars:
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `LAKEGEN_CORS_ORIGINS` | `http://localhost:3000` | Comma-separated browser origins |
+| `LAKEGEN_CORS_ORIGINS` | `http://localhost:3000,http://localhost:5173` | Comma-separated browser origins |
 | `LAKEGEN_MAX_IN_FLIGHT_TURNS` | `8` | Cap concurrent agent turns |
 
 Health: `GET /health`. Catalog and session routes live under `/v1/…`. Agent turns stream as SSE from `POST /v1/sessions/{id}/turns`.
