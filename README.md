@@ -14,20 +14,33 @@ This project is still in its early stages. Things will change. APIs will shift. 
 
 That's okay. We're building in the open, and we'd love for you to be part of it.
 
-## API server (BFF)
+## Try it
+
+You'll need Python 3.13+ and Node.js. The agent talks to an OpenAI-compatible API, so set `OPENAI_API_KEY` (and `OPENAI_BASE_URL` if you aren't using OpenAI directly) in a `.env` at the repo root.
 
 ```bash
+uv sync
 uvicorn lakegen.api.app:app --reload
 ```
 
-Useful env vars:
+In another terminal:
+
+```bash
+cd apps/web
+npm install
+npm run dev
+```
+
+Open [http://localhost:5173](http://localhost:5173). Add a catalog (AWS Glue, Iceberg REST, or SQL), then chat with the agent in plain language — list namespaces, describe tables, inspect snapshots, and so on.
+
+The UI proxies `/v1` to the API on port 8000. Health: `GET /health`.
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
+| `OPENAI_API_KEY` | — | Inference credentials |
+| `OPENAI_BASE_URL` | OpenAI | Override for OpenRouter or other OpenAI-compatible hosts |
 | `LAKEGEN_CORS_ORIGINS` | `http://localhost:3000,http://localhost:5173` | Comma-separated browser origins |
 | `LAKEGEN_MAX_IN_FLIGHT_TURNS` | `8` | Cap concurrent agent turns |
-
-Health: `GET /health`. Catalog and session routes live under `/v1/…`. Agent turns stream as SSE from `POST /v1/sessions/{id}/turns`.
 
 ## Contributing
 
@@ -35,8 +48,4 @@ Whether you're fixing a typo, raising an issue, sketching an idea, or diving int
 
 You don't need to be an expert. Curiosity is enough. If something feels unclear or broken, say so. If you have a thought on where this should go, we'd love to hear it.
 
-Open an issue or a pull request whenever you're ready. We'll meet you there.
-
-## License
-
-MIT — see [LICENSE](LICENSE).
+If you'd like to contribute, start with [CONTRIBUTING.md](CONTRIBUTING.md) — it's a short read and will save you time.
