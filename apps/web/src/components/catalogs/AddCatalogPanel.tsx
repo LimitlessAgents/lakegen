@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { XIcon } from 'lucide-react';
 import type { CatalogCreateRequest, CatalogType, SqlDatabaseType } from '../../api/types';
@@ -8,6 +8,9 @@ import { Button } from '../ui/Button';
 import { Checkbox } from '../ui/Checkbox';
 import { Field } from '../ui/Field';
 import { Select } from '../ui/Select';
+import { ConnectStatusDialog, type ConnectStatus } from './ConnectStatusDialog';
+
+const RESULT_VISIBLE_MS = 3000;
 
 const typeOptions: { value: CatalogType; title: string; description: string }[] = [
   { value: 'glue', title: 'Glue', description: 'AWS Glue Data Catalog' },
@@ -45,7 +48,21 @@ export function AddCatalogPanel({ open, onClose }: AddCatalogPanelProps) {
   const [name, setName] = useState('');
   const [warehouse, setWarehouse] = useState('');
   const [error, setError] = useState<string | null>(null);
-  const [submitting, setSubmitting] = useState(false);
+  const [connectStatus, setConnectStatus] = useState<ConnectStatus | null>(null);
+  const resultTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (resultTimerRef.current !== null) window.clearTimeout(resultTimerRef.current);
+    };
+  }, []);
+
+  function clearResultTimer() {
+    if (resultTimerRef.current !== null) {
+      window.clearTimeout(resultTimerRef.current);
+      resultTimerRef.current = null;
+    }
+  }
 
   const [region, setRegion] = useState('');
   const [endpoint, setEndpoint] = useState('');
@@ -95,6 +112,7 @@ export function AddCatalogPanel({ open, onClose }: AddCatalogPanelProps) {
     setName('');
     setWarehouse('');
     setError(null);
+    setConnectStatus(null);
     setRegion('');
     setEndpoint('');
     setAccessKey('');
@@ -171,19 +189,30 @@ export function AddCatalogPanel({ open, onClose }: AddCatalogPanelProps) {
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
-    if (!canSubmit || submitting) return;
-    setSubmitting(true);
+    if (!canSubmit || connectStatus) return;
+    clearResultTimer();
+    setConnectStatus('connecting');
     setError(null);
     try {
       await addCatalog(buildBody());
-      reset();
-      onClose();
+      setConnectStatus('success');
+      resultTimerRef.current = window.setTimeout(() => {
+        resultTimerRef.current = null;
+        reset();
+        onClose();
+      }, RESULT_VISIBLE_MS);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Failed to add catalog');
-    } finally {
-      setSubmitting(false);
+      const message = err instanceof ApiError ? err.message : 'Failed to connect to the catalog.';
+      setError(message);
+      setConnectStatus('error');
+      resultTimerRef.current = window.setTimeout(() => {
+        resultTimerRef.current = null;
+        setConnectStatus(null);
+      }, RESULT_VISIBLE_MS);
     }
   }
+
+  const busy = connectStatus !== null;
 
   return (
     <AnimatePresence>
@@ -194,7 +223,9 @@ export function AddCatalogPanel({ open, onClose }: AddCatalogPanelProps) {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.15 }}
-            onClick={onClose}
+            onClick={() => {
+              if (!busy) onClose();
+            }}
             className="fixed inset-0 z-30 bg-ink/10"
           />
 
@@ -213,7 +244,8 @@ export function AddCatalogPanel({ open, onClose }: AddCatalogPanelProps) {
                 type="button"
                 onClick={onClose}
                 aria-label="Close"
-                className="ml-auto flex h-6 w-6 items-center justify-center rounded text-ink-faint transition-colors hover:bg-line-soft hover:text-ink"
+                disabled={busy}
+                className="ml-auto flex h-6 w-6 items-center justify-center rounded text-ink-faint transition-colors hover:bg-line-soft hover:text-ink disabled:pointer-events-none disabled:opacity-40"
               >
                 <XIcon className="h-4 w-4" strokeWidth={2} />
               </button>
@@ -455,20 +487,26 @@ export function AddCatalogPanel({ open, onClose }: AddCatalogPanelProps) {
                   </section>
                 )}
 
-                {error && <p className="text-[13px] text-err">{error}</p>}
+                {error && !connectStatus && <p className="text-[13px] text-err">{error}</p>}
               </div>
 
               <div className="flex shrink-0 items-center gap-2 border-t border-line px-5 py-3">
-                <Button variant="ghost" onClick={onClose}>
+                <Button variant="ghost" onClick={onClose} disabled={busy}>
                   Cancel
                 </Button>
                 <span className="ml-auto" />
-                <Button type="submit" variant="primary" disabled={!canSubmit || submitting}>
-                  {submitting ? 'Adding…' : 'Add catalog'}
+                <Button type="submit" variant="primary" disabled={!canSubmit || busy}>
+                  Connect
                 </Button>
               </div>
             </form>
           </motion.aside>
+
+          <ConnectStatusDialog
+            status={connectStatus}
+            catalogName={name.trim()}
+            message={error}
+          />
         </>
       )}
     </AnimatePresence>
