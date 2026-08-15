@@ -43,7 +43,7 @@ export function AddCatalogPanel({ open, onClose }: AddCatalogPanelProps) {
 
   const [engine, setEngine] = useState<'postgresql' | 'mysql' | 'sqlite'>('postgresql');
   const [host, setHost] = useState('');
-  const [port, setPort] = useState('5432');
+  const [port, setPort] = useState('3306');
   const [database, setDatabase] = useState('');
   const [user, setUser] = useState('');
   const [password, setPassword] = useState('');
@@ -101,7 +101,7 @@ export function AddCatalogPanel({ open, onClose }: AddCatalogPanelProps) {
       catalog_type: 'sql',
       database_type: engine,
       host: host.trim(),
-      port: Number(port) || 5432,
+      port: Number(port) || 3306,
       username: user.trim(),
       password,
       database: database.trim(),

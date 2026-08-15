@@ -12,7 +12,6 @@ import {
   ApiError,
   createSession,
   deleteCatalog as deleteCatalogRequest,
-  deleteSession,
   listCatalogs,
 } from '../api/client';
 import { runTurn } from '../api/sse';
@@ -23,6 +22,13 @@ import type {
 } from '../api/types';
 
 const ACTIVE_CATALOG_KEY = 'lakegen.activeCatalog';
+const EMPTY_MESSAGES: Message[] = [];
+
+interface Conversation {
+  sessionId: string;
+  messages: Message[];
+  isStreaming: boolean;
+}
 
 interface LakeGenValue {
   catalogs: CatalogResponse[];
@@ -54,10 +60,19 @@ export function LakeGenProvider({ children }: { children: React.ReactNode }) {
   const [activeCatalogName, setActiveCatalogNameState] = useState<string | null>(
     () => localStorage.getItem(ACTIVE_CATALOG_KEY),
   );
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [isStreaming, setIsStreaming] = useState(false);
-  const sessionIdRef = useRef<string | null>(null);
-  const abortRef = useRef<AbortController | null>(null);
+  const [conversations, setConversations] = useState<Record<string, Conversation>>({});
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
+  const activeSessionIdRef = useRef<string | null>(null);
+  const sessionGenerationRef = useRef(0);
+  const pendingSessionRef = useRef<{
+    generation: number;
+    promise: Promise<string>;
+  } | null>(null);
+  const abortsRef = useRef(new Map<string, AbortController>());
+
+  const activeConversation = activeSessionId ? conversations[activeSessionId] : undefined;
+  const messages = activeConversation?.messages ?? EMPTY_MESSAGES;
+  const isStreaming = activeConversation?.isStreaming ?? false;
 
   const activeCatalog = useMemo(
     () => catalogs.find((c) => c.name === activeCatalogName) ?? null,
@@ -93,6 +108,45 @@ export function LakeGenProvider({ children }: { children: React.ReactNode }) {
     void refreshCatalogs();
   }, [refreshCatalogs]);
 
+  const ensureSession = useCallback((generation: number): Promise<string> => {
+    const activeSessionId = activeSessionIdRef.current;
+    if (sessionGenerationRef.current === generation && activeSessionId) {
+      return Promise.resolve(activeSessionId);
+    }
+
+    const pending = pendingSessionRef.current;
+    if (pending?.generation === generation) return pending.promise;
+
+    const promise = createSession()
+      .then(({ id }) => {
+        setConversations((prev) => ({
+          ...prev,
+          [id]: {
+            sessionId: id,
+            messages: [],
+            isStreaming: false,
+          },
+        }));
+        if (sessionGenerationRef.current === generation) {
+          activeSessionIdRef.current = id;
+          setActiveSessionId(id);
+        }
+        return id;
+      })
+      .finally(() => {
+        if (pendingSessionRef.current?.promise === promise) {
+          pendingSessionRef.current = null;
+        }
+      });
+
+    pendingSessionRef.current = { generation, promise };
+    return promise;
+  }, []);
+
+  useEffect(() => {
+    void ensureSession(sessionGenerationRef.current).catch(() => undefined);
+  }, [ensureSession]);
+
   const addCatalog = useCallback(async (body: CatalogCreateRequest) => {
     const created = await addCatalogRequest(body);
     setCatalogs((prev) => [...prev.filter((c) => c.name !== created.name), created]);
@@ -119,70 +173,104 @@ export function LakeGenProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const stopStreaming = useCallback(() => {
-    abortRef.current?.abort();
+    const sessionId = activeSessionIdRef.current;
+    if (sessionId) abortsRef.current.get(sessionId)?.abort();
   }, []);
 
   const newConversation = useCallback(() => {
-    abortRef.current?.abort();
-    const sessionId = sessionIdRef.current;
-    sessionIdRef.current = null;
-    setMessages([]);
-    setIsStreaming(false);
-    if (sessionId) {
-      void deleteSession(sessionId).catch(() => undefined);
-    }
-  }, []);
+    const generation = sessionGenerationRef.current + 1;
+    sessionGenerationRef.current = generation;
+    activeSessionIdRef.current = null;
+    setActiveSessionId(null);
+    void ensureSession(generation).catch(() => undefined);
+  }, [ensureSession]);
 
-  const patchAssistant = useCallback((id: string, patch: (message: Message) => Message) => {
-    setMessages((prev) => prev.map((m) => (m.id === id ? patch(m) : m)));
-  }, []);
+  const patchAssistant = useCallback(
+    (sessionId: string, id: string, patch: (message: Message) => Message) => {
+      setConversations((prev) => {
+        const conversation = prev[sessionId];
+        if (!conversation) return prev;
+        return {
+          ...prev,
+          [sessionId]: {
+            ...conversation,
+            messages: conversation.messages.map((message) =>
+              message.id === id ? patch(message) : message,
+            ),
+          },
+        };
+      });
+    },
+    [],
+  );
 
   const sendMessage = useCallback(
     async (text: string) => {
       const trimmed = text.trim();
-      if (!trimmed || isStreaming) return;
+      if (!trimmed) return;
+
+      const generation = sessionGenerationRef.current;
+      let sessionId: string;
+      try {
+        sessionId = await ensureSession(generation);
+      } catch {
+        return;
+      }
+      if (
+        sessionGenerationRef.current !== generation ||
+        activeSessionIdRef.current !== sessionId ||
+        abortsRef.current.has(sessionId)
+      ) {
+        return;
+      }
 
       const assistantId = uid('msg');
-      setMessages((prev) => [
-        ...prev,
-        { id: uid('msg'), role: 'user', text: trimmed, createdAt: Date.now() },
-        {
-          id: assistantId,
-          role: 'assistant',
-          text: '',
-          streaming: true,
-          createdAt: Date.now(),
-        },
-      ]);
-      setIsStreaming(true);
-
       const controller = new AbortController();
-      abortRef.current = controller;
+      abortsRef.current.set(sessionId, controller);
+      setConversations((prev) => {
+        const conversation = prev[sessionId];
+        if (!conversation) return prev;
+        return {
+          ...prev,
+          [sessionId]: {
+            ...conversation,
+            isStreaming: true,
+            messages: [
+              ...conversation.messages,
+              { id: uid('msg'), role: 'user', text: trimmed, createdAt: Date.now() },
+              {
+                id: assistantId,
+                role: 'assistant',
+                text: '',
+                streaming: true,
+                createdAt: Date.now(),
+              },
+            ],
+          },
+        };
+      });
 
       try {
-        if (!sessionIdRef.current) {
-          sessionIdRef.current = (await createSession()).id;
-        }
         await runTurn(
-          sessionIdRef.current,
+          sessionId,
           {
             text: trimmed,
             catalog_name: activeCatalogName,
           },
           (event) => {
             if (event.type === 'text_delta') {
-              patchAssistant(assistantId, (m) => ({
+              patchAssistant(sessionId, assistantId, (m) => ({
                 ...m,
                 text: m.text + event.data.text,
               }));
             } else if (event.type === 'turn_done') {
-              patchAssistant(assistantId, (m) => ({
+              patchAssistant(sessionId, assistantId, (m) => ({
                 ...m,
                 text: event.data.final_message || m.text,
                 streaming: false,
               }));
             } else if (event.type === 'error') {
-              patchAssistant(assistantId, (m) => ({
+              patchAssistant(sessionId, assistantId, (m) => ({
                 ...m,
                 streaming: false,
                 error: event.data.message,
@@ -191,25 +279,37 @@ export function LakeGenProvider({ children }: { children: React.ReactNode }) {
           },
           controller.signal,
         );
-        patchAssistant(assistantId, (m) => ({ ...m, streaming: false }));
+        patchAssistant(sessionId, assistantId, (m) => ({ ...m, streaming: false }));
       } catch (err) {
         if (controller.signal.aborted) {
-          patchAssistant(assistantId, (m) => ({ ...m, streaming: false }));
+          patchAssistant(sessionId, assistantId, (m) => ({ ...m, streaming: false }));
         } else {
           const message =
             err instanceof ApiError ? err.message : err instanceof Error ? err.message : 'Turn failed';
-          patchAssistant(assistantId, (m) => ({
+          patchAssistant(sessionId, assistantId, (m) => ({
             ...m,
             streaming: false,
             error: message,
           }));
         }
       } finally {
-        setIsStreaming(false);
-        abortRef.current = null;
+        if (abortsRef.current.get(sessionId) === controller) {
+          abortsRef.current.delete(sessionId);
+          setConversations((prev) => {
+            const conversation = prev[sessionId];
+            if (!conversation) return prev;
+            return {
+              ...prev,
+              [sessionId]: {
+                ...conversation,
+                isStreaming: false,
+              },
+            };
+          });
+        }
       }
     },
-    [activeCatalogName, isStreaming, patchAssistant],
+    [activeCatalogName, ensureSession, patchAssistant],
   );
 
   const value: LakeGenValue = {
