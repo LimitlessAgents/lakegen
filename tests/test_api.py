@@ -178,6 +178,15 @@ def test_fastapi_http_error_uses_service_error_contract(client: TestClient) -> N
     assert res.json() == {"code": "NOT_FOUND", "message": "Not Found"}
 
 
+def test_unsupported_method_is_not_a_server_failure(client: TestClient) -> None:
+    res = client.request("PATCH", "/v1/catalogs")
+    assert res.status_code == 405
+    assert res.json() == {
+        "code": "METHOD_NOT_ALLOWED",
+        "message": "Method Not Allowed",
+    }
+
+
 def test_delete_catalog(client: TestClient, catalogs: MagicMock) -> None:
     res = client.delete("/v1/catalogs/prod")
     assert res.status_code == 204

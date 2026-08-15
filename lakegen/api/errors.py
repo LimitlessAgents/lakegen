@@ -16,6 +16,7 @@ from lakegen.core.error.code import ErrorCode
 _STATUS_BY_CODE: dict[ErrorCode, int] = {
     ErrorCode.INVALID_ARGUMENT: 400,
     ErrorCode.INVALID_TYPE: 400,
+    ErrorCode.METHOD_NOT_ALLOWED: 405,
     ErrorCode.NOT_FOUND: 404,
     ErrorCode.ALREADY_EXISTS: 409,
     ErrorCode.UNAUTHENTICATED: 401,
