@@ -6,8 +6,8 @@ const styles: Record<CatalogType, string> = {
   sql: 'text-[#3F5C86] bg-[#EEF2F8] border-[#D9E2EF]',
 };
 
-export function TypeBadge({ type }: { type: CatalogType | null }) {
-  if (!type) {
+export function TypeBadge({ type }: { type?: string | null }) {
+  if (!type || !(type in styles)) {
     return (
       <span className="inline-flex h-[18px] items-center rounded border border-line px-1.5 font-mono text-[10px] font-medium tracking-wider text-ink-faint">
         —
@@ -16,7 +16,7 @@ export function TypeBadge({ type }: { type: CatalogType | null }) {
   }
   return (
     <span
-      className={`inline-flex h-[18px] items-center rounded border px-1.5 font-mono text-[10px] font-medium tracking-wider ${styles[type]}`}
+      className={`inline-flex h-[18px] items-center rounded border px-1.5 font-mono text-[10px] font-medium tracking-wider ${styles[type as CatalogType]}`}
     >
       {type.toUpperCase()}
     </span>
