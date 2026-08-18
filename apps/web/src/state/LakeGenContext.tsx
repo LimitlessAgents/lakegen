@@ -336,3 +336,4 @@ export function useLakeGen(): LakeGenValue {
   if (!context) throw new Error('useLakeGen must be used within LakeGenProvider');
   return context;
 }
+
