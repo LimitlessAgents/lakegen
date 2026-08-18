@@ -266,7 +266,6 @@ export function LakeGenProvider({ children }: { children: React.ReactNode }) {
             } else if (event.type === 'turn_done') {
               patchAssistant(sessionId, assistantId, (m) => ({
                 ...m,
-                text: event.data.final_message || m.text,
                 streaming: false,
               }));
             } else if (event.type === 'error') {
