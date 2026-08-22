@@ -6,7 +6,7 @@ from lakegen.inference import Message
 class StopReason(StrEnum):
     COMPLETED = "completed"
     MAX_ITERATIONS_EXCEEDED = "max_iterations_exceeded"
-    KEYBOARD_INTERRUPTION = "keyboard_interruption"
+    CANCELLED = "cancelled"
     INTERNAL_ERROR = "internal_error"
 
 

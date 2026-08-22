@@ -1,4 +1,5 @@
 import json
+import threading
 from typing import Any, Iterator
 
 import openai
@@ -257,6 +258,7 @@ class _OpenAI:
         request: ChatRequest,
         *,
         inactivity_timeout: float,
+        cancel_event: threading.Event,
     ) -> Iterator[StreamChunk]:
         """Stream Responses API events into lakegen ``StreamChunk`` values.
 
@@ -264,6 +266,7 @@ class _OpenAI:
         and are held until ``response.completed``, then emitted on the final
         chunk with ``done=True``.
         """
+        stream = None
         try:
             stream = self._get_client().responses.create(
                 model=request.model,
@@ -278,6 +281,8 @@ class _OpenAI:
             tool_calls: list[ToolCall] = []
 
             for event in stream:
+                if cancel_event.is_set():
+                    break
                 if event.type == "response.output_text.delta":
                     yield StreamChunk(text=event.delta)
 
@@ -315,6 +320,10 @@ class _OpenAI:
             raise
         except Exception as error:
             raise self._map_error(error, request.model) from error
+        finally:
+            close = getattr(stream, "close", None) if stream is not None else None
+            if close is not None:
+                close()
 
 
 registry.register(_OpenAI())

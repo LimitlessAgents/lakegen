@@ -60,6 +60,7 @@ class Session:
         provider: str | None = None,
         stream: bool = False,
         on_chunk: Callable[[StreamChunk], None] | None = None,
+        cancel_event: threading.Event | None = None,
     ) -> AgentLoopResult:
         """Run one user turn. Serialized per session so messages stay consistent.
 
@@ -98,6 +99,11 @@ class Session:
                 catalog_switched_from=switched_from,
                 stream=stream,
                 on_chunk=on_chunk,
+                cancel_event=(
+                    cancel_event
+                    if cancel_event is not None
+                    else threading.Event()
+                ),
             )
 
     def spawn(self, config: AgentConfig) -> Session:

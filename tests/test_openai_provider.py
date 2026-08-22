@@ -1,6 +1,7 @@
 """Tests for lakegen.inference.providers.openai._OpenAI."""
 
 from types import SimpleNamespace
+import threading
 
 import httpx
 import openai
@@ -73,7 +74,7 @@ def test_stream_forwards_timeout(provider, mocker):
     client.responses.create.return_value = iter(())
     provider.client = client
 
-    list(provider.stream(_request(), inactivity_timeout=21.0))
+    list(provider.stream(_request(), inactivity_timeout=21.0, cancel_event=threading.Event()))
 
     assert client.responses.create.call_args.kwargs["timeout"] == 21.0
     assert client.responses.create.call_args.kwargs["stream"] is True
@@ -192,9 +193,54 @@ def test_stream_preserves_sdk_cause(provider, mocker):
     provider.client = client
 
     with pytest.raises(BaseError) as exc_info:
-        list(provider.stream(_request(), inactivity_timeout=10.0))
+        list(provider.stream(_request(), inactivity_timeout=10.0, cancel_event=threading.Event()))
 
     err = exc_info.value
     assert err.code == ErrorCode.INFERENCE_FAILED
     assert err.is_retryable is True
     assert isinstance(err.__cause__, openai.APITimeoutError)
+
+
+def test_stream_stops_and_closes_on_cancel(provider):
+    cancel_event = threading.Event()
+
+    class _Stream:
+        def __init__(self) -> None:
+            self.closed = False
+            self._n = 0
+
+        def __iter__(self):
+            return self
+
+        def __next__(self):
+            self._n += 1
+            if self._n == 1:
+                return SimpleNamespace(type="response.output_text.delta", delta="a")
+            if self._n == 2:
+                cancel_event.set()
+                return SimpleNamespace(type="response.output_text.delta", delta="b")
+            if self._n == 3:
+                return SimpleNamespace(
+                    type="response.completed",
+                    response=SimpleNamespace(usage=None),
+                )
+            raise StopIteration
+
+        def close(self) -> None:
+            self.closed = True
+
+    stream = _Stream()
+    provider.client = SimpleNamespace(
+        responses=SimpleNamespace(create=lambda **kwargs: stream)
+    )
+
+    chunks = list(
+        provider.stream(
+            _request(),
+            inactivity_timeout=10.0,
+            cancel_event=cancel_event,
+        )
+    )
+
+    assert [c.text for c in chunks] == ["a"]
+    assert stream.closed is True

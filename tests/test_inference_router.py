@@ -1,6 +1,7 @@
 """Tests for lakegen.inference.router.Router."""
 
 from collections.abc import Iterator
+import threading
 
 import pytest
 
@@ -68,6 +69,7 @@ class FakeProvider:
         request: ChatRequest,
         *,
         inactivity_timeout: float,
+        cancel_event,
     ) -> Iterator[StreamChunk]:
         self.stream_calls += 1
         if self._stream is not None:
@@ -293,11 +295,11 @@ def test_stream_retries_before_first_chunk():
     delays: list[float] = []
     router = _router(provider, delays=delays)
 
-    chunks = list(router.stream("fake", _request()))
+    chunks = list(router.stream("fake", _request(), cancel_event=threading.Event()))
 
     assert [chunk.text for chunk in chunks if chunk.text] == ["hello"]
     assert attempts["count"] == 2
-    assert delays == [0.25]
+    assert sum(delays) == pytest.approx(0.25)
 
 
 def test_stream_does_not_retry_after_first_chunk():
@@ -318,8 +320,45 @@ def test_stream_does_not_retry_after_first_chunk():
     router = _router(provider, delays=delays)
 
     with pytest.raises(BaseError) as exc_info:
-        list(router.stream("fake", _request()))
+        list(router.stream("fake", _request(), cancel_event=threading.Event()))
 
     assert exc_info.value.message == "mid stream"
     assert attempts["count"] == 1
     assert delays == []
+
+
+def test_stream_does_not_retry_after_cancel():
+    attempts = {"count": 0}
+    cancel_event = threading.Event()
+
+    def fail_before_output(request, *, inactivity_timeout):
+        attempts["count"] += 1
+        raise BaseError(
+            ErrorCode.INFERENCE_FAILED,
+            "stream start failed",
+            is_retryable=True,
+            is_user_fixable=False,
+        )
+
+    provider = FakeProvider(stream=fail_before_output)
+    delays: list[float] = []
+
+    def sleep(delay: float) -> None:
+        delays.append(delay)
+        cancel_event.set()
+
+    registry = InferenceRegistry()
+    registry.register(provider)
+    router = Router(
+        policy=InferencePolicy(jitter=True),
+        registry=registry,
+        sleep=sleep,
+        random=lambda: 0.5,
+    )
+
+    chunks = list(router.stream("fake", _request(), cancel_event=cancel_event))
+
+    assert chunks == []
+    assert attempts["count"] == 1
+    assert delays == [0.05]
+

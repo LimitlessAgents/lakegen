@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
+import threading
+
 from lakegen.api.run.runner import AgentEvent, AgentEventType, TurnResult
 from lakegen.core.error.base import BaseError
 from lakegen.core.error.code import ErrorCode
@@ -43,11 +45,12 @@ class LocalRunAdapter:
         model: str | None = None,
         provider: str | None = None,
         on_event: Callable[[AgentEvent], None] | None = None,
+        cancel_event: threading.Event,
     ) -> TurnResult:
         session = self._require_owner(session_id, owner_id)
 
         def _on_chunk(chunk: StreamChunk) -> None:
-            if on_event is None:
+            if on_event is None or cancel_event.is_set():
                 return
             if chunk.text:
                 on_event(
@@ -64,6 +67,7 @@ class LocalRunAdapter:
             provider=provider,
             stream=True,
             on_chunk=_on_chunk,
+            cancel_event=cancel_event
         )
 
         turn = TurnResult(

@@ -5,6 +5,8 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any, Protocol, runtime_checkable
 
+import threading
+
 from lakegen.agent import StopReason
 
 
@@ -47,4 +49,5 @@ class AgentRunner(Protocol):
         model: str | None = None,
         provider: str | None = None,
         on_event: Callable[[AgentEvent], None] | None = None,
+        cancel_event: threading.Event,
     ) -> TurnResult: ...
