@@ -244,3 +244,48 @@ def test_stream_stops_and_closes_on_cancel(provider):
 
     assert [c.text for c in chunks] == ["a"]
     assert stream.closed is True
+
+
+def test_stream_close_unblocks_blocked_next(provider):
+    started = threading.Event()
+    cancel_event = threading.Event()
+
+    class _Stream:
+        def __init__(self) -> None:
+            self.closed = False
+            self._gate = threading.Event()
+
+        def __iter__(self):
+            return self
+
+        def __next__(self):
+            started.set()
+            if not self._gate.wait(timeout=5):
+                raise TimeoutError("stream was not closed")
+            raise StopIteration
+
+        def close(self) -> None:
+            self.closed = True
+            self._gate.set()
+
+    stream = _Stream()
+    provider.client = SimpleNamespace(
+        responses=SimpleNamespace(create=lambda **kwargs: stream)
+    )
+
+    def consume() -> None:
+        list(
+            provider.stream(
+                _request(),
+                inactivity_timeout=10.0,
+                cancel_event=cancel_event,
+            )
+        )
+
+    worker = threading.Thread(target=consume)
+    worker.start()
+    assert started.wait(timeout=2)
+    cancel_event.set()
+    worker.join(timeout=2)
+    assert worker.is_alive() is False
+    assert stream.closed is True
