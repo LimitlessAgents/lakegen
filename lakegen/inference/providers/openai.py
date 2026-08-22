@@ -1,4 +1,5 @@
 import json
+import threading
 from typing import Any, Iterator
 
 import openai
@@ -257,6 +258,7 @@ class _OpenAI:
         request: ChatRequest,
         *,
         inactivity_timeout: float,
+        cancel_event: threading.Event,
     ) -> Iterator[StreamChunk]:
         """Stream Responses API events into lakegen ``StreamChunk`` values.
 
@@ -264,6 +266,9 @@ class _OpenAI:
         and are held until ``response.completed``, then emitted on the final
         chunk with ``done=True``.
         """
+        stream = None
+        done = threading.Event()
+        waiter: threading.Thread | None = None
         try:
             stream = self._get_client().responses.create(
                 model=request.model,
@@ -275,9 +280,20 @@ class _OpenAI:
                 timeout=inactivity_timeout,
             )
 
+            # The worker blocks in ``next(stream)``. Close from this waiter so
+            # cancel does not wait for the next model token or inactivity timeout.
+            waiter = threading.Thread(
+                target=_close_stream_on_cancel,
+                args=(stream, cancel_event, done),
+                daemon=True,
+            )
+            waiter.start()
+
             tool_calls: list[ToolCall] = []
 
             for event in stream:
+                if cancel_event.is_set():
+                    break
                 if event.type == "response.output_text.delta":
                     yield StreamChunk(text=event.delta)
 
@@ -314,7 +330,35 @@ class _OpenAI:
         except BaseError:
             raise
         except Exception as error:
+            if cancel_event.is_set():
+                return
             raise self._map_error(error, request.model) from error
+        finally:
+            done.set()
+            _close_stream(stream)
+            if waiter is not None:
+                waiter.join(timeout=1.0)
+
+
+def _close_stream(stream: Any) -> None:
+    close = getattr(stream, "close", None) if stream is not None else None
+    if close is None:
+        return
+    try:
+        close()
+    except Exception:
+        pass
+
+
+def _close_stream_on_cancel(
+    stream: Any,
+    cancel_event: threading.Event,
+    done: threading.Event,
+) -> None:
+    while not done.is_set():
+        if cancel_event.wait(timeout=0.05):
+            _close_stream(stream)
+            return
 
 
 registry.register(_OpenAI())

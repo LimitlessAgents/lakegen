@@ -1,6 +1,8 @@
 from dataclasses import dataclass
 from typing import Iterator, Protocol, runtime_checkable
 
+import threading
+
 from lakegen.inference.model import ChatRequest, ChatResponse, StreamChunk
 
 
@@ -51,6 +53,7 @@ class InferenceProvider(Protocol):
         request: ChatRequest,
         *,
         inactivity_timeout: float,
+        cancel_event: threading.Event,
     ) -> Iterator[StreamChunk]:
         """Yield streaming chunks until the response completes.
 

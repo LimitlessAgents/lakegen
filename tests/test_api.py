@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from unittest.mock import MagicMock
+import threading
 
 import pytest
 from fastapi.testclient import TestClient
@@ -61,6 +62,7 @@ def agent_runner() -> MagicMock:
         model=None,
         provider=None,
         on_event=None,
+        cancel_event=None,
     ):
         if on_event is not None:
             on_event(
@@ -279,7 +281,16 @@ def test_local_run_adapter_create_and_turn() -> None:
     session.state.owner_id = "alice"
     manager.create.return_value = session
 
-    def _send(text, *, catalog_name=None, model=None, provider=None, stream=False, on_chunk=None):
+    def _send(
+        text,
+        *,
+        catalog_name=None,
+        model=None,
+        provider=None,
+        stream=False,
+        on_chunk=None,
+        cancel_event=None,
+    ):
         if on_chunk is not None:
             from lakegen.inference import StreamChunk
 
@@ -307,6 +318,7 @@ def test_local_run_adapter_create_and_turn() -> None:
         catalog_name="prod",
         model="m",
         on_event=events.append,
+        cancel_event=threading.Event(),
     )
     assert result.final_message == "yo"
     session.send.assert_called_once()
@@ -345,6 +357,8 @@ def test_local_run_adapter_rejects_non_owner_turn() -> None:
 
     adapter = LocalRunAdapter(manager=manager)
     with pytest.raises(BaseError) as exc_info:
-        adapter.run_turn(_SESSION_ID, "hi", owner_id="bob")
+        adapter.run_turn(
+            _SESSION_ID, "hi", owner_id="bob", cancel_event=threading.Event()
+        )
     assert exc_info.value.code == ErrorCode.NOT_FOUND
     session.send.assert_not_called()

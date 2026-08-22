@@ -144,6 +144,55 @@ def test_non_serializable_result_caught():
     assert "non-serializable" in out.error["message"]
 
 
+def test_dispatch_stops_remaining_tools_on_cancel():
+    import threading
+
+    calls: list[str] = []
+
+    def handler(arguments: _SimpleArguments):
+        calls.append(arguments.value)
+        return {"echo": arguments.value}
+
+    rt, name = _make_runtime_with_tool(handler)
+    cancel_event = threading.Event()
+    cancel_event.set()
+    results = rt.dispatch(
+        [
+            ToolCall(id="c1", name=name, arguments={"value": "one"}),
+            ToolCall(id="c2", name=name, arguments={"value": "two"}),
+        ],
+        catalog_name="prod",
+        cancel_event=cancel_event,
+    )
+    assert results == []
+    assert calls == []
+
+
+def test_dispatch_runs_until_cancel():
+    import threading
+
+    calls: list[str] = []
+    cancel_event = threading.Event()
+
+    def handler(arguments: _SimpleArguments):
+        calls.append(arguments.value)
+        cancel_event.set()
+        return {"echo": arguments.value}
+
+    rt, name = _make_runtime_with_tool(handler)
+    results = rt.dispatch(
+        [
+            ToolCall(id="c1", name=name, arguments={"value": "one"}),
+            ToolCall(id="c2", name=name, arguments={"value": "two"}),
+        ],
+        catalog_name="prod",
+        cancel_event=cancel_event,
+    )
+    assert len(results) == 1
+    assert calls == ["one"]
+
+
+
 def test_non_dict_arguments_returns_invalid_type():
     rt, name = _make_runtime_with_tool(lambda a: {})
     out = _run(rt, name, "not-a-dict")

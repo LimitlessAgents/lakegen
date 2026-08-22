@@ -1,4 +1,5 @@
 import json
+import threading
 
 from pydantic import ValidationError
 
@@ -33,14 +34,17 @@ class ToolRuntime:
         tools_to_call: list[ToolCall],
         *,
         catalog_name: str,
+        cancel_event: threading.Event | None = None,
     ) -> list[ToolOutput]:
         """Run each requested tool and collect one ``ToolOutput`` per call."""
         if not tools_to_call:
             return []
-        return [
-            self._run_one(call, catalog_name=catalog_name)
-            for call in tools_to_call
-        ]
+        outputs: list[ToolOutput] = []
+        for call in tools_to_call:
+            if cancel_event is not None and cancel_event.is_set():
+                break
+            outputs.append(self._run_one(call, catalog_name=catalog_name))
+        return outputs
 
     def _run_one(self, call: ToolCall, *, catalog_name: str) -> ToolOutput:
 

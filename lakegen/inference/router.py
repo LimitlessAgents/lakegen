@@ -2,6 +2,8 @@ import random as random_module
 import time
 from collections.abc import Callable, Iterator
 
+import threading
+
 from lakegen.core.error.base import BaseError
 from lakegen.core.error.code import ErrorCode
 from lakegen.inference.model import ChatRequest, ChatResponse, StreamChunk
@@ -72,7 +74,13 @@ class Router:
 
         raise RuntimeError("unreachable")
 
-    def stream(self, provider: str, request: ChatRequest) -> Iterator[StreamChunk]:
+    def stream(
+        self,
+        provider: str,
+        request: ChatRequest,
+        *,
+        cancel_event: threading.Event,
+    ) -> Iterator[StreamChunk]:
         """Stream a chat request with retry only before the first chunk.
 
         Failures while establishing the stream (or before any ``StreamChunk``
@@ -86,19 +94,25 @@ class Router:
         resolved_provider = self._resolve(provider)
 
         for attempt in range(1, self.policy.max_attempts + 1):
+            if cancel_event.is_set():
+                return
             yielded = False
             try:
                 for chunk in resolved_provider.stream(
                     request,
                     inactivity_timeout=self.policy.inactivity_timeout,
+                    cancel_event=cancel_event,
                 ):
                     yielded = True
                     yield chunk
                 return
             except BaseError as error:
+                if cancel_event.is_set():
+                    return
                 if yielded or not self._should_retry(error, attempt):
                     raise
-                self._backoff(attempt, error)
+                if not self._backoff(attempt, error, cancel_event=cancel_event):
+                    return
             except Exception as error:
                 # Catch unexpected errors and expose a structured BaseError.
                 raise BaseError(
@@ -130,8 +144,14 @@ class Router:
             and attempt < self.policy.max_attempts
         )
 
-    def _backoff(self, attempt: int, error: BaseError) -> None:
-        """Sleep before the next attempt.
+    def _backoff(
+        self,
+        attempt: int,
+        error: BaseError,
+        *,
+        cancel_event: threading.Event | None = None,
+    ) -> bool:
+        """Sleep before the next attempt. Return False if cancelled mid-wait.
 
         Prefer a numeric ``retry_after`` from the error details when present
         (e.g. from an HTTP ``Retry-After`` header). Otherwise use capped
@@ -148,7 +168,24 @@ class Router:
             )
             if self.policy.jitter:
                 delay *= self._random()
-        self._sleep(delay)
+        return self._wait(delay, cancel_event=cancel_event)
+
+    def _wait(
+        self,
+        delay: float,
+        *,
+        cancel_event: threading.Event | None = None,
+    ) -> bool:
+        """Sleep ``delay`` seconds. Return False if ``cancel_event`` is set."""
+        remaining = delay
+        slice_s = 0.05
+        while remaining > 0:
+            if cancel_event is not None and cancel_event.is_set():
+                return False
+            step = remaining if cancel_event is None else min(slice_s, remaining)
+            self._sleep(step)
+            remaining -= step
+        return True
 
 
 router = Router()

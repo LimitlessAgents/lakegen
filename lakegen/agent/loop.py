@@ -1,4 +1,5 @@
 import json
+import threading
 from collections.abc import Callable, Iterator
 
 from lakegen.agent.model import (
@@ -39,6 +40,7 @@ class AgentLoop:
         catalog_switched_from: str | None = None,
         stream: bool = False,
         on_chunk: Callable[[StreamChunk], None] | None = None,
+        cancel_event: threading.Event,
     ) -> AgentLoopResult:
         if catalog_switched_from is not None:
             conversation.messages.append(
@@ -64,6 +66,9 @@ class AgentLoop:
         response_text = ""
 
         while turns < agent_config.max_turns:
+            if cancel_event.is_set():
+                break
+
             turns += 1
 
             chat_request = ChatRequest(
@@ -78,7 +83,11 @@ class AgentLoop:
                 request=chat_request,
                 stream=stream,
                 on_chunk=on_chunk,
+                cancel_event=cancel_event,
             )
+
+            if cancel_event.is_set():
+                break
 
             response_text = chat_response.message.content or ""
             tool_calls = chat_response.message.tool_calls
@@ -92,9 +101,13 @@ class AgentLoop:
                     stop_reason=StopReason.COMPLETED,
                 )
 
+            if cancel_event.is_set():
+                break
+
             tools_output: list[ToolOutput] = self._tools.dispatch(
                 tool_calls,
                 catalog_name=catalog_name,
+                cancel_event=cancel_event,
             )
 
             for output in tools_output:
@@ -113,6 +126,15 @@ class AgentLoop:
                     )
                 )
 
+        # TODO(cancel): Roll back conversation to the pre-invoke checkpoint;
+        # cancel exits without reverting mutations today.
+        if cancel_event.is_set():
+            return AgentLoopResult(
+                final_message=response_text,
+                transcript=conversation,
+                stop_reason=StopReason.CANCELLED,
+            )
+
         return AgentLoopResult(
             final_message=response_text,
             transcript=conversation,
@@ -125,25 +147,30 @@ class AgentLoop:
         request: ChatRequest,
         stream: bool,
         on_chunk: Callable[[StreamChunk], None] | None,
+        cancel_event: threading.Event,
     ) -> ChatResponse:
         if not stream:
             return self._router.complete(provider, request)
 
         return self._consume_stream(
-            self._router.stream(provider, request),
+            self._router.stream(provider, request, cancel_event=cancel_event),
             on_chunk=on_chunk,
+            cancel_event=cancel_event,
         )
 
     def _consume_stream(
         self,
         chunks: Iterator[StreamChunk],
         on_chunk: Callable[[StreamChunk], None] | None,
+        cancel_event: threading.Event,
     ) -> ChatResponse:
         text_parts: list[str] = []
         tool_calls = None
         tokens = None
 
         for chunk in chunks:
+            if cancel_event.is_set():
+                break
             if on_chunk is not None:
                 on_chunk(chunk)
 

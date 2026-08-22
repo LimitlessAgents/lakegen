@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import asyncio
 import json
+import threading
 from collections.abc import AsyncIterator
-from queue import Queue
+from queue import Empty, Queue
 
 from fastapi import APIRouter, Depends, Request
 from sse_starlette.sse import EventSourceResponse
@@ -25,6 +26,7 @@ router = APIRouter(
 
 _turn_semaphore: asyncio.Semaphore | None = None
 _turn_semaphore_limit: int | None = None
+_QUEUE_POLL_S = 0.1
 
 
 def _get_turn_semaphore(limit: int) -> asyncio.Semaphore:
@@ -54,9 +56,12 @@ async def run_turn(
     # Sync queue so worker-thread on_event callbacks and the async sentinel
     # share one ordered channel (asyncio.Queue + call_soon_threadsafe races).
     events: Queue[AgentEvent | None] = Queue()
+    cancel_event = threading.Event()
     sem = _get_turn_semaphore(state.max_in_flight_turns)
 
     def on_event(event: AgentEvent) -> None:
+        if cancel_event.is_set():
+            return
         events.put(event)
 
     async def run_in_background() -> None:
@@ -72,6 +77,7 @@ async def run_turn(
                     model=body.model,
                     provider=body.provider,
                     on_event=on_event,
+                    cancel_event=cancel_event,
                 )
             except BaseError as exc:
                 events.put(
@@ -100,17 +106,19 @@ async def run_turn(
             while True:
                 if await request.is_disconnected():
                     break
-                item = await asyncio.to_thread(events.get)
+                try:
+                    item = await asyncio.to_thread(
+                        events.get, True, _QUEUE_POLL_S
+                    )
+                except Empty:
+                    continue
                 if item is None:
                     break
                 yield _sse_event(item)
         finally:
-            # TODO(cancel-in-flight-turns): When turns become cancellable, cancel
-            # the worker here on disconnect (and roll back or avoid committing
-            # conversation mutations the client never saw). Until then: do not
-            # cancel — asyncio.to_thread is not stopped by CancelledError, so
-            # cancelling would release the semaphore while the turn still runs.
-            # Hold the slot until the worker finishes; SSE just stops yielding.
+            # Cooperative cancel, then wait so the semaphore is not released
+            # while the worker thread is still running.
+            cancel_event.set()
             await asyncio.shield(task)
 
     return EventSourceResponse(event_stream())
