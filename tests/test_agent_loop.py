@@ -69,9 +69,11 @@ class _FakeTools(ToolRuntime):
 
 def test_completed_text_response():
     loop = AgentLoop(router=_FakeRouter(), tool_runtime=_FakeTools())
+    existing = Message(role=Role.ASSISTANT, content="earlier")
+    conversation = Conversation(messages=[existing])
     result = loop.invoke(
         _config(),
-        Conversation(),
+        conversation,
         "hi",
         catalog_name="prod",
         stream=True,
@@ -79,6 +81,11 @@ def test_completed_text_response():
     )
     assert result.stop_reason is StopReason.COMPLETED
     assert result.final_message == "hello"
+    assert conversation.messages == [existing]
+    assert [message.role for message in result.turn_messages.messages] == [
+        Role.USER,
+        Role.ASSISTANT,
+    ]
 
 
 def test_cancel_before_first_model_call():
@@ -121,9 +128,10 @@ def test_cancel_during_stream_does_not_complete():
         cancel_event=cancel_event,
     )
     assert result.stop_reason is StopReason.CANCELLED
-    roles = [m.role for m in conversation.messages]
+    assert conversation.messages == []
+    roles = [m.role for m in result.turn_messages.messages]
     assert Role.ASSISTANT not in roles
-    assert conversation.messages[-1].role is Role.USER
+    assert result.turn_messages.messages[-1].role is Role.USER
 
 
 def test_cancel_skips_tools_after_tool_call():

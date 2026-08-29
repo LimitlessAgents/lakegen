@@ -42,8 +42,15 @@ class AgentLoop:
         on_chunk: Callable[[StreamChunk], None] | None = None,
         cancel_event: threading.Event,
     ) -> AgentLoopResult:
+        working_messages = list(conversation.messages)
+        turn_messages = Conversation()
+
+        def append_message(message: Message) -> None:
+            working_messages.append(message)
+            turn_messages.messages.append(message)
+
         if catalog_switched_from is not None:
-            conversation.messages.append(
+            append_message(
                 Message(
                     role=Role.SYSTEM,
                     content=(
@@ -53,7 +60,7 @@ class AgentLoop:
                 )
             )
 
-        conversation.messages.append(Message(role=Role.USER, content=user_text))
+        append_message(Message(role=Role.USER, content=user_text))
 
         system_prompt = (
             f"{agent_config.system_prompt}\n\n"
@@ -75,7 +82,7 @@ class AgentLoop:
                 model=agent_config.model,
                 system_prompt=system_prompt,
                 tools=self._tools.list_definitions(),
-                messages=conversation.messages,
+                messages=working_messages,
             )
 
             chat_response = self._complete(
@@ -92,12 +99,12 @@ class AgentLoop:
             response_text = chat_response.message.content or ""
             tool_calls = chat_response.message.tool_calls
 
-            conversation.messages.append(chat_response.message)
+            append_message(chat_response.message)
 
             if not tool_calls:
                 return AgentLoopResult(
                     final_message=response_text,
-                    transcript=conversation,
+                    turn_messages=turn_messages,
                     stop_reason=StopReason.COMPLETED,
                 )
 
@@ -111,7 +118,7 @@ class AgentLoop:
             )
 
             for output in tools_output:
-                conversation.messages.append(
+                append_message(
                     Message(
                         role=Role.TOOL,
                         content=json.dumps(
@@ -126,18 +133,16 @@ class AgentLoop:
                     )
                 )
 
-        # TODO(cancel): Roll back conversation to the pre-invoke checkpoint;
-        # cancel exits without reverting mutations today.
         if cancel_event.is_set():
             return AgentLoopResult(
                 final_message=response_text,
-                transcript=conversation,
+                turn_messages=turn_messages,
                 stop_reason=StopReason.CANCELLED,
             )
 
         return AgentLoopResult(
             final_message=response_text,
-            transcript=conversation,
+            turn_messages=turn_messages,
             stop_reason=StopReason.MAX_ITERATIONS_EXCEEDED,
         )
 

@@ -17,7 +17,7 @@ class Conversation:
 @dataclass(frozen=True)
 class AgentLoopResult:
     final_message: str
-    transcript: Conversation
+    turn_messages: Conversation
     stop_reason: StopReason
 
 @dataclass(frozen=True)
