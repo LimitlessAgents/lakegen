@@ -42,8 +42,15 @@ def _config() -> AgentConfig:
     )
 
 
+def _env(persistence=None):
+    return replace(
+        Environment.default(),
+        persistence=persistence if persistence is not None else MagicMock(),
+    )
+
+
 def test_send_uses_per_turn_model(registered_catalogs, monkeypatch):
-    mgr = SessionManager(env=Environment.default())
+    mgr = SessionManager(env=_env())
     session = mgr.create(_config(), owner_id="user-1", catalog_name="prod")
 
     captured: dict = {}
@@ -65,9 +72,7 @@ def test_send_uses_per_turn_model(registered_catalogs, monkeypatch):
 
 def test_send_assigns_and_persists_turn_id(registered_catalogs, monkeypatch):
     persistence = MagicMock()
-    persistence.configured = True
-    env = replace(Environment.default(), persistence=persistence)
-    session = SessionManager(env=env).create(
+    session = SessionManager(env=_env(persistence)).create(
         _config(),
         owner_id="user-1",
         catalog_name="prod",
@@ -119,7 +124,7 @@ def test_send_assigns_and_persists_turn_id(registered_catalogs, monkeypatch):
 
 
 def test_send_switches_catalog(registered_catalogs, monkeypatch):
-    mgr = SessionManager(env=Environment.default())
+    mgr = SessionManager(env=_env())
     session = mgr.create(_config(), owner_id="user-1", catalog_name="prod")
 
     captured: dict = {}
@@ -143,7 +148,7 @@ def test_send_switches_catalog(registered_catalogs, monkeypatch):
 
 
 def test_send_same_catalog_does_not_mark_switch(registered_catalogs, monkeypatch):
-    mgr = SessionManager(env=Environment.default())
+    mgr = SessionManager(env=_env())
     session = mgr.create(_config(), owner_id="user-1", catalog_name="prod")
 
     captured: dict = {}
@@ -163,7 +168,7 @@ def test_send_same_catalog_does_not_mark_switch(registered_catalogs, monkeypatch
 
 
 def test_send_unknown_catalog_raises(registered_catalogs):
-    mgr = SessionManager(env=Environment.default())
+    mgr = SessionManager(env=_env())
     session = mgr.create(_config(), owner_id="user-1", catalog_name="prod")
     with pytest.raises(BaseError, match="not registered"):
         session.send("hello", catalog_name="missing")

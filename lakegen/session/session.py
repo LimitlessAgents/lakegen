@@ -108,12 +108,12 @@ class Session:
                     else threading.Event()
                 ),
             )
-            if self.env.persistence.configured:
-                self.env.persistence.store_turn(
-                    session_id=self.id,
-                    turn_id=turn_id,
-                    result=serialize_agent_loop_result(loop_result),
-                )
+
+            self.env.persistence.store_turn(
+                session_id=self.id,
+                turn_id=turn_id,
+                result=serialize_agent_loop_result(loop_result),
+            )
             self.state.messages.messages.extend(loop_result.turn_messages.messages)
             return SessionTurnResult(id=turn_id, result=loop_result)
 
