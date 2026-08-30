@@ -165,7 +165,7 @@ class AgentLoop:
                     provider=agent_config.provider,
                     request=chat_request,
                     stream=stream,
-                    on_chunk=capture_chunk
+                    on_chunk=capture_chunk,
                     cancel_event=cancel_event,
                 )
 
