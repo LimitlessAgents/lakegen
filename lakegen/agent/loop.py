@@ -43,7 +43,6 @@ class AgentLoop:
         on_chunk: Callable[[StreamChunk], None] | None = None,
         cancel_event: threading.Event,
     ) -> AgentLoopResult:
-        # working_messages = list(conversation.messages)
         turn_messages = Conversation()
         turns = 0
         response_text = ""
@@ -52,7 +51,6 @@ class AgentLoop:
         assistant_appended = True
 
         def append_message(message: Message) -> None:
-            # working_messages.append(message)
             turn_messages.messages.append(message)
 
         def current_messages() -> list[Message]:
