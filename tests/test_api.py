@@ -297,8 +297,10 @@ def test_local_run_adapter_create_and_turn() -> None:
             on_chunk(StreamChunk(text="yo"))
             on_chunk(StreamChunk(done=True))
         return MagicMock(
-            final_message="yo",
-            stop_reason=StopReason.COMPLETED,
+            result=MagicMock(
+                final_message="yo",
+                stop_reason=StopReason.COMPLETED,
+            ),
         )
 
     session.send.side_effect = _send

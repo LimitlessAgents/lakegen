@@ -4,6 +4,10 @@ from lakegen.core.connection import (
     ConnectionRegistry,
     conreg as connection_reg,
 )
+from lakegen.core.persistence import (
+    PostgresPersistence,
+    persistence as persistence_def,
+)
 from lakegen.inference import (
     InferenceRegistry,
     Router,
@@ -15,13 +19,13 @@ from lakegen.tool import (
     registry as tool_reg,
 )
 
-
 @dataclass(frozen=True)
 class Environment:
     tool_registry: ToolRegistry
     connection_registry: ConnectionRegistry
     inference_registry: InferenceRegistry
     inference_router: Router
+    persistence: PostgresPersistence
 
     @classmethod
     def default(cls) -> "Environment":
@@ -30,4 +34,5 @@ class Environment:
             connection_reg,
             inference_reg,
             inference_rout,
+            persistence_def,
         )

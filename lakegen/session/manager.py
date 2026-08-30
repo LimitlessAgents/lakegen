@@ -36,6 +36,8 @@ class SessionManager:
         self.env = env if env is not None else Environment.default()
         self._sessions: dict[str, Session] = {}
         self._lock = threading.Lock()
+        
+        self.env.persistence.ensure_schema()
 
     def create(
         self,

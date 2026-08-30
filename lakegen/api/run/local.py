@@ -71,8 +71,8 @@ class LocalRunAdapter:
         )
 
         turn = TurnResult(
-            final_message=result.final_message,
-            stop_reason=result.stop_reason,
+            final_message=result.result.final_message,
+            stop_reason=result.result.stop_reason,
         )
         if on_event is not None:
             on_event(

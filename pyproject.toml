@@ -20,6 +20,7 @@ dependencies = [
     "fastapi>=0.141.1",
     "uvicorn[standard]>=0.52.1",
     "sse-starlette>=3.4.8",
+    "psycopg>=3.3.4",
 ]
 
 [tool.hatch.build.targets.wheel]

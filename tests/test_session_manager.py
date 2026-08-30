@@ -3,6 +3,8 @@
 import json
 import threading
 import time
+from dataclasses import replace
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -54,8 +56,12 @@ def _config(**overrides) -> AgentConfig:
 _OWNER = "test-user"
 
 
+def _env():
+    return replace(Environment.default(), persistence=MagicMock())
+
+
 def test_create_get_list(registered_catalog):
-    mgr = SessionManager(env=Environment.default())
+    mgr = SessionManager(env=_env())
     a = mgr.create(_config(), owner_id=_OWNER, catalog_name=registered_catalog)
     b = mgr.create(_config(), owner_id=_OWNER, catalog_name=registered_catalog)
 
@@ -66,27 +72,27 @@ def test_create_get_list(registered_catalog):
 
 
 def test_create_without_catalog(registered_catalog):
-    mgr = SessionManager(env=Environment.default())
+    mgr = SessionManager(env=_env())
     session = mgr.create(_config(), owner_id=_OWNER)
     assert session.state.catalog_name is None
     assert session.state.owner_id == _OWNER
 
 
 def test_send_requires_catalog_on_first_turn(registered_catalog):
-    mgr = SessionManager(env=Environment.default())
+    mgr = SessionManager(env=_env())
     session = mgr.create(_config(), owner_id=_OWNER)
     with pytest.raises(BaseError, match="catalog_name is required"):
         session.send("hello")
 
 
 def test_create_unknown_catalog_raises(registered_catalog):
-    mgr = SessionManager(env=Environment.default())
+    mgr = SessionManager(env=_env())
     with pytest.raises(BaseError, match="not registered"):
         mgr.create(_config(), owner_id=_OWNER, catalog_name="missing")
 
 
 def test_spawn_inherits_catalog(registered_catalog):
-    mgr = SessionManager(env=Environment.default())
+    mgr = SessionManager(env=_env())
     parent = mgr.create(_config(), owner_id=_OWNER, catalog_name=registered_catalog)
     child = parent.spawn(_config(system_prompt="child"))
 
@@ -98,7 +104,7 @@ def test_spawn_inherits_catalog(registered_catalog):
 
 
 def test_delete_removes_children_and_unlinks_parent(registered_catalog):
-    mgr = SessionManager(env=Environment.default())
+    mgr = SessionManager(env=_env())
     parent = mgr.create(_config(), owner_id=_OWNER, catalog_name=registered_catalog)
     child = parent.spawn(_config())
     grandchild = child.spawn(_config())
@@ -114,13 +120,13 @@ def test_delete_removes_children_and_unlinks_parent(registered_catalog):
 
 
 def test_get_missing_raises(registered_catalog):
-    mgr = SessionManager(env=Environment.default())
+    mgr = SessionManager(env=_env())
     with pytest.raises(BaseError):
         mgr.get("00000000-0000-0000-0000-000000000099")
 
 
 def test_create_with_missing_parent_raises(registered_catalog):
-    mgr = SessionManager(env=Environment.default())
+    mgr = SessionManager(env=_env())
     with pytest.raises(BaseError):
         mgr.create(
             _config(),
@@ -131,7 +137,7 @@ def test_create_with_missing_parent_raises(registered_catalog):
 
 
 def test_delete_closes_session_so_send_and_spawn_fail(registered_catalog):
-    mgr = SessionManager(env=Environment.default())
+    mgr = SessionManager(env=_env())
     session = mgr.create(_config(), owner_id=_OWNER, catalog_name=registered_catalog)
 
     mgr.delete(session.id)
@@ -144,7 +150,7 @@ def test_delete_closes_session_so_send_and_spawn_fail(registered_catalog):
 
 
 def test_delete_closes_cascaded_children(registered_catalog):
-    mgr = SessionManager(env=Environment.default())
+    mgr = SessionManager(env=_env())
     parent = mgr.create(_config(), owner_id=_OWNER, catalog_name=registered_catalog)
     child = parent.spawn(_config())
     grandchild = child.spawn(_config())
@@ -161,7 +167,7 @@ def test_delete_closes_cascaded_children(registered_catalog):
 
 
 def test_close_blocks_further_send_and_spawn(registered_catalog):
-    mgr = SessionManager(env=Environment.default())
+    mgr = SessionManager(env=_env())
     session = mgr.create(_config(), owner_id=_OWNER, catalog_name=registered_catalog)
 
     session.close()
@@ -177,7 +183,7 @@ def test_close_blocks_further_send_and_spawn(registered_catalog):
 
 def test_delete_does_not_hold_manager_lock_while_closing(registered_catalog):
     """Other sessions stay usable while delete waits on an in-flight turn lock."""
-    mgr = SessionManager(env=Environment.default())
+    mgr = SessionManager(env=_env())
     active = mgr.create(_config(), owner_id=_OWNER, catalog_name=registered_catalog)
     other = mgr.create(_config(), owner_id=_OWNER, catalog_name=registered_catalog)
 
