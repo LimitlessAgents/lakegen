@@ -43,7 +43,7 @@ class AgentLoop:
         on_chunk: Callable[[StreamChunk], None] | None = None,
         cancel_event: threading.Event,
     ) -> AgentLoopResult:
-        working_messages = list(conversation.messages)
+        # working_messages = list(conversation.messages)
         turn_messages = Conversation()
         turns = 0
         response_text = ""
@@ -52,8 +52,11 @@ class AgentLoop:
         assistant_appended = True
 
         def append_message(message: Message) -> None:
-            working_messages.append(message)
+            # working_messages.append(message)
             turn_messages.messages.append(message)
+
+        def current_messages() -> list[Message]:
+            return conversation.messages + turn_messages.messages
 
         def finish(stop_reason: StopReason) -> AgentLoopResult:
             resolved_call_ids = {
@@ -158,7 +161,7 @@ class AgentLoop:
                     model=agent_config.model,
                     system_prompt=system_prompt,
                     tools=self._tools.list_definitions(),
-                    messages=working_messages,
+                    messages=current_messages(),
                 )
 
                 chat_response = self._complete(
