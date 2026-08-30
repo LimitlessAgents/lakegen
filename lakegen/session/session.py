@@ -5,7 +5,7 @@ import uuid
 from collections.abc import Callable
 from typing import TYPE_CHECKING
 
-from lakegen.agent import AgentConfig, AgentLoop
+from lakegen.agent import AgentConfig, AgentLoop, AgentLoopFailure, AgentLoopResult
 from lakegen.agent.serialization import serialize_agent_loop_result
 from lakegen.core.catalog.service import catalog_service
 from lakegen.core.error.base import BaseError
@@ -94,28 +94,39 @@ class Session:
                 provider=provider if provider is not None else base.provider,
                 max_turns=base.max_turns,
             )
-            loop_result = self._loop.invoke(
-                agent_config=agent_config,
-                conversation=self.state.messages,
-                user_text=user_text,
-                catalog_name=self.state.catalog_name,
-                catalog_switched_from=switched_from,
-                stream=stream,
-                on_chunk=on_chunk,
-                cancel_event=(
-                    cancel_event
-                    if cancel_event is not None
-                    else threading.Event()
-                ),
-            )
+            try:
+                loop_result = self._loop.invoke(
+                    agent_config=agent_config,
+                    conversation=self.state.messages,
+                    user_text=user_text,
+                    catalog_name=self.state.catalog_name,
+                    catalog_switched_from=switched_from,
+                    stream=stream,
+                    on_chunk=on_chunk,
+                    cancel_event=(
+                        cancel_event
+                        if cancel_event is not None
+                        else threading.Event()
+                    ),
+                )
+            except AgentLoopFailure as failure:
+                self._persist_and_commit_turn(turn_id, failure.result)
+                raise failure.error.with_traceback(failure.error.__traceback__) from None
 
-            self.env.persistence.store_turn(
-                session_id=self.id,
-                turn_id=turn_id,
-                result=serialize_agent_loop_result(loop_result),
-            )
-            self.state.messages.messages.extend(loop_result.turn_messages.messages)
+            self._persist_and_commit_turn(turn_id, loop_result)
             return SessionTurnResult(id=turn_id, result=loop_result)
+
+    def _persist_and_commit_turn(
+        self,
+        turn_id: str,
+        loop_result: AgentLoopResult,
+    ) -> None:
+        self.env.persistence.store_turn(
+            session_id=self.id,
+            turn_id=turn_id,
+            result=serialize_agent_loop_result(loop_result),
+        )
+        self.state.messages.messages.extend(loop_result.turn_messages.messages)
 
     def spawn(self, config: AgentConfig) -> Session:
         """Create a child session that shares this session's Environment."""

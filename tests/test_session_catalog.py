@@ -7,7 +7,13 @@ from uuid import UUID
 
 import pytest
 
-from lakegen.agent import AgentConfig, AgentLoopResult, Conversation, StopReason
+from lakegen.agent import (
+    AgentConfig,
+    AgentLoopFailure,
+    AgentLoopResult,
+    Conversation,
+    StopReason,
+)
 from lakegen.core.credential import json_store
 from lakegen.core.error.base import BaseError
 from lakegen.inference import Message, Role
@@ -120,6 +126,38 @@ def test_send_assigns_and_persists_turn_id(registered_catalogs, monkeypatch):
             "stop_reason": "completed",
         },
     )
+    assert session.state.messages.messages == turn_messages.messages
+
+
+def test_send_persists_and_commits_crashed_turn(registered_catalogs, monkeypatch):
+    persistence = MagicMock()
+    session = SessionManager(env=_env(persistence)).create(
+        _config(),
+        owner_id="user-1",
+        catalog_name="prod",
+    )
+    turn_messages = Conversation(
+        messages=[
+            Message(role=Role.USER, content="hello"),
+            Message(role=Role.SYSTEM, content="Turn crashed."),
+        ]
+    )
+    loop_result = AgentLoopResult(
+        final_message="",
+        turn_messages=turn_messages,
+        stop_reason=StopReason.INTERNAL_ERROR,
+    )
+    error = RuntimeError("provider disconnected")
+
+    def fail_invoke(**kwargs):
+        raise AgentLoopFailure(loop_result, error)
+
+    monkeypatch.setattr(session._loop, "invoke", fail_invoke)
+
+    with pytest.raises(RuntimeError, match="provider disconnected"):
+        session.send("hello")
+
+    persistence.store_turn.assert_called_once()
     assert session.state.messages.messages == turn_messages.messages
 
 

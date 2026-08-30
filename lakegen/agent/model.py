@@ -20,6 +20,16 @@ class AgentLoopResult:
     turn_messages: Conversation
     stop_reason: StopReason
 
+
+class AgentLoopFailure(Exception):
+    """Unexpected loop failure carrying the partial turn for persistence."""
+
+    def __init__(self, result: AgentLoopResult, error: Exception) -> None:
+        self.result = result
+        self.error = error
+        super().__init__(str(error))
+
+
 @dataclass(frozen=True)
 class AgentConfig:
     model: str

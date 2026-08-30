@@ -3,8 +3,15 @@
 from collections.abc import Iterator
 import threading
 
+import pytest
+
 from lakegen.agent.loop import AgentLoop
-from lakegen.agent.model import AgentConfig, Conversation, StopReason
+from lakegen.agent.model import (
+    AgentConfig,
+    AgentLoopFailure,
+    Conversation,
+    StopReason,
+)
 from lakegen.inference.model import (
     ChatRequest,
     ChatResponse,
@@ -104,9 +111,11 @@ def test_cancel_before_first_model_call():
     assert result.stop_reason is StopReason.CANCELLED
     assert router.stream_calls == 0
     assert result.final_message == ""
+    assert result.turn_messages.messages[-1].role is Role.SYSTEM
+    assert "stopped by the user" in result.turn_messages.messages[-1].content
 
 
-def test_cancel_during_stream_does_not_complete():
+def test_cancel_during_stream_preserves_visible_output():
     cancel_event = threading.Event()
 
     class _CancellingRouter(_FakeRouter):
@@ -130,8 +139,8 @@ def test_cancel_during_stream_does_not_complete():
     assert result.stop_reason is StopReason.CANCELLED
     assert conversation.messages == []
     roles = [m.role for m in result.turn_messages.messages]
-    assert Role.ASSISTANT not in roles
-    assert result.turn_messages.messages[-1].role is Role.USER
+    assert roles == [Role.USER, Role.ASSISTANT, Role.SYSTEM]
+    assert result.turn_messages.messages[1].content == "partial"
 
 
 def test_cancel_skips_tools_after_tool_call():
@@ -158,3 +167,64 @@ def test_cancel_skips_tools_after_tool_call():
     )
     assert result.stop_reason is StopReason.CANCELLED
     assert tools.dispatch_calls == 0
+    assert [message.role for message in result.turn_messages.messages] == [
+        Role.USER,
+        Role.ASSISTANT,
+        Role.TOOL,
+        Role.SYSTEM,
+    ]
+    synthetic_result = result.turn_messages.messages[-2]
+    assert synthetic_result.tool_call_id == "c1"
+    assert '"ok": false' in synthetic_result.content
+
+
+def test_max_iterations_adds_terminal_marker():
+    tool_call = ToolCall(id="c1", name="list_tables", arguments={})
+    loop = AgentLoop(
+        router=_FakeRouter(chunks=[StreamChunk(done=True, tool_calls=[tool_call])]),
+        tool_runtime=_FakeTools(),
+    )
+
+    result = loop.invoke(
+        _config(max_turns=1),
+        Conversation(),
+        "hi",
+        catalog_name="prod",
+        stream=True,
+        cancel_event=threading.Event(),
+    )
+
+    assert result.stop_reason is StopReason.MAX_ITERATIONS_EXCEEDED
+    assert result.turn_messages.messages[-1].role is Role.SYSTEM
+    assert "reaching 1 agent iteration" in result.turn_messages.messages[-1].content
+
+
+def test_crash_preserves_visible_output_and_terminal_marker():
+    class _CrashingRouter(_FakeRouter):
+        def stream(self, provider, request, *, cancel_event):
+            self.stream_calls += 1
+            yield StreamChunk(text="partial")
+            raise RuntimeError("provider disconnected")
+
+    loop = AgentLoop(router=_CrashingRouter(), tool_runtime=_FakeTools())
+
+    with pytest.raises(AgentLoopFailure) as exc_info:
+        loop.invoke(
+            _config(),
+            Conversation(),
+            "hi",
+            catalog_name="prod",
+            stream=True,
+            cancel_event=threading.Event(),
+        )
+
+    failure = exc_info.value
+    assert isinstance(failure.error, RuntimeError)
+    assert failure.result.stop_reason is StopReason.INTERNAL_ERROR
+    assert [message.role for message in failure.result.turn_messages.messages] == [
+        Role.USER,
+        Role.ASSISTANT,
+        Role.SYSTEM,
+    ]
+    assert failure.result.turn_messages.messages[1].content == "partial"
+    assert "crashed" in failure.result.turn_messages.messages[-1].content
