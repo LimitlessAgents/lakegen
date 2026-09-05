@@ -34,6 +34,7 @@ class ToolDefinition:
     arguments_model: ToolArguments = field(repr=False, compare=False)
     # Whether the tool needs external environment/config to be present.
     requires_env: bool = False
+    requires_catalog: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         """Agent-facing view: name, description, and input schema only."""

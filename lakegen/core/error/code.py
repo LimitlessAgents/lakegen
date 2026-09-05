@@ -30,7 +30,7 @@ class ErrorCode(str, Enum):
     # A dependency or backend was unavailable.
     UNAVAILABLE = "UNAVAILABLE"
 
-    # Credential storage backends.
+    # Retained for API compatibility with earlier credential storage errors.
     KEYRING = "KEYRING"
     JSON = "JSON"
 

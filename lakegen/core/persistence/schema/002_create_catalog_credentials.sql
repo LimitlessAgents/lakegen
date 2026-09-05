@@ -1,0 +1,8 @@
+CREATE TABLE IF NOT EXISTS catalogs (
+    name VARCHAR PRIMARY KEY,
+    lakehouse VARCHAR NOT NULL,
+    catalog_type VARCHAR NOT NULL,
+    config JSONB NOT NULL,
+    credentials JSONB NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
