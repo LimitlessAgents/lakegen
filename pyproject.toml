@@ -9,13 +9,10 @@ description = "Autonomous AI Agent For Managing Lakehouses"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
-    "filelock>=3.16.0",
-    "keyring>=25.7.0",
     "openai>=1.0",
     "pyiceberg[glue,pyarrow,s3fs]>=0.11.1",
     "pydantic>=2.0",
     "jsonschema>=4.26.0",
-    "json-repair>=0.61.2",
     "python-dotenv>=1.2.2",
     "fastapi>=0.141.1",
     "uvicorn[standard]>=0.52.1",

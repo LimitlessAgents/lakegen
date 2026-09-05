@@ -1,6 +1,5 @@
 """Tests for session-scoped catalog selection."""
 
-import json
 from dataclasses import replace
 from unittest.mock import MagicMock
 from uuid import UUID
@@ -14,29 +13,15 @@ from lakegen.agent import (
     Conversation,
     StopReason,
 )
-from lakegen.core.credential import json_store
 from lakegen.core.error.base import BaseError
+from lakegen.core.error.code import ErrorCode
 from lakegen.inference import Message, Role
 from lakegen.session import Environment, SessionManager
 
 
 @pytest.fixture()
-def registered_catalogs(tmp_path, monkeypatch):
-    cred = tmp_path / "credentials.json"
-    cred.write_text(json.dumps({}))
-    cred.chmod(0o600)
-    monkeypatch.setattr(json_store, "CREDENTIALS_PATH", str(cred))
-    monkeypatch.setattr(json_store, "_path", lambda: str(cred))
-    for name in ("prod", "staging"):
-        json_store.store(
-            "catalog",
-            name,
-            {
-                "lakehouse": "iceberg",
-                "catalog_type": "rest",
-                "warehouse": f"s3://{name}",
-            },
-        )
+def registered_catalogs():
+    return ("prod", "staging")
 
 
 def _config() -> AgentConfig:
@@ -49,8 +34,16 @@ def _config() -> AgentConfig:
 
 
 def _env(persistence=None):
+    catalogs = MagicMock()
+
+    def require(name):
+        if name == "missing":
+            raise BaseError(ErrorCode.NOT_FOUND, "Catalog is not registered.")
+
+    catalogs.require.side_effect = require
     return replace(
         Environment.default(),
+        catalog_service=catalogs,
         persistence=persistence if persistence is not None else MagicMock(),
     )
 

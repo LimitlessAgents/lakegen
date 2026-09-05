@@ -1,44 +1,33 @@
-"""Tests for CatalogService (add / list / get / delete / require)."""
+"""Tests for catalog lifecycle orchestration."""
 
-import json
 from unittest.mock import MagicMock
 
 import pytest
 
 from lakegen.core.catalog.model import RestCatalogSpec
 from lakegen.core.catalog.service import CatalogService
-from lakegen.core.connection.registry import ConnectionRegistry
-from lakegen.core.credential import json_store
-from lakegen.core.credential.model import KEYRING_PLACEHOLDER
-from lakegen.core.credential.store import get_connection_metadata, list_connections
 from lakegen.core.error.base import BaseError
 from lakegen.core.error.code import ErrorCode
+from lakegen.core.persistence.repository.catalog_repository import CatalogRepository
 
 
 @pytest.fixture()
-def cred_file(tmp_path, monkeypatch):
-    cred = tmp_path / "credentials.json"
-    cred.write_text(json.dumps({}))
-    cred.chmod(0o600)
-    monkeypatch.setattr(json_store, "CREDENTIALS_PATH", str(cred))
-    monkeypatch.setattr(json_store, "_path", lambda: str(cred))
-    return cred
+def repository() -> MagicMock:
+    repository = MagicMock(spec=CatalogRepository)
+    repository.exists.return_value = False
+    return repository
 
 
 @pytest.fixture()
-def fake_catalog():
-    catalog = MagicMock()
-    catalog.connect.return_value = catalog
-    return catalog
+def catalog() -> MagicMock:
+    instance = MagicMock()
+    instance.connect.return_value = instance
+    return instance
 
 
 @pytest.fixture()
-def service(cred_file, fake_catalog, monkeypatch):
-    monkeypatch.setattr(
-        "lakegen.core.connection.registry.get_catalog_instance",
-        lambda spec: fake_catalog,
-    )
-    return CatalogService(registry=ConnectionRegistry())
+def service(repository, catalog) -> CatalogService:
+    return CatalogService(repository=repository, factory=lambda spec: catalog)
 
 
 def _rest_spec(name: str = "prod") -> RestCatalogSpec:
@@ -51,100 +40,137 @@ def _rest_spec(name: str = "prod") -> RestCatalogSpec:
     )
 
 
-def test_get_connection_metadata_omits_secrets(cred_file):
-    json_store.store(
-        "catalog",
-        "prod",
-        {
-            "lakehouse": "iceberg",
-            "catalog_type": "rest",
-            "warehouse": "s3://wh",
-            "access_key": KEYRING_PLACEHOLDER,
-            "token": KEYRING_PLACEHOLDER,
-        },
-    )
-
-    meta = get_connection_metadata("catalog", "prod")
-    assert meta == {
+def _metadata(name: str = "prod") -> dict[str, object]:
+    return {
+        "name": name,
         "lakehouse": "iceberg",
         "catalog_type": "rest",
-        "warehouse": "s3://wh",
+        "warehouse": f"s3://{name}",
     }
 
 
-def test_list_open_returns_cached_names():
-    reg = ConnectionRegistry()
-    reg._open["catalog"]["prod"] = object()
-    reg._open["catalog"]["dev"] = object()
-    assert set(reg.list_open("catalog")) == {"prod", "dev"}
+def test_add_tests_then_persists_and_caches(
+    service,
+    repository,
+    catalog,
+) -> None:
+    info = service.add(_rest_spec())
 
-
-def test_add_persists_and_opens(service):
-    info = service.add(_rest_spec("prod"))
-
-    assert info.name == "prod"
+    catalog.connect.assert_called_once_with()
+    catalog.test_connection.assert_called_once_with()
+    repository.create.assert_called_once()
+    assert repository.create.call_args.args[0]["rest_catalog_url"] == (
+        "http://catalog.example"
+    )
+    assert service.get_connection("prod") is catalog
     assert info.connected is True
-    assert info.warehouse == "s3://prod"
-    assert "prod" in list_connections("catalog")
-    assert "prod" in service._registry.list_open("catalog")
 
 
-def test_add_duplicate_raises(service):
-    service.add(_rest_spec("prod"))
-    with pytest.raises(BaseError) as exc_info:
-        service.add(_rest_spec("prod"))
-    assert exc_info.value.code == ErrorCode.ALREADY_EXISTS
-
-
-def test_list_includes_connected_flag(service):
-    service.add(_rest_spec("prod"))
-    service._registry.close_connection("catalog", "prod")
-    json_store.store(
-        "catalog",
-        "dev",
-        {
-            "lakehouse": "iceberg",
-            "catalog_type": "rest",
-            "warehouse": "s3://dev",
-        },
+def test_add_does_not_persist_failed_connection(
+    service,
+    repository,
+    catalog,
+) -> None:
+    catalog.test_connection.side_effect = BaseError(
+        ErrorCode.CONNECTION_FAILED,
+        "unreachable",
     )
 
+    with pytest.raises(BaseError):
+        service.add(_rest_spec())
+
+    repository.create.assert_not_called()
+    catalog.close.assert_called_once_with()
+
+
+def test_add_closes_connection_when_persistence_fails(
+    service,
+    repository,
+    catalog,
+) -> None:
+    repository.create.side_effect = RuntimeError("database unavailable")
+
+    with pytest.raises(RuntimeError):
+        service.add(_rest_spec())
+
+    catalog.close.assert_called_once_with()
+
+
+def test_add_duplicate_raises(service, repository, catalog) -> None:
+    repository.exists.return_value = True
+
+    with pytest.raises(BaseError) as exc_info:
+        service.add(_rest_spec())
+
+    assert exc_info.value.code == ErrorCode.ALREADY_EXISTS
+    catalog.connect.assert_not_called()
+
+
+def test_get_connection_rebuilds_from_repository(
+    service,
+    repository,
+    catalog,
+) -> None:
+    repository.get.return_value = {
+        **_metadata(),
+        "rest_catalog_url": "http://catalog.example",
+    }
+
+    assert service.get_connection("prod") is catalog
+    assert service.get_connection("prod") is catalog
+    repository.get.assert_called_once_with("prod")
+    catalog.connect.assert_called_once_with()
+
+
+def test_list_reports_cache_state(service, repository, catalog) -> None:
+    repository.list_metadata.return_value = [_metadata("prod"), _metadata("dev")]
+    repository.get.return_value = {
+        **_metadata("prod"),
+        "rest_catalog_url": "http://catalog.example",
+    }
+    service.get_connection("prod")
+
     by_name = {row.name: row for row in service.list()}
-    assert by_name["prod"].connected is False
-    assert by_name["prod"].catalog_type == "rest"
+
+    assert by_name["prod"].connected is True
     assert by_name["dev"].connected is False
-    assert by_name["dev"].warehouse == "s3://dev"
 
 
-def test_list_empty(service):
-    assert service.list() == []
+def test_get_uses_public_metadata_without_loading_credentials(
+    service,
+    repository,
+) -> None:
+    repository.get_metadata.return_value = _metadata()
+
+    info = service.get("prod")
+
+    assert info.name == "prod"
+    assert info.warehouse == "s3://prod"
+    repository.get.assert_not_called()
 
 
-def test_delete_closes_and_removes(service, fake_catalog):
-    service.add(_rest_spec("prod"))
+def test_delete_removes_record_and_closes_cached_connection(
+    service,
+    repository,
+    catalog,
+) -> None:
+    repository.get.return_value = {
+        **_metadata(),
+        "rest_catalog_url": "http://catalog.example",
+    }
+    repository.exists.return_value = True
+    service.get_connection("prod")
+
     service.delete("prod")
 
-    fake_catalog.close.assert_called_once()
-    assert "prod" not in list_connections("catalog")
-    assert "prod" not in service._registry.list_open("catalog")
+    repository.delete.assert_called_once_with("prod")
+    catalog.close.assert_called_once_with()
+
+
+def test_require_missing_raises(service, repository) -> None:
+    repository.exists.return_value = False
+
     with pytest.raises(BaseError) as exc_info:
-        service.get("prod")
-    assert exc_info.value.code == ErrorCode.NOT_FOUND
-
-
-def test_delete_missing_raises(service):
-    with pytest.raises(BaseError) as exc_info:
-        service.delete("ghost")
-    assert exc_info.value.code == ErrorCode.NOT_FOUND
-
-
-def test_require_and_exists(service):
-    assert service.exists("prod") is False
-    with pytest.raises(BaseError, match="catalog_name is required"):
-        service.require("")
-    with pytest.raises(BaseError, match="not registered"):
         service.require("prod")
 
-    service.add(_rest_spec("prod"))
-    assert service.exists("prod") is True
-    service.require("prod")  # does not raise
+    assert exc_info.value.code == ErrorCode.NOT_FOUND

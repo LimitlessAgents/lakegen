@@ -1,6 +1,5 @@
 """Tests for lakegen.session.manager.SessionManager."""
 
-import json
 import threading
 import time
 from dataclasses import replace
@@ -9,36 +8,13 @@ from unittest.mock import MagicMock
 import pytest
 
 from lakegen.agent import AgentConfig
-from lakegen.core.credential import json_store
 from lakegen.core.error.base import BaseError
+from lakegen.core.error.code import ErrorCode
 from lakegen.session import Environment, SessionManager
 
 
 @pytest.fixture()
-def registered_catalog(tmp_path, monkeypatch):
-    cred = tmp_path / "credentials.json"
-    cred.write_text(json.dumps({}))
-    cred.chmod(0o600)
-    monkeypatch.setattr(json_store, "CREDENTIALS_PATH", str(cred))
-    monkeypatch.setattr(json_store, "_path", lambda: str(cred))
-    json_store.store(
-        "catalog",
-        "prod",
-        {
-            "lakehouse": "iceberg",
-            "catalog_type": "rest",
-            "warehouse": "s3://prod",
-        },
-    )
-    json_store.store(
-        "catalog",
-        "staging",
-        {
-            "lakehouse": "iceberg",
-            "catalog_type": "rest",
-            "warehouse": "s3://staging",
-        },
-    )
+def registered_catalog():
     return "prod"
 
 
@@ -57,7 +33,18 @@ _OWNER = "test-user"
 
 
 def _env():
-    return replace(Environment.default(), persistence=MagicMock())
+    catalogs = MagicMock()
+
+    def require(name):
+        if name == "missing":
+            raise BaseError(ErrorCode.NOT_FOUND, "Catalog is not registered.")
+
+    catalogs.require.side_effect = require
+    return replace(
+        Environment.default(),
+        catalog_service=catalogs,
+        persistence=MagicMock(),
+    )
 
 
 def test_create_get_list(registered_catalog):

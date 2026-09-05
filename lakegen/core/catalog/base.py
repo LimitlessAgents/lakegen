@@ -24,6 +24,11 @@ class BaseCatalog(ABC):
         ...
 
     @abstractmethod
+    def test_connection(self) -> None:
+        """Verify the remote catalog is reachable with the configured credentials."""
+        ...
+
+    @abstractmethod
     def close(self) -> None:
         """Close the connection if open."""
         ...

@@ -4,7 +4,6 @@ import threading
 import uuid
 
 from lakegen.agent import AgentConfig
-from lakegen.core.catalog.service import catalog_service
 from lakegen.core.error.base import BaseError
 from lakegen.core.error.code import ErrorCode
 from lakegen.session.environment import Environment
@@ -66,7 +65,7 @@ class SessionManager:
             if parent_id is not None:
                 catalog_name = self._sessions[parent_id].state.catalog_name
             elif catalog_name is not None:
-                catalog_service.require(catalog_name)
+                self.env.catalog_service.require(catalog_name)
 
             session_id = str(uuid.uuid4())
 

@@ -1,9 +1,6 @@
 from dataclasses import dataclass
 
-from lakegen.core.connection import (
-    ConnectionRegistry,
-    conreg as connection_reg,
-)
+from lakegen.core.catalog.service import CatalogService, catalog_service
 from lakegen.core.persistence import (
     PostgresPersistence,
     persistence as persistence_def,
@@ -22,7 +19,7 @@ from lakegen.tool import (
 @dataclass(frozen=True)
 class Environment:
     tool_registry: ToolRegistry
-    connection_registry: ConnectionRegistry
+    catalog_service: CatalogService
     inference_registry: InferenceRegistry
     inference_router: Router
     persistence: PostgresPersistence
@@ -31,7 +28,7 @@ class Environment:
     def default(cls) -> "Environment":
         return cls(
             tool_reg,
-            connection_reg,
+            catalog_service,
             inference_reg,
             inference_rout,
             persistence_def,

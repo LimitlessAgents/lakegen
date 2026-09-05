@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING
 
 from lakegen.agent import AgentConfig, AgentLoop, AgentLoopFailure, AgentLoopResult
 from lakegen.agent.serialization import serialize_agent_loop_result
-from lakegen.core.catalog.service import catalog_service
 from lakegen.core.error.base import BaseError
 from lakegen.core.error.code import ErrorCode
 from lakegen.inference import StreamChunk
@@ -32,7 +31,10 @@ class Session:
         self.env = env if env is not None else Environment.default()
         self._manager = manager
         self._lock = threading.Lock()
-        self._tools = ToolRuntime(registry=self.env.tool_registry)
+        self._tools = ToolRuntime(
+            registry=self.env.tool_registry,
+            catalogs=self.env.catalog_service,
+        )
         self._loop = AgentLoop(
             router=self.env.inference_router,
             tool_runtime=self._tools,
@@ -80,11 +82,11 @@ class Session:
                     "catalog_name is required.",
                 )
             if catalog_name is not None and catalog_name != self.state.catalog_name:
-                catalog_service.require(catalog_name)
+                self.env.catalog_service.require(catalog_name)
                 switched_from = self.state.catalog_name
                 self.state.catalog_name = catalog_name
             elif self.state.catalog_name is None:
-                catalog_service.require(effective_catalog)
+                self.env.catalog_service.require(effective_catalog)
                 self.state.catalog_name = effective_catalog
 
             base = self.state.config
