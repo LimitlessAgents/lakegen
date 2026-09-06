@@ -1,6 +1,5 @@
 """Tests for lakegen.session.manager.SessionManager."""
 
-import json
 import threading
 import time
 from dataclasses import replace
@@ -9,36 +8,13 @@ from unittest.mock import MagicMock
 import pytest
 
 from lakegen.agent import AgentConfig
-from lakegen.core.credential import json_store
 from lakegen.core.error.base import BaseError
+from lakegen.core.error.code import ErrorCode
 from lakegen.session import Environment, SessionManager
 
 
 @pytest.fixture()
-def registered_catalog(tmp_path, monkeypatch):
-    cred = tmp_path / "credentials.json"
-    cred.write_text(json.dumps({}))
-    cred.chmod(0o600)
-    monkeypatch.setattr(json_store, "CREDENTIALS_PATH", str(cred))
-    monkeypatch.setattr(json_store, "_path", lambda: str(cred))
-    json_store.store(
-        "catalog",
-        "prod",
-        {
-            "lakehouse": "iceberg",
-            "catalog_type": "rest",
-            "warehouse": "s3://prod",
-        },
-    )
-    json_store.store(
-        "catalog",
-        "staging",
-        {
-            "lakehouse": "iceberg",
-            "catalog_type": "rest",
-            "warehouse": "s3://staging",
-        },
-    )
+def registered_catalog():
     return "prod"
 
 
@@ -57,14 +33,31 @@ _OWNER = "test-user"
 
 
 def _env():
-    return replace(Environment.default(), persistence=MagicMock())
+    catalogs = MagicMock()
+
+    def require(name):
+        if name == "missing":
+            raise BaseError(ErrorCode.NOT_FOUND, "Catalog is not registered.")
+
+    catalogs.require.side_effect = require
+    return replace(
+        Environment.default(),
+        catalog_service=catalogs,
+        persistence=MagicMock(),
+        session_repository=MagicMock(),
+        agent_turn_repository=MagicMock(),
+    )
 
 
 def test_create_get_list(registered_catalog):
-    mgr = SessionManager(env=_env())
+    env = _env()
+    mgr = SessionManager(env=env)
     a = mgr.create(_config(), owner_id=_OWNER, catalog_name=registered_catalog)
     b = mgr.create(_config(), owner_id=_OWNER, catalog_name=registered_catalog)
 
+    assert env.session_repository.create.call_count == 2
+    env.session_repository.create.assert_any_call({"id": a.id})
+    env.session_repository.create.assert_any_call({"id": b.id})
     assert mgr.get(a.id) is a
     assert mgr.get(b.id) is b
     assert {s.id for s in mgr.list()} == {a.id, b.id}
@@ -89,6 +82,19 @@ def test_create_unknown_catalog_raises(registered_catalog):
     mgr = SessionManager(env=_env())
     with pytest.raises(BaseError, match="not registered"):
         mgr.create(_config(), owner_id=_OWNER, catalog_name="missing")
+
+
+def test_create_does_not_register_session_when_persistence_fails(
+    registered_catalog,
+):
+    env = _env()
+    env.session_repository.create.side_effect = RuntimeError("database unavailable")
+    mgr = SessionManager(env=env)
+
+    with pytest.raises(RuntimeError, match="database unavailable"):
+        mgr.create(_config(), owner_id=_OWNER, catalog_name=registered_catalog)
+
+    assert mgr.list() == []
 
 
 def test_spawn_inherits_catalog(registered_catalog):

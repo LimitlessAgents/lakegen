@@ -11,8 +11,8 @@ from lakegen.core.catalog.model import (
     resolve_catalog_spec,
 )
 
-# CatalogService imports ConnectionRegistry; keep that import lazy so
-# connection.type.catalog can load BaseCatalog/IcebergCatalog without a cycle.
+# Keep service imports lazy so catalog implementations can import model types
+# without initializing the process-wide catalog service.
 
 __all__ = [
     "BaseCatalog",

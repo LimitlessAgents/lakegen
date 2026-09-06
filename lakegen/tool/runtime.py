@@ -3,6 +3,7 @@ import threading
 
 from pydantic import ValidationError
 
+from lakegen.core.catalog.service import CatalogService, catalog_service
 from lakegen.core.error.base import BaseError
 from lakegen.core.error.code import ErrorCode
 from lakegen.tool.model import ToolCall, ToolOutput
@@ -22,8 +23,13 @@ class ToolRuntime:
     arguments before validation.
     """
 
-    def __init__(self, registry: ToolRegistry | None = None) -> None:
+    def __init__(
+        self,
+        registry: ToolRegistry | None = None,
+        catalogs: CatalogService = catalog_service,
+    ) -> None:
         self._registry = registry if registry is not None else default_registry
+        self._catalogs = catalogs
 
     def list_definitions(self):
         """Tools this runtime will expose to the model."""
@@ -85,7 +91,11 @@ class ToolRuntime:
             if fields is not None and "name" in fields:
                 arguments = {**arguments, "name": catalog_name}
             validated = tool.arguments_model.model_validate(arguments)
-            result = tool.handler(validated)
+            if tool.requires_catalog:
+                catalog = self._catalogs.get_connection(catalog_name)
+                result = tool.handler(validated, catalog)
+            else:
+                result = tool.handler(validated)
 
             # Safety net: verify the result is JSON-serializable before handing
             # it back. A tool that forgets to normalize its output gets caught

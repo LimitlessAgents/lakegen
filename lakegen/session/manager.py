@@ -4,7 +4,6 @@ import threading
 import uuid
 
 from lakegen.agent import AgentConfig
-from lakegen.core.catalog.service import catalog_service
 from lakegen.core.error.base import BaseError
 from lakegen.core.error.code import ErrorCode
 from lakegen.session.environment import Environment
@@ -30,7 +29,7 @@ def _default_agent_config() -> AgentConfig:
 
 
 class SessionManager:
-    """Owns live sessions for one process. No persistence yet."""
+    """Owns live sessions and persists their identities."""
 
     def __init__(self, env: Environment | None = None) -> None:
         self.env = env if env is not None else Environment.default()
@@ -66,7 +65,7 @@ class SessionManager:
             if parent_id is not None:
                 catalog_name = self._sessions[parent_id].state.catalog_name
             elif catalog_name is not None:
-                catalog_service.require(catalog_name)
+                self.env.catalog_service.require(catalog_name)
 
             session_id = str(uuid.uuid4())
 
@@ -78,6 +77,7 @@ class SessionManager:
                 parent_id=parent_id,
             )
             session = Session(state=state, env=self.env, manager=self)
+            self.env.session_repository.create({"id": session_id})
             self._sessions[session_id] = session
 
             if parent_id is not None:

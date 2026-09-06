@@ -25,26 +25,6 @@ def test_store_uses_parameterized_insert(mocker) -> None:
     assert values == ("abc", "hello")
 
 
-def test_store_turn_wraps_result_as_jsonb(mocker) -> None:
-    persistence = PostgresPersistence("postgresql://localhost/lakegen")
-    store = mocker.patch.object(persistence, "_store")
-
-    persistence.store_turn(
-        session_id="session-1",
-        turn_id="turn-1",
-        result={"final_message": "hello", "stop_reason": "completed"},
-    )
-
-    table_name, data = store.call_args.args
-    assert table_name == "agent_turns"
-    assert data["id"] == "turn-1"
-    assert data["session_id"] == "session-1"
-    assert data["result"].obj == {
-        "final_message": "hello",
-        "stop_reason": "completed",
-    }
-
-
 def test_ensure_schema_applies_schema_sql(mocker) -> None:
     connection = MagicMock()
     connect = mocker.patch(

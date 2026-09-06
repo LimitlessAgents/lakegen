@@ -38,6 +38,15 @@ class IcebergCatalog(BaseCatalog):
                 "Failed to connect to the catalog.",
             ) from e
 
+    def test_connection(self) -> None:
+        try:
+            self.catalog.list_namespaces()
+        except Exception as e:
+            raise BaseError(
+                ErrorCode.CONNECTION_FAILED,
+                "Failed to verify the catalog connection.",
+            ) from e
+
     def list_namespaces(self) -> list[str]:
         """Return namespace names as dotted strings (e.g. ``"sales.q1"``)."""
         try:

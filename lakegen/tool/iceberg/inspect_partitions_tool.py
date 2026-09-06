@@ -4,11 +4,9 @@ Importing this module registers the tool as a side effect. ``_DESCRIPTION`` is
 shown to the agent, so it is written as guidance for when/how to call the tool.
 """
 
-from lakegen.core.connection.registry import conreg
 from lakegen.tool.iceberg.model import TimeTravelInspectArguments
 from lakegen.tool.registry import registry
 
-_CONNECTION_KIND = "catalog"
 _DESCRIPTION = (
     "Returns partition summaries for a table (partition values, record and file "
     "counts, data file sizes). "
@@ -17,8 +15,7 @@ _DESCRIPTION = (
 )
 
 
-def inspect_partitions(arguments: TimeTravelInspectArguments):
-    catalog = conreg.get_connection(_CONNECTION_KIND, arguments.name)
+def inspect_partitions(arguments: TimeTravelInspectArguments, catalog):
     return catalog.inspect_partitions(
         arguments.table,
         snapshot_id=arguments.snapshot_id,
@@ -31,4 +28,5 @@ registry.register(
     description=_DESCRIPTION,
     arguments_model=TimeTravelInspectArguments,
     handler=inspect_partitions,
+    requires_catalog=True,
 )

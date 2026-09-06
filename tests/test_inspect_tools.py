@@ -21,34 +21,12 @@ from lakegen.tool.iceberg.model import (
 
 
 @pytest.fixture()
-def fake_catalog(monkeypatch):
-    catalog = MagicMock()
-    conreg = MagicMock()
-    conreg.get_connection.return_value = catalog
-
-    tool_modules = [
-        "describe_table_tool",
-        "inspect_partitions_tool",
-        "inspect_snapshots_tool",
-        "inspect_history_tool",
-        "inspect_refs_tool",
-        "inspect_files_tool",
-        "inspect_entries_tool",
-        "inspect_manifests_tool",
-        "inspect_metadata_log_tool",
-    ]
-    for module_name in tool_modules:
-        mod = __import__(
-            f"lakegen.tool.iceberg.{module_name}",
-            fromlist=["conreg"],
-        )
-        monkeypatch.setattr(mod, "conreg", conreg)
-
-    return catalog, conreg
+def fake_catalog():
+    return MagicMock()
 
 
 def test_describe_table_delegates_to_get_table_metadata(fake_catalog):
-    catalog, conreg = fake_catalog
+    catalog = fake_catalog
     catalog.get_table_metadata.return_value = {
         "name": "sales.orders",
         "location": "s3://wh/sales/orders",
@@ -56,20 +34,21 @@ def test_describe_table_delegates_to_get_table_metadata(fake_catalog):
     }
 
     result = describe_table(
-        CatalogTableArguments(name="prod", table="sales.orders")
+        CatalogTableArguments(name="prod", table="sales.orders"),
+        catalog,
     )
 
-    conreg.get_connection.assert_called_with("catalog", "prod")
     catalog.get_table_metadata.assert_called_once_with("sales.orders")
     assert result["schema"] == {"id": "long"}
 
 
 def test_inspect_snapshots_delegates(fake_catalog):
-    catalog, _ = fake_catalog
+    catalog = fake_catalog
     catalog.inspect_snapshots.return_value = [{"snapshot_id": 1}]
 
     result = inspect_snapshots(
-        CatalogTableArguments(name="prod", table="sales.orders")
+        CatalogTableArguments(name="prod", table="sales.orders"),
+        catalog,
     )
 
     catalog.inspect_snapshots.assert_called_once_with("sales.orders")
@@ -77,7 +56,7 @@ def test_inspect_snapshots_delegates(fake_catalog):
 
 
 def test_inspect_partitions_delegates(fake_catalog):
-    catalog, _ = fake_catalog
+    catalog = fake_catalog
     payload = {"rows": [{"record_count": 10}], "truncated": False, "total": 1}
     catalog.inspect_partitions.return_value = payload
 
@@ -87,7 +66,8 @@ def test_inspect_partitions_delegates(fake_catalog):
             table="sales.orders",
             snapshot_id=42,
             limit=25,
-        )
+        ),
+        catalog,
     )
 
     catalog.inspect_partitions.assert_called_once_with(
@@ -108,12 +88,13 @@ def test_inspect_partitions_delegates(fake_catalog):
     ],
 )
 def test_advanced_inspect_tools_delegate(fake_catalog, tool, catalog_method):
-    catalog, _ = fake_catalog
+    catalog = fake_catalog
     payload = {"rows": [], "truncated": False, "total": 0}
     getattr(catalog, catalog_method).return_value = payload
 
     result = tool(
-        InspectTableArguments(name="prod", table="sales.orders", limit=50)
+        InspectTableArguments(name="prod", table="sales.orders", limit=50),
+        catalog,
     )
 
     getattr(catalog, catalog_method).assert_called_once_with(
@@ -131,7 +112,7 @@ def test_advanced_inspect_tools_delegate(fake_catalog, tool, catalog_method):
     ],
 )
 def test_time_travel_inspect_tools_delegate(fake_catalog, tool, catalog_method):
-    catalog, _ = fake_catalog
+    catalog = fake_catalog
     payload = {"rows": [{"file_path": "s3://x"}], "truncated": False, "total": 1}
     getattr(catalog, catalog_method).return_value = payload
 
@@ -141,7 +122,8 @@ def test_time_travel_inspect_tools_delegate(fake_catalog, tool, catalog_method):
             table="sales.orders",
             snapshot_id=999,
             limit=10,
-        )
+        ),
+        catalog,
     )
 
     getattr(catalog, catalog_method).assert_called_once_with(

@@ -4,19 +4,16 @@ Importing this module registers the tool as a side effect. ``_DESCRIPTION`` is
 shown to the agent, so it is written as guidance for when/how to call the tool.
 """
 
-from lakegen.core.connection.registry import conreg
 from lakegen.tool.iceberg.model import CatalogConnectionArguments
 from lakegen.tool.registry import registry
 
-_CONNECTION_KIND = "catalog"
 _DESCRIPTION = (
     "Returns namespace names in the session's active Iceberg catalog. "
     "Use to discover namespaces before listing tables. "
 )
 
 
-def list_namespaces(arguments: CatalogConnectionArguments):
-    catalog = conreg.get_connection(_CONNECTION_KIND, arguments.name)
+def list_namespaces(arguments: CatalogConnectionArguments, catalog):
     return catalog.list_namespaces()
 
 
@@ -25,4 +22,5 @@ registry.register(
     description=_DESCRIPTION,
     arguments_model=CatalogConnectionArguments,
     handler=list_namespaces,
+    requires_catalog=True,
 )

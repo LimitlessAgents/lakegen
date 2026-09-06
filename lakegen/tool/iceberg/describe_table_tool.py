@@ -4,11 +4,9 @@ Importing this module registers the tool as a side effect. ``_DESCRIPTION`` is
 shown to the agent, so it is written as guidance for when/how to call the tool.
 """
 
-from lakegen.core.connection.registry import conreg
 from lakegen.tool.iceberg.model import CatalogTableArguments
 from lakegen.tool.registry import registry
 
-_CONNECTION_KIND = "catalog"
 _DESCRIPTION = (
     "Returns basic metadata for a table: name, storage location, and schema "
     "(field names and types). "
@@ -16,8 +14,7 @@ _DESCRIPTION = (
 )
 
 
-def describe_table(arguments: CatalogTableArguments):
-    catalog = conreg.get_connection(_CONNECTION_KIND, arguments.name)
+def describe_table(arguments: CatalogTableArguments, catalog):
     return catalog.get_table_metadata(arguments.table)
 
 
@@ -26,4 +23,5 @@ registry.register(
     description=_DESCRIPTION,
     arguments_model=CatalogTableArguments,
     handler=describe_table,
+    requires_catalog=True,
 )

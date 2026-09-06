@@ -25,6 +25,7 @@ class ToolRegistry:
         arguments_model: ToolArguments,
         handler: Callable,
         requires_env: bool = False,
+        requires_catalog: bool = False,
     ):
         """Build a tool's schema from ``arguments_model`` and store its definition."""
         from lakegen.tool.util.schema import arguments_model_to_tool_dict
@@ -44,6 +45,7 @@ class ToolRegistry:
             arguments_model=arguments_model,
             handler=handler,
             requires_env=requires_env,
+            requires_catalog=requires_catalog,
         )
 
     def list_tool_names(self) -> list[str]:

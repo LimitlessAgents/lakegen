@@ -1,5 +1,7 @@
 """Tests for lakegen.tool.runtime.ToolRuntime."""
 
+from unittest.mock import MagicMock
+
 from pydantic import BaseModel
 
 from lakegen.core.error.base import BaseError
@@ -94,6 +96,35 @@ def test_dispatch_injects_catalog_name():
     )
     assert out[0].ok is True
     assert seen["name"] == "prod"
+
+
+def test_dispatch_injects_catalog_connection():
+    catalogs = MagicMock()
+    connection = catalogs.get_connection.return_value
+    seen = {}
+
+    def handler(arguments: _SimpleArguments, catalog):
+        seen["catalog"] = catalog
+        return {"ok": True}
+
+    registry = ToolRegistry()
+    registry.register(
+        "catalog_tool",
+        description="test",
+        arguments_model=_SimpleArguments,
+        handler=handler,
+        requires_catalog=True,
+    )
+    runtime = ToolRuntime(registry=registry, catalogs=catalogs)
+
+    output = runtime.dispatch(
+        [ToolCall(id="c1", name="catalog_tool", arguments={"value": "x"})],
+        catalog_name="prod",
+    )
+
+    assert output[0].ok is True
+    catalogs.get_connection.assert_called_once_with("prod")
+    assert seen["catalog"] is connection
 
 
 # ---------------------------------------------------------------------------
