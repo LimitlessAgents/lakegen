@@ -29,7 +29,7 @@ def _default_agent_config() -> AgentConfig:
 
 
 class SessionManager:
-    """Owns live sessions for one process. No persistence yet."""
+    """Owns live sessions and persists their identities."""
 
     def __init__(self, env: Environment | None = None) -> None:
         self.env = env if env is not None else Environment.default()
@@ -77,6 +77,7 @@ class SessionManager:
                 parent_id=parent_id,
             )
             session = Session(state=state, env=self.env, manager=self)
+            self.env.session_repository.create({"id": session_id})
             self._sessions[session_id] = session
 
             if parent_id is not None:

@@ -49,20 +49,6 @@ class PostgresPersistence:
                 for statement in statements:
                     connection.execute(statement)
 
-    def store_turn(
-        self,
-        session_id: str,
-        turn_id: str,
-        result: Mapping[str, object],
-    ) -> None:
-        self._store(
-            "agent_turns",
-            {
-                "id": turn_id,
-                "session_id": session_id,
-                "result": Jsonb(dict(result)),
-            },
-        )
 
     def insert(
         self,

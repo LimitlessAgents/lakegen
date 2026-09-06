@@ -33,7 +33,7 @@ def _config() -> AgentConfig:
     )
 
 
-def _env(persistence=None):
+def _env(agent_turn_repository=None):
     catalogs = MagicMock()
 
     def require(name):
@@ -44,7 +44,13 @@ def _env(persistence=None):
     return replace(
         Environment.default(),
         catalog_service=catalogs,
-        persistence=persistence if persistence is not None else MagicMock(),
+        persistence=MagicMock(),
+        session_repository=MagicMock(),
+        agent_turn_repository=(
+            agent_turn_repository
+            if agent_turn_repository is not None
+            else MagicMock()
+        ),
     )
 
 
@@ -70,8 +76,8 @@ def test_send_uses_per_turn_model(registered_catalogs, monkeypatch):
 
 
 def test_send_assigns_and_persists_turn_id(registered_catalogs, monkeypatch):
-    persistence = MagicMock()
-    session = SessionManager(env=_env(persistence)).create(
+    agent_turn_repository = MagicMock()
+    session = SessionManager(env=_env(agent_turn_repository)).create(
         _config(),
         owner_id="user-1",
         catalog_name="prod",
@@ -93,38 +99,40 @@ def test_send_assigns_and_persists_turn_id(registered_catalogs, monkeypatch):
 
     UUID(turn.id)
     assert turn.result is loop_result
-    persistence.store_turn.assert_called_once_with(
-        session_id=session.id,
-        turn_id=turn.id,
-        result={
-            "final_message": "ok",
-            "turn_messages": {
-                "messages": [
-                    {
-                        "role": "user",
-                        "content": "hello",
-                        "tool_calls": None,
-                        "tool_call_id": None,
-                        "tool_name": None,
-                    },
-                    {
-                        "role": "assistant",
-                        "content": "ok",
-                        "tool_calls": None,
-                        "tool_call_id": None,
-                        "tool_name": None,
-                    },
-                ]
+    agent_turn_repository.create.assert_called_once_with(
+        {
+            "id": turn.id,
+            "session_id": session.id,
+            "result": {
+                "final_message": "ok",
+                "turn_messages": {
+                    "messages": [
+                        {
+                            "role": "user",
+                            "content": "hello",
+                            "tool_calls": None,
+                            "tool_call_id": None,
+                            "tool_name": None,
+                        },
+                        {
+                            "role": "assistant",
+                            "content": "ok",
+                            "tool_calls": None,
+                            "tool_call_id": None,
+                            "tool_name": None,
+                        },
+                    ]
+                },
+                "stop_reason": "completed",
             },
-            "stop_reason": "completed",
-        },
+        }
     )
     assert session.state.messages.messages == turn_messages.messages
 
 
 def test_send_persists_and_commits_crashed_turn(registered_catalogs, monkeypatch):
-    persistence = MagicMock()
-    session = SessionManager(env=_env(persistence)).create(
+    agent_turn_repository = MagicMock()
+    session = SessionManager(env=_env(agent_turn_repository)).create(
         _config(),
         owner_id="user-1",
         catalog_name="prod",
@@ -150,7 +158,7 @@ def test_send_persists_and_commits_crashed_turn(registered_catalogs, monkeypatch
     with pytest.raises(RuntimeError, match="provider disconnected"):
         session.send("hello")
 
-    persistence.store_turn.assert_called_once()
+    agent_turn_repository.create.assert_called_once()
     assert session.state.messages.messages == turn_messages.messages
 
 

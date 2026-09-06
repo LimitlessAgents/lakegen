@@ -6,6 +6,7 @@ from psycopg.types.json import Jsonb
 from lakegen.core.error.base import BaseError
 from lakegen.core.error.code import ErrorCode
 from lakegen.core.persistence import PostgresPersistence, persistence
+from lakegen.core.persistence.repository.base import Repository
 
 
 _IDENTITY_FIELDS = frozenset({"name", "lakehouse", "catalog_type"})
@@ -24,12 +25,7 @@ _STORED_COLUMNS = "name, lakehouse, catalog_type, config, credentials"
 _METADATA_COLUMNS = "name, lakehouse, catalog_type, config"
 
 
-class CatalogRepository:
-    def __init__(
-        self,
-        database: PostgresPersistence = persistence,
-    ) -> None:
-        self._database = database
+class CatalogRepository(Repository):
 
     def create(self, spec: Mapping[str, object]) -> None:
         """Persist public config and credentials in one row."""
@@ -119,13 +115,6 @@ class CatalogRepository:
         )
         if row is None:
             self._raise_not_found(name)
-
-    @staticmethod
-    def _required_string(payload: Mapping[str, object], field: str) -> str:
-        value = payload.get(field)
-        if not isinstance(value, str) or not value:
-            raise ValueError(f"{field} must be a non-empty string.")
-        return value
 
     @staticmethod
     def _public_metadata(row: Mapping[str, object]) -> dict[str, object]:

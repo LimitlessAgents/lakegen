@@ -123,10 +123,12 @@ class Session:
         turn_id: str,
         loop_result: AgentLoopResult,
     ) -> None:
-        self.env.persistence.store_turn(
-            session_id=self.id,
-            turn_id=turn_id,
-            result=serialize_agent_loop_result(loop_result),
+        self.env.agent_turn_repository.create(
+            {
+                "id": turn_id,
+                "session_id": self.id,
+                "result": serialize_agent_loop_result(loop_result),
+            }
         )
         self.state.messages.messages.extend(loop_result.turn_messages.messages)
 
