@@ -1,12 +1,14 @@
-/* @import url() FONT IMPORTS MUST ALWAYS BE AT THE VERY TOP OF THIS FILE, ABOVE THE TAILWIND IMPORTS — DO NOT DELETE THIS COMMENT */
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;450;500;600&family=JetBrains+Mono:wght@400;500&display=swap');
-
 /* CRITICAL: THE FOLLOWING TAILWIND IMPORTS MUST NEVER BE DELETED OR REORDERED — DO NOT DELETE THIS COMMENT */
 @import 'tailwindcss/base';
 @import 'tailwindcss/components';
 @import 'tailwindcss/utilities';
 
 /* END TAILWIND IMPORTS — ALL OTHER CSS MUST GO BELOW THIS LINE */
+:root {
+  --canvas: #faf9f8;
+  --ink: #1a1918;
+  --accent-soft: #d9e7e4;
+}
 
 html,
 body,
@@ -18,16 +20,15 @@ body {
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
   font-feature-settings: 'cv05' 1, 'ss01' 1;
-  color: #1a1918;
-  background-color: #faf9f8;
+  color: var(--ink);
+  background-color: var(--canvas);
 }
 ::selection {
-  background: #d9e7e4;
+  background: var(--accent-soft);
 }
 *:focus-visible {
   outline: 2px solid rgba(15, 111, 99, 0.45);
   outline-offset: 1px;
-  border-radius: 4px;
 }
 .lg-scroll::-webkit-scrollbar {
   width: 10px;

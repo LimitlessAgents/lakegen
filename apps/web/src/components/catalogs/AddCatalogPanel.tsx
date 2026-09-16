@@ -1,16 +1,19 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { XIcon } from 'lucide-react';
-import type { CatalogCreateRequest, CatalogType, SqlDatabaseType } from '../../api/types';
+import type { CatalogCreateRequest, CatalogType, ErrorCode, SqlDatabaseType } from '../../api/types';
 import { ApiError } from '../../api/client';
+import { presentError } from '../../api/errors';
 import { useLakeGen } from '../../state/LakeGenContext';
 import { Button } from '../ui/Button';
 import { Checkbox } from '../ui/Checkbox';
 import { Field } from '../ui/Field';
+import { IconButton } from '../ui/IconButton';
 import { Select } from '../ui/Select';
+import { useToast } from '../ui/Toast';
 import { ConnectStatusDialog, type ConnectStatus } from './ConnectStatusDialog';
 
-const RESULT_VISIBLE_MS = 3000;
+const CONNECTION_TIMEOUT_MS = 30_000;
 
 const typeOptions: { value: CatalogType; title: string; description: string }[] = [
   { value: 'glue', title: 'Glue', description: 'AWS Glue Data Catalog' },
@@ -18,10 +21,11 @@ const typeOptions: { value: CatalogType; title: string; description: string }[] 
   { value: 'sql', title: 'SQL', description: 'JDBC-backed catalog' },
 ];
 
-const SQL_DEFAULT_PORT: Record<SqlDatabaseType, number> = {
+type SqlNetworkDatabaseType = Exclude<SqlDatabaseType, 'sqlite'>;
+
+const SQL_DEFAULT_PORT: Record<SqlNetworkDatabaseType, number> = {
   postgresql: 5432,
   mysql: 3306,
-  sqlite: 5432,
 };
 
 interface AddCatalogPanelProps {
@@ -43,26 +47,19 @@ function parsePort(raw: string, fallback: number): number | undefined {
 }
 
 export function AddCatalogPanel({ open, onClose }: AddCatalogPanelProps) {
-  const { addCatalog } = useLakeGen();
+  const { addCatalog, catalogs, refreshCatalogs } = useLakeGen();
+  const { notify } = useToast();
   const [type, setType] = useState<CatalogType>('glue');
   const [name, setName] = useState('');
   const [warehouse, setWarehouse] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [errorCode, setErrorCode] = useState<ErrorCode | null>(null);
   const [connectStatus, setConnectStatus] = useState<ConnectStatus | null>(null);
-  const resultTimerRef = useRef<number | null>(null);
-
-  useEffect(() => {
-    return () => {
-      if (resultTimerRef.current !== null) window.clearTimeout(resultTimerRef.current);
-    };
-  }, []);
-
-  function clearResultTimer() {
-    if (resultTimerRef.current !== null) {
-      window.clearTimeout(resultTimerRef.current);
-      resultTimerRef.current = null;
-    }
-  }
+  const connectAbortRef = useRef<AbortController | null>(null);
+  const timeoutRef = useRef<number | null>(null);
+  const previousFocusRef = useRef<HTMLElement | null>(null);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const panelRef = useRef<HTMLElement>(null);
 
   const [region, setRegion] = useState('');
   const [endpoint, setEndpoint] = useState('');
@@ -82,7 +79,7 @@ export function AddCatalogPanel({ open, onClose }: AddCatalogPanelProps) {
   const [signingV4, setSigningV4] = useState(true);
   const [noIdentifierFields, setNoIdentifierFields] = useState(false);
 
-  const [databaseType, setDatabaseType] = useState<SqlDatabaseType>('postgresql');
+  const [databaseType, setDatabaseType] = useState<SqlNetworkDatabaseType>('postgresql');
   const [host, setHost] = useState('');
   const [port, setPort] = useState(String(SQL_DEFAULT_PORT.postgresql));
   const [database, setDatabase] = useState('');
@@ -90,8 +87,10 @@ export function AddCatalogPanel({ open, onClose }: AddCatalogPanelProps) {
   const [password, setPassword] = useState('');
 
   const sqlPort = parsePort(port, SQL_DEFAULT_PORT[databaseType]);
+  const duplicateName = catalogs.some((catalog) => catalog.name === name.trim());
   const canSubmit =
     name.trim().length > 0 &&
+    !duplicateName &&
     warehouse.trim().length > 0 &&
     (type !== 'rest' || uri.trim().length > 0) &&
     (type !== 'sql' ||
@@ -100,7 +99,7 @@ export function AddCatalogPanel({ open, onClose }: AddCatalogPanelProps) {
         user.trim().length > 0 &&
         sqlPort !== undefined));
 
-  function changeDatabaseType(next: SqlDatabaseType) {
+  function changeDatabaseType(next: SqlNetworkDatabaseType) {
     const previousDefault = String(SQL_DEFAULT_PORT[databaseType]);
     setDatabaseType(next);
     if (port.trim() === '' || port.trim() === previousDefault) {
@@ -112,6 +111,7 @@ export function AddCatalogPanel({ open, onClose }: AddCatalogPanelProps) {
     setName('');
     setWarehouse('');
     setError(null);
+    setErrorCode(null);
     setConnectStatus(null);
     setRegion('');
     setEndpoint('');
@@ -134,6 +134,58 @@ export function AddCatalogPanel({ open, onClose }: AddCatalogPanelProps) {
     setDatabase('');
     setUser('');
     setPassword('');
+  }
+
+  function cancelConnection() {
+    connectAbortRef.current?.abort('cancelled');
+    setConnectStatus(null);
+  }
+
+  useEffect(() => {
+    if (open) {
+      previousFocusRef.current = document.activeElement as HTMLElement;
+      window.setTimeout(() => closeButtonRef.current?.focus(), 0);
+      return;
+    }
+
+    reset();
+    previousFocusRef.current?.focus();
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape' && !connectStatus) onClose();
+    }
+
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [connectStatus, onClose, open]);
+
+  useEffect(() => {
+    return () => {
+      connectAbortRef.current?.abort();
+      if (timeoutRef.current !== null) window.clearTimeout(timeoutRef.current);
+    };
+  }, []);
+
+  function trapFocus(event: React.KeyboardEvent<HTMLElement>) {
+    if (event.key !== 'Tab') return;
+    const focusable = panelRef.current?.querySelectorAll<HTMLElement>(
+      'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+    );
+    if (!focusable || focusable.length === 0) return;
+
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    }
   }
 
   function s3Fields() {
@@ -189,26 +241,61 @@ export function AddCatalogPanel({ open, onClose }: AddCatalogPanelProps) {
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
-    if (!canSubmit || connectStatus) return;
-    clearResultTimer();
+    if (connectStatus) return;
+    if (!canSubmit) {
+      const message = duplicateName
+        ? 'Choose a unique catalog name.'
+        : 'Complete the required fields and correct any invalid values.';
+      setError(message);
+      event.currentTarget.querySelector<HTMLElement>(':invalid')?.focus();
+      return;
+    }
+    const catalogName = name.trim();
+    const controller = new AbortController();
+    connectAbortRef.current = controller;
     setConnectStatus('connecting');
     setError(null);
+    setErrorCode(null);
+    // TODO(backend): the server-side catalog test also needs an enforced timeout.
+    timeoutRef.current = window.setTimeout(
+      () => controller.abort('timeout'),
+      CONNECTION_TIMEOUT_MS,
+    );
     try {
-      await addCatalog(buildBody());
-      setConnectStatus('success');
-      resultTimerRef.current = window.setTimeout(() => {
-        resultTimerRef.current = null;
-        reset();
-        onClose();
-      }, RESULT_VISIBLE_MS);
+      await addCatalog(buildBody(), controller.signal);
+      reset();
+      onClose();
+      notify({ tone: 'success', message: `Connected ${catalogName}.` });
     } catch (err) {
-      const message = err instanceof ApiError ? err.message : 'Failed to connect to the catalog.';
+      if (controller.signal.reason === 'cancelled') return;
+      const timedOut = controller.signal.reason === 'timeout';
+      if (timedOut) {
+        const latest = await refreshCatalogs();
+        if (latest?.some((catalog) => catalog.name === catalogName)) {
+          reset();
+          onClose();
+          notify({ tone: 'success', message: `Connected ${catalogName}.` });
+          return;
+        }
+      }
+      const presentation = err instanceof ApiError ? presentError(err.body?.code) : presentError();
+      const message = timedOut
+        ? 'The connection attempt took longer than 30 seconds. The catalog may still be created; refresh before retrying the same name.'
+        : err instanceof ApiError
+          ? err.message
+          : 'Failed to connect to the catalog.';
       setError(message);
+      setErrorCode(err instanceof ApiError ? err.body?.code ?? null : null);
       setConnectStatus('error');
-      resultTimerRef.current = window.setTimeout(() => {
-        resultTimerRef.current = null;
-        setConnectStatus(null);
-      }, RESULT_VISIBLE_MS);
+      if (!timedOut && !(err instanceof ApiError)) {
+        setError(`${presentation.title}. ${presentation.hint}`);
+      }
+    } finally {
+      if (timeoutRef.current !== null) {
+        window.clearTimeout(timeoutRef.current);
+        timeoutRef.current = null;
+      }
+      connectAbortRef.current = null;
     }
   }
 
@@ -226,29 +313,32 @@ export function AddCatalogPanel({ open, onClose }: AddCatalogPanelProps) {
             onClick={() => {
               if (!busy) onClose();
             }}
-            className="fixed inset-0 z-30 bg-ink/10"
+            className="fixed inset-0 z-overlay bg-ink/10"
           />
 
           <motion.aside
             role="dialog"
+            aria-modal="true"
             aria-label="Add catalog"
+            ref={panelRef}
+            onKeyDown={trapFocus}
             initial={{ x: 24, opacity: 0 }}
             animate={{ x: 0, opacity: 1 }}
             exit={{ x: 24, opacity: 0 }}
             transition={{ duration: 0.2, ease: 'easeOut' }}
-            className="fixed right-0 top-0 z-40 flex h-full w-[460px] flex-col border-l border-line bg-panel shadow-pop"
+            className="fixed right-0 top-0 z-panel flex h-full w-full flex-col border-l border-line bg-panel shadow-pop sm:w-[460px]"
           >
-            <div className="flex h-[52px] shrink-0 items-center border-b border-line px-5">
+            <div className="flex h-header shrink-0 items-center border-b border-line px-5">
               <h2 className="text-[13px] font-medium text-ink">Add catalog</h2>
-              <button
-                type="button"
+              <IconButton
                 onClick={onClose}
-                aria-label="Close"
                 disabled={busy}
-                className="ml-auto flex h-6 w-6 items-center justify-center rounded text-ink-faint transition-colors hover:bg-line-soft hover:text-ink disabled:pointer-events-none disabled:opacity-40"
+                ref={closeButtonRef}
+                label="Close"
+                className="ml-auto h-6 w-6 border-0"
               >
                 <XIcon className="h-4 w-4" strokeWidth={2} />
-              </button>
+              </IconButton>
             </div>
 
             <form onSubmit={submit} className="flex min-h-0 flex-1 flex-col">
@@ -290,6 +380,7 @@ export function AddCatalogPanel({ open, onClose }: AddCatalogPanelProps) {
                     placeholder="production"
                     mono
                     required
+                    hint={duplicateName ? 'A catalog with this name already exists.' : undefined}
                   />
                   <Field
                     label="Warehouse location"
@@ -434,11 +525,10 @@ export function AddCatalogPanel({ open, onClose }: AddCatalogPanelProps) {
                     <Select
                       label="Database type"
                       value={databaseType}
-                      onChange={(value) => changeDatabaseType(value as SqlDatabaseType)}
+                      onChange={(value) => changeDatabaseType(value as SqlNetworkDatabaseType)}
                       options={[
                         { value: 'postgresql', label: 'PostgreSQL' },
                         { value: 'mysql', label: 'MySQL' },
-                        { value: 'sqlite', label: 'SQLite' },
                       ]}
                     />
                     <div className="grid grid-cols-[1fr_96px] gap-3">
@@ -463,7 +553,7 @@ export function AddCatalogPanel({ open, onClose }: AddCatalogPanelProps) {
                       label="Database"
                       value={database}
                       onChange={setDatabase}
-                      placeholder={databaseType === 'sqlite' ? '/path/to/catalog.db' : 'iceberg_catalog'}
+                      placeholder="iceberg_catalog"
                       mono
                       required
                     />
@@ -495,7 +585,7 @@ export function AddCatalogPanel({ open, onClose }: AddCatalogPanelProps) {
                   Cancel
                 </Button>
                 <span className="ml-auto" />
-                <Button type="submit" variant="primary" disabled={!canSubmit || busy}>
+                <Button type="submit" variant="primary" disabled={busy}>
                   Connect
                 </Button>
               </div>
@@ -506,6 +596,10 @@ export function AddCatalogPanel({ open, onClose }: AddCatalogPanelProps) {
             status={connectStatus}
             catalogName={name.trim()}
             message={error}
+            errorCode={errorCode}
+            onCancel={cancelConnection}
+            onBack={() => setConnectStatus(null)}
+            onClose={onClose}
           />
         </>
       )}
