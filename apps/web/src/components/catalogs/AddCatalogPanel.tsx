@@ -21,7 +21,9 @@ const typeOptions: { value: CatalogType; title: string; description: string }[] 
   { value: 'sql', title: 'SQL', description: 'JDBC-backed catalog' },
 ];
 
-const SQL_DEFAULT_PORT: Record<Exclude<SqlDatabaseType, 'sqlite'>, number> = {
+type SqlNetworkDatabaseType = Exclude<SqlDatabaseType, 'sqlite'>;
+
+const SQL_DEFAULT_PORT: Record<SqlNetworkDatabaseType, number> = {
   postgresql: 5432,
   mysql: 3306,
 };
@@ -45,7 +47,7 @@ function parsePort(raw: string, fallback: number): number | undefined {
 }
 
 export function AddCatalogPanel({ open, onClose }: AddCatalogPanelProps) {
-  const { addCatalog, catalogs } = useLakeGen();
+  const { addCatalog, catalogs, refreshCatalogs } = useLakeGen();
   const { notify } = useToast();
   const [type, setType] = useState<CatalogType>('glue');
   const [name, setName] = useState('');
@@ -77,15 +79,14 @@ export function AddCatalogPanel({ open, onClose }: AddCatalogPanelProps) {
   const [signingV4, setSigningV4] = useState(true);
   const [noIdentifierFields, setNoIdentifierFields] = useState(false);
 
-  const [databaseType, setDatabaseType] = useState<SqlDatabaseType>('postgresql');
+  const [databaseType, setDatabaseType] = useState<SqlNetworkDatabaseType>('postgresql');
   const [host, setHost] = useState('');
   const [port, setPort] = useState(String(SQL_DEFAULT_PORT.postgresql));
   const [database, setDatabase] = useState('');
   const [user, setUser] = useState('');
   const [password, setPassword] = useState('');
 
-  const sqlPort =
-    databaseType === 'sqlite' ? undefined : parsePort(port, SQL_DEFAULT_PORT[databaseType]);
+  const sqlPort = parsePort(port, SQL_DEFAULT_PORT[databaseType]);
   const duplicateName = catalogs.some((catalog) => catalog.name === name.trim());
   const canSubmit =
     name.trim().length > 0 &&
@@ -93,18 +94,16 @@ export function AddCatalogPanel({ open, onClose }: AddCatalogPanelProps) {
     warehouse.trim().length > 0 &&
     (type !== 'rest' || uri.trim().length > 0) &&
     (type !== 'sql' ||
-      (databaseType === 'sqlite'
-        ? database.trim().length > 0
-        : host.trim().length > 0 &&
-          database.trim().length > 0 &&
-          user.trim().length > 0 &&
-          sqlPort !== undefined));
+      (host.trim().length > 0 &&
+        database.trim().length > 0 &&
+        user.trim().length > 0 &&
+        sqlPort !== undefined));
 
-  function changeDatabaseType(next: SqlDatabaseType) {
-    const previousDefault = databaseType === 'sqlite' ? '' : String(SQL_DEFAULT_PORT[databaseType]);
+  function changeDatabaseType(next: SqlNetworkDatabaseType) {
+    const previousDefault = String(SQL_DEFAULT_PORT[databaseType]);
     setDatabaseType(next);
     if (port.trim() === '' || port.trim() === previousDefault) {
-      setPort(next === 'sqlite' ? '' : String(SQL_DEFAULT_PORT[next]));
+      setPort(String(SQL_DEFAULT_PORT[next]));
     }
   }
 
@@ -232,11 +231,10 @@ export function AddCatalogPanel({ open, onClose }: AddCatalogPanelProps) {
       ...base,
       catalog_type: 'sql',
       database_type: databaseType,
-      // TODO(backend): make host, port, and username conditional for SQLite in SqlCatalogSpec.
-      host: databaseType === 'sqlite' ? 'localhost' : host.trim(),
-      port: databaseType === 'sqlite' ? undefined : sqlPort,
-      username: databaseType === 'sqlite' ? 'sqlite' : user.trim(),
-      password: databaseType === 'sqlite' ? '' : password,
+      host: host.trim(),
+      port: sqlPort,
+      username: user.trim(),
+      password,
       database: database.trim(),
     };
   }
@@ -271,9 +269,18 @@ export function AddCatalogPanel({ open, onClose }: AddCatalogPanelProps) {
     } catch (err) {
       if (controller.signal.reason === 'cancelled') return;
       const timedOut = controller.signal.reason === 'timeout';
+      if (timedOut) {
+        const latest = await refreshCatalogs();
+        if (latest?.some((catalog) => catalog.name === catalogName)) {
+          reset();
+          onClose();
+          notify({ tone: 'success', message: `Connected ${catalogName}.` });
+          return;
+        }
+      }
       const presentation = err instanceof ApiError ? presentError(err.body?.code) : presentError();
       const message = timedOut
-        ? 'The connection attempt took longer than 30 seconds.'
+        ? 'The connection attempt took longer than 30 seconds. The catalog may still be created; refresh before retrying the same name.'
         : err instanceof ApiError
           ? err.message
           : 'Failed to connect to the catalog.';
@@ -518,60 +525,55 @@ export function AddCatalogPanel({ open, onClose }: AddCatalogPanelProps) {
                     <Select
                       label="Database type"
                       value={databaseType}
-                      onChange={(value) => changeDatabaseType(value as SqlDatabaseType)}
+                      onChange={(value) => changeDatabaseType(value as SqlNetworkDatabaseType)}
                       options={[
                         { value: 'postgresql', label: 'PostgreSQL' },
                         { value: 'mysql', label: 'MySQL' },
-                        { value: 'sqlite', label: 'SQLite' },
                       ]}
                     />
-                    {databaseType !== 'sqlite' && (
-                      <div className="grid grid-cols-[1fr_96px] gap-3">
-                        <Field
-                          label="Host"
-                          value={host}
-                          onChange={setHost}
-                          placeholder="db.internal"
-                          mono
-                          required
-                        />
-                        <Field
-                          label="Port"
-                          value={port}
-                          onChange={setPort}
-                          placeholder={String(SQL_DEFAULT_PORT[databaseType])}
-                          mono
-                          hint={sqlPort === undefined ? 'Port must be 1–65535.' : undefined}
-                        />
-                      </div>
-                    )}
+                    <div className="grid grid-cols-[1fr_96px] gap-3">
+                      <Field
+                        label="Host"
+                        value={host}
+                        onChange={setHost}
+                        placeholder="db.internal"
+                        mono
+                        required
+                      />
+                      <Field
+                        label="Port"
+                        value={port}
+                        onChange={setPort}
+                        placeholder={String(SQL_DEFAULT_PORT[databaseType])}
+                        mono
+                        hint={sqlPort === undefined ? 'Port must be 1–65535.' : undefined}
+                      />
+                    </div>
                     <Field
-                      label={databaseType === 'sqlite' ? 'Database file path' : 'Database'}
+                      label="Database"
                       value={database}
                       onChange={setDatabase}
-                      placeholder={databaseType === 'sqlite' ? '/path/to/catalog.db' : 'iceberg_catalog'}
+                      placeholder="iceberg_catalog"
                       mono
                       required
                     />
-                    {databaseType !== 'sqlite' && (
-                      <div className="grid grid-cols-2 gap-3">
-                        <Field
-                          label="Username"
-                          value={user}
-                          onChange={setUser}
-                          placeholder="lakegen"
-                          mono
-                          required
-                        />
-                        <Field
-                          label="Password"
-                          value={password}
-                          onChange={setPassword}
-                          placeholder="••••••••"
-                          secret
-                        />
-                      </div>
-                    )}
+                    <div className="grid grid-cols-2 gap-3">
+                      <Field
+                        label="Username"
+                        value={user}
+                        onChange={setUser}
+                        placeholder="lakegen"
+                        mono
+                        required
+                      />
+                      <Field
+                        label="Password"
+                        value={password}
+                        onChange={setPassword}
+                        placeholder="••••••••"
+                        secret
+                      />
+                    </div>
                   </section>
                 )}
 

@@ -29,7 +29,7 @@ const ACTIVE_CONVERSATION_KEY = 'lakegen.activeConversation';
 const MAX_PERSISTED_CONVERSATIONS = 20;
 const MAX_PERSISTED_CONVERSATION_BYTES = 1_000_000;
 const EMPTY_MESSAGES: Message[] = [];
-let messageSequence = 0;
+const SESSION_EXPIRED_MESSAGE = 'This agent session expired. Retry to continue in a new session.';
 
 export interface Conversation {
   id: string;
@@ -45,7 +45,7 @@ interface LakeGenValue {
   catalogsError: string | null;
   catalogsLoading: boolean;
   catalogsRefreshing: boolean;
-  refreshCatalogs: () => Promise<void>;
+  refreshCatalogs: () => Promise<CatalogResponse[] | null>;
   addCatalog: (body: CatalogCreateRequest, signal?: AbortSignal) => Promise<void>;
   removeCatalog: (name: string) => Promise<void>;
   activeCatalogName: string | null;
@@ -66,8 +66,7 @@ interface LakeGenValue {
 const LakeGenContext = createContext<LakeGenValue | null>(null);
 
 function uid(prefix: string): string {
-  messageSequence += 1;
-  return `${prefix}_${messageSequence}`;
+  return `${prefix}_${crypto.randomUUID()}`;
 }
 
 function messageIsValid(value: unknown): value is Message {
@@ -258,7 +257,7 @@ export function LakeGenProvider({ children }: { children: React.ReactNode }) {
     [updateActiveCatalog],
   );
 
-  const refreshCatalogs = useCallback(async () => {
+  const refreshCatalogs = useCallback(async (): Promise<CatalogResponse[] | null> => {
     const isInitialLoad = !hasLoadedCatalogsRef.current;
     if (isInitialLoad) setCatalogsLoading(true);
     else setCatalogsRefreshing(true);
@@ -282,10 +281,12 @@ export function LakeGenProvider({ children }: { children: React.ReactNode }) {
         });
       }
       hasLoadedCatalogsRef.current = true;
+      return next;
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to load catalogs';
       setCatalogsError(message);
       if (!isInitialLoad) notify({ tone: 'error', message });
+      return null;
     } finally {
       if (isInitialLoad) setCatalogsLoading(false);
       else setCatalogsRefreshing(false);
@@ -389,6 +390,11 @@ export function LakeGenProvider({ children }: { children: React.ReactNode }) {
       const controller = new AbortController();
       abortsRef.current.set(conversation.id, controller);
 
+      const expireSession = () => {
+        updateConversation(conversation.id, (current) => ({ ...current, sessionId: null }));
+        notify({ tone: 'info', message: 'The agent session expired. Retry the request to continue.' });
+      };
+
       try {
         let streamError = false;
         const { turnDone } = await runTurn(
@@ -412,12 +418,15 @@ export function LakeGenProvider({ children }: { children: React.ReactNode }) {
               }));
             } else if (event.type === 'error') {
               streamError = true;
+              const sessionExpired = event.data.code === 'NOT_FOUND';
+              if (sessionExpired) expireSession();
               patchAssistant(conversation.id, assistantId, (m) => ({
                 ...m,
                 role: 'assistant',
                 status: 'error',
-                errorMessage: event.data.message,
+                errorMessage: sessionExpired ? SESSION_EXPIRED_MESSAGE : event.data.message,
                 errorCode: event.data.code,
+                retryText: sessionExpired ? trimmed : undefined,
               }));
             }
           },
@@ -439,23 +448,18 @@ export function LakeGenProvider({ children }: { children: React.ReactNode }) {
           }));
         } else {
           const sessionExpired = err instanceof ApiError && err.body?.code === 'NOT_FOUND';
-          const message =
-            sessionExpired
-              ? 'This agent session expired. Retry to continue in a new session.'
-              : err instanceof ApiError
-                ? err.message
-                : err instanceof Error
-                  ? err.message
-                  : 'Turn failed';
-          if (sessionExpired) {
-            updateConversation(conversation.id, (current) => ({ ...current, sessionId: null }));
-            notify({ tone: 'info', message: 'The agent session expired. Retry the request to continue.' });
-          }
+          if (sessionExpired) expireSession();
           patchAssistant(conversation.id, assistantId, (m) => ({
             ...m,
             role: 'assistant',
             status: 'error',
-            errorMessage: message,
+            errorMessage: sessionExpired
+              ? SESSION_EXPIRED_MESSAGE
+              : err instanceof ApiError
+                ? err.message
+                : err instanceof Error
+                  ? err.message
+                  : 'Turn failed',
             errorCode: err instanceof ApiError ? err.body?.code : undefined,
             retryText: sessionExpired ? trimmed : undefined,
           }));
