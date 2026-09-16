@@ -1,15 +1,17 @@
+export type CatalogConnectionState = 'connected' | 'unverified';
+
 export function StatusDot({
-  connected,
+  state,
   className = '',
 }: {
-  connected: boolean;
+  state: CatalogConnectionState;
   className?: string;
 }) {
   return (
     <span
       aria-hidden="true"
       className={`inline-block h-[6px] w-[6px] shrink-0 rounded-full ${
-        connected ? 'bg-ok' : 'bg-err'
+        state === 'connected' ? 'bg-ok' : 'bg-ink-faint'
       } ${className}`}
     />
   );

@@ -1,4 +1,5 @@
 import { ChevronDownIcon } from 'lucide-react';
+import { useId } from 'react';
 
 interface SelectProps {
   label: string;
@@ -9,7 +10,7 @@ interface SelectProps {
 }
 
 export function Select({ label, value, onChange, options, className = '' }: SelectProps) {
-  const id = `select-${label.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
+  const id = useId();
 
   return (
     <div className={className}>
@@ -21,7 +22,8 @@ export function Select({ label, value, onChange, options, className = '' }: Sele
           id={id}
           value={value}
           onChange={(event) => onChange(event.target.value)}
-          className="h-8 w-full appearance-none rounded-md border border-line bg-panel pl-2.5 pr-7 text-[13px] text-ink outline-none transition-colors duration-150 hover:border-line-strong focus:border-accent"
+          autoComplete="off"
+          className="h-8 w-full appearance-none rounded-md border border-line bg-panel pl-2.5 pr-7 text-sm text-ink outline-none transition-colors duration-150 hover:border-line-strong focus:border-accent"
         >
           {options.map((option) => (
             <option key={option.value} value={option.value}>

@@ -54,10 +54,12 @@ export function listCatalogs(): Promise<CatalogResponse[]> {
 
 export function addCatalog(
   body: CatalogCreateRequest,
+  signal?: AbortSignal,
 ): Promise<CatalogResponse> {
   return request('/v1/catalogs', {
     method: 'POST',
     body: JSON.stringify(body),
+    signal,
   });
 }
 
@@ -69,10 +71,4 @@ export function deleteCatalog(name: string): Promise<void> {
 
 export function createSession(): Promise<CreateSessionResponse> {
   return request('/v1/sessions', { method: 'POST' });
-}
-
-export function deleteSession(sessionId: string): Promise<void> {
-  return request(`/v1/sessions/${encodeURIComponent(sessionId)}`, {
-    method: 'DELETE',
-  });
 }

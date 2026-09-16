@@ -1,9 +1,9 @@
 import type { CatalogType } from '../../api/types';
 
 const styles: Record<CatalogType, string> = {
-  glue: 'text-[#7A5B12] bg-[#FBF5E7] border-[#EEE3C9]',
-  rest: 'text-accent bg-accent-soft border-[#D6E5E1]',
-  sql: 'text-[#3F5C86] bg-[#EEF2F8] border-[#D9E2EF]',
+  glue: 'text-badge-glue bg-badge-glue-soft border-badge-glue-border',
+  rest: 'text-accent bg-accent-soft border-badge-rest-border',
+  sql: 'text-badge-sql bg-badge-sql-soft border-badge-sql-border',
 };
 
 export function TypeBadge({ type }: { type?: string | null }) {

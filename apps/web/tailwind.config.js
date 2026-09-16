@@ -22,9 +22,26 @@ export default {content: [
           hover: '#0C5C52',
           soft: '#EAF2F0',
         },
-        ok: '#2F7D5E',
+        ok: {
+          DEFAULT: '#2F7D5E',
+          soft: '#EAF4EF',
+        },
         warn: '#96671A',
-        err: '#B0432F',
+        err: {
+          DEFAULT: '#B0432F',
+          soft: '#FCF6F5',
+          border: '#EBD5D0',
+          strong: '#7C3323',
+        },
+        badge: {
+          glue: '#7A5B12',
+          'glue-soft': '#FBF5E7',
+          'glue-border': '#EEE3C9',
+          sql: '#3F5C86',
+          'sql-soft': '#EEF2F8',
+          'sql-border': '#D9E2EF',
+          'rest-border': '#D6E5E1',
+        },
       },
       fontFamily: {
         sans: ['Inter', 'ui-sans-serif', 'system-ui', 'sans-serif'],
@@ -32,6 +49,11 @@ export default {content: [
       },
       fontSize: {
         '2xs': ['11px', '16px'],
+        xs: ['12px', '16px'],
+        sm: ['13px', '20px'],
+        base: ['14px', '22px'],
+        lg: ['15px', '24px'],
+        xl: ['19px', '28px'],
       },
       letterSpacing: {
         wider: '0.06em',
@@ -44,6 +66,16 @@ export default {content: [
         md: '6px',
         lg: '8px',
         xl: '10px',
+      },
+      spacing: {
+        header: '52px',
+      },
+      zIndex: {
+        dropdown: '20',
+        overlay: '30',
+        panel: '40',
+        popover: '50',
+        toast: '60',
       },
       keyframes: {
         'fade-up': {

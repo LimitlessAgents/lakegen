@@ -9,12 +9,16 @@ export type StreamEvent =
     }
   | { type: 'error'; data: ErrorBody };
 
+export interface TurnStreamResult {
+  turnDone: Extract<StreamEvent, { type: 'turn_done' }>['data'] | null;
+}
+
 export async function runTurn(
   sessionId: string,
   body: TurnRequest,
   onEvent: (event: StreamEvent) => void,
   signal?: AbortSignal,
-): Promise<void> {
+): Promise<TurnStreamResult> {
   const response = await fetch(
     `/v1/sessions/${encodeURIComponent(sessionId)}/turns`,
     {
@@ -43,6 +47,7 @@ export async function runTurn(
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let buffer = '';
+  let turnDone: TurnStreamResult['turnDone'] = null;
 
   while (true) {
     const { done, value } = await reader.read();
@@ -53,9 +58,14 @@ export async function runTurn(
       buffer += decoder.decode();
     }
 
-    buffer = dispatchSseBuffer(buffer, onEvent, done);
+    buffer = dispatchSseBuffer(buffer, (event) => {
+      if (event.type === 'turn_done') turnDone = event.data;
+      onEvent(event);
+    }, done);
     if (done) break;
   }
+
+  return { turnDone };
 }
 
 function dispatchSseBuffer(
