@@ -140,12 +140,20 @@ class Session:
                 raise RuntimeError(
                     "Session has no manager; create sessions via SessionManager."
                 )
-        return self._manager.create(
+            manager = self._manager
+        return manager.create(
             config,
             owner_id=self.state.owner_id,
             parent_id=self.id,
         )
 
-    def close(self) -> None:
+    def close(self) -> bool:
+        """Close the session and return whether it was already closed."""
         with self._lock:
+            was_closed = self.state.closed
             self.state.closed = True
+            return was_closed
+
+    def _reopen(self) -> None:
+        with self._lock:
+            self.state.closed = False

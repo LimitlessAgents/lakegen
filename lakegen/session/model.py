@@ -4,6 +4,14 @@ from datetime import datetime
 from lakegen.agent import AgentConfig, AgentLoopResult, Conversation
 
 
+@dataclass(frozen=True)
+class SessionInfo:
+    id: str
+    name: str | None
+    created_at: datetime
+    live: bool
+
+
 @dataclass
 class SessionState:
     id: str

@@ -8,7 +8,7 @@ from lakegen.api.run.runner import AgentEvent, AgentEventType, TurnResult
 from lakegen.core.error.base import BaseError
 from lakegen.core.error.code import ErrorCode
 from lakegen.inference import StreamChunk
-from lakegen.session import Session, SessionManager
+from lakegen.session import Session, SessionInfo, SessionManager
 from lakegen.session.environment import Environment
 
 
@@ -30,6 +30,9 @@ class LocalRunAdapter:
     def create_session(self, *, owner_id: str) -> str:
         session = self._manager.create(owner_id=owner_id)
         return session.id
+
+    def list_sessions(self, *, owner_id: str, offset: int = 0) -> list[SessionInfo]:
+        return self._manager.list(owner_id=owner_id, offset=offset)
 
     def delete_session(self, session_id: str, *, owner_id: str) -> None:
         self._require_owner(session_id, owner_id)

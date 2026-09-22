@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from unittest.mock import MagicMock
 import threading
 
@@ -15,6 +16,7 @@ from lakegen.api.run.runner import AgentEvent, AgentEventType, TurnResult
 from lakegen.core.catalog.service import CatalogInfo
 from lakegen.core.error.base import BaseError
 from lakegen.core.error.code import ErrorCode
+from lakegen.session import SessionInfo
 
 _SESSION_ID = "550e8400-e29b-41d4-a716-446655440000"
 
@@ -52,6 +54,14 @@ def catalogs() -> MagicMock:
 def agent_runner() -> MagicMock:
     runner = MagicMock()
     runner.create_session.return_value = _SESSION_ID
+    runner.list_sessions.return_value = [
+        SessionInfo(
+            id=_SESSION_ID,
+            name="Test",
+            created_at=datetime(2026, 9, 22),
+            live=True,
+        )
+    ]
 
     def _run_turn(
         session_id,
@@ -200,6 +210,37 @@ def test_create_session(client: TestClient, agent_runner: MagicMock) -> None:
     assert res.status_code == 201
     assert res.json() == {"id": _SESSION_ID}
     agent_runner.create_session.assert_called_once_with(owner_id="local")
+
+
+def test_list_sessions_uses_fixed_page_and_offset(
+    client: TestClient,
+    agent_runner: MagicMock,
+) -> None:
+    res = client.get("/v1/sessions?offset=10", headers={"X-User": "alice"})
+
+    assert res.status_code == 200
+    assert res.json() == [
+        {
+            "id": _SESSION_ID,
+            "name": "Test",
+            "created_at": "2026-09-22T00:00:00",
+            "live": True,
+        }
+    ]
+    agent_runner.list_sessions.assert_called_once_with(
+        owner_id="alice",
+        offset=10,
+    )
+
+
+def test_list_sessions_rejects_negative_offset(
+    client: TestClient,
+    agent_runner: MagicMock,
+) -> None:
+    res = client.get("/v1/sessions?offset=-1")
+
+    assert res.status_code == 400
+    agent_runner.list_sessions.assert_not_called()
 
 
 def test_delete_session(client: TestClient, agent_runner: MagicMock) -> None:

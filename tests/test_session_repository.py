@@ -18,11 +18,13 @@ def test_repository_contract_is_abstract() -> None:
 def test_create_inserts_session() -> None:
     database = MagicMock(spec=PostgresPersistence)
 
-    SessionRepository(database).create({"id": "session-1", "name": "Test"})
+    SessionRepository(database).create(
+        {"id": "session-1", "owner_id": "user-1", "name": "Test"}
+    )
 
     database.insert.assert_called_once_with(
         "sessions",
-        {"id": "session-1", "name": "Test"},
+        {"id": "session-1", "owner_id": "user-1", "name": "Test"},
     )
 
 
@@ -59,11 +61,90 @@ def test_exists_queries_by_id() -> None:
     )
 
 
+def test_list_all_is_owner_scoped_and_paginated() -> None:
+    database = MagicMock(spec=PostgresPersistence)
+    database.fetch_all.return_value = []
+
+    assert (
+        SessionRepository(database).list_all(
+            owner_id="user-1",
+            limit=10,
+            offset=10,
+        )
+        == []
+    )
+    statement, parameters = database.fetch_all.call_args.args
+    assert "WHERE owner_id = %s" in statement
+    assert "ORDER BY created_at DESC, id DESC" in statement
+    assert "LIMIT %s OFFSET %s" in statement
+    assert parameters == ("user-1", 10, 10)
+
+
+def _transaction_connection(database: MagicMock) -> MagicMock:
+    connection = MagicMock()
+    cursor = MagicMock()
+    connection.cursor.return_value.__enter__.return_value = cursor
+    database.transaction.return_value.__enter__.return_value = connection
+    return connection, cursor
+
+
+def test_delete_removes_turns_then_session_in_one_transaction() -> None:
+    database = MagicMock(spec=PostgresPersistence)
+    connection, cursor = _transaction_connection(database)
+    cursor.fetchall.return_value = [{"id": "session-1"}]
+
+    SessionRepository(database).delete("session-1")
+
+    database.transaction.assert_called_once()
+    database.execute.assert_called_once_with(
+        "DELETE FROM agent_turns WHERE session_id = ANY(%s)",
+        (["session-1"],),
+        connection=connection,
+    )
+    cursor.execute.assert_called_once_with(
+        "DELETE FROM sessions WHERE id = ANY(%s) RETURNING id",
+        (["session-1"],),
+    )
+
+
+def test_delete_accepts_multiple_ids_atomically() -> None:
+    database = MagicMock(spec=PostgresPersistence)
+    connection, cursor = _transaction_connection(database)
+    cursor.fetchall.return_value = [
+        {"id": "child"},
+        {"id": "parent"},
+    ]
+
+    SessionRepository(database).delete(["parent", "child"])
+
+    database.transaction.assert_called_once()
+    database.execute.assert_called_once_with(
+        "DELETE FROM agent_turns WHERE session_id = ANY(%s)",
+        (["parent", "child"],),
+        connection=connection,
+    )
+
+
 def test_delete_missing_raises_not_found() -> None:
     database = MagicMock(spec=PostgresPersistence)
-    database.fetch_one.return_value = None
+    _connection, cursor = _transaction_connection(database)
+    cursor.fetchall.return_value = []
 
     with pytest.raises(BaseError) as exc_info:
         SessionRepository(database).delete("missing")
 
     assert exc_info.value.code == ErrorCode.NOT_FOUND
+    transaction = database.transaction.return_value
+    assert transaction.__exit__.call_args.args[0] is BaseError
+
+
+def test_delete_rolls_back_all_rows_when_any_id_is_missing() -> None:
+    database = MagicMock(spec=PostgresPersistence)
+    _connection, cursor = _transaction_connection(database)
+    cursor.fetchall.return_value = [{"id": "existing"}]
+
+    with pytest.raises(BaseError):
+        SessionRepository(database).delete(["existing", "missing"])
+
+    transaction = database.transaction.return_value
+    assert transaction.__exit__.call_args.args[0] is BaseError
