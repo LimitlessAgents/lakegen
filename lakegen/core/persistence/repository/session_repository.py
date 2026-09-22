@@ -1,6 +1,7 @@
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 
 from psycopg.errors import UniqueViolation
+from psycopg.rows import dict_row
 
 from lakegen.core.error.base import BaseError
 from lakegen.core.error.code import ErrorCode
@@ -65,17 +66,28 @@ class SessionRepository(Repository):
             is not None
         )
 
-    def delete(self, identifier: str) -> None:
-        self._database.execute(
-            "DELETE FROM agent_turns WHERE session_id = %s",
-            (identifier,),
-        )
-        row = self._database.fetch_one(
-            "DELETE FROM sessions WHERE id = %s RETURNING id",
-            (identifier,),
-        )
-        if row is None:
-            self._raise_not_found(identifier)
+    def delete(self, identifiers: str | Sequence[str]) -> None:
+        """Delete turns and session rows for one or more ids in one transaction."""
+        ids = [identifiers] if isinstance(identifiers, str) else list(identifiers)
+        if not ids:
+            return
+
+        with self._database.transaction() as connection:
+            self._database.execute(
+                "DELETE FROM agent_turns WHERE session_id = ANY(%s)",
+                (ids,),
+                connection=connection,
+            )
+            with connection.cursor(row_factory=dict_row) as cursor:
+                cursor.execute(
+                    "DELETE FROM sessions WHERE id = ANY(%s) RETURNING id",
+                    (ids,),
+                )
+                deleted = {str(row["id"]) for row in cursor.fetchall()}
+
+        missing = set(ids) - deleted
+        if missing:
+            self._raise_not_found(next(iter(missing)))
 
     @staticmethod
     def _raise_not_found(identifier: str) -> None:

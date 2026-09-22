@@ -108,21 +108,21 @@ class SessionManager:
             raise ValueError("offset must be non-negative.")
 
         with self._lock:
-            live_ids = set(self._sessions)
-
-        return [
-            SessionInfo(
-                id=str(row["id"]),
-                name=row["name"] if isinstance(row["name"], str) else None,
-                created_at=self._created_at(row),
-                live=str(row["id"]) in live_ids,
-            )
-            for row in self.env.session_repository.list_all(
+            rows = self.env.session_repository.list_all(
                 owner_id=owner_id,
                 limit=_SESSION_PAGE_SIZE,
                 offset=offset,
             )
-        ]
+            live_ids = set(self._sessions)
+            return [
+                SessionInfo(
+                    id=str(row["id"]),
+                    name=row["name"] if isinstance(row["name"], str) else None,
+                    created_at=self._created_at(row),
+                    live=str(row["id"]) in live_ids,
+                )
+                for row in rows
+            ]
 
     def delete(self, session_id: str) -> None:
         """Remove a session. Children are deleted with it.
@@ -130,12 +130,13 @@ class SessionManager:
         ``close()`` runs after persistence and registry updates so an in-flight
         ``send`` cannot freeze create/get/list for other sessions.
         """
-        to_close = self._unregister_tree(session_id)
+        to_close, parent_id = self._collect_tree(session_id)
+        self.env.session_repository.delete([session.id for session in to_close])
+        self._unregister_tree(session_id, to_close, parent_id)
         for session in to_close:
             session.close()
 
-    def _unregister_tree(self, session_id: str) -> list[Session]:
-        """Pop a session and its descendants from the registry. Caller closes them."""
+    def _collect_tree(self, session_id: str) -> tuple[list[Session], str | None]:
         with self._lock:
             session = self._sessions.get(session_id)
             if session is None:
@@ -154,18 +155,22 @@ class SessionManager:
                     if child is not None:
                         stack.append(child)
 
-            for current in reversed(to_close):
-                self.env.session_repository.delete(current.id)
+            return to_close, session.state.parent_id
 
+    def _unregister_tree(
+        self,
+        session_id: str,
+        to_close: list[Session],
+        parent_id: str | None,
+    ) -> None:
+        with self._lock:
             for current in to_close:
                 self._sessions.pop(current.id, None)
 
-            parent_id = session.state.parent_id
             if parent_id is not None:
                 parent = self._sessions.get(parent_id)
                 if parent is not None and session_id in parent.state.children:
                     parent.state.children.remove(session_id)
-            return to_close
 
     @staticmethod
     def _created_at(row: dict[str, object]) -> datetime:

@@ -82,6 +82,42 @@ def test_create_get_list(registered_catalog):
     env.persistence.ensure_schema.assert_called_once()
 
 
+def test_list_holds_manager_lock_while_querying_persisted_rows():
+    env = _env()
+    mgr = SessionManager(env=env)
+    query_started = threading.Event()
+    release_query = threading.Event()
+
+    def list_all(**_kwargs):
+        query_started.set()
+        assert release_query.wait(timeout=1)
+        return []
+
+    env.session_repository.list_all.side_effect = list_all
+
+    list_thread = threading.Thread(
+        target=lambda: mgr.list(owner_id=_OWNER),
+    )
+    list_thread.start()
+    assert query_started.wait(timeout=1)
+
+    create_finished = threading.Event()
+
+    def create_while_listing() -> None:
+        mgr.create(_config(), owner_id=_OWNER)
+        create_finished.set()
+
+    create_thread = threading.Thread(target=create_while_listing)
+    create_thread.start()
+    time.sleep(0.05)
+    assert not create_finished.is_set()
+
+    release_query.set()
+    list_thread.join(timeout=2)
+    create_thread.join(timeout=2)
+    assert create_finished.is_set()
+
+
 def test_list_uses_requested_offset():
     env = _env()
     mgr = SessionManager(env=env)
@@ -141,6 +177,20 @@ def test_spawn_inherits_catalog(registered_catalog):
     assert child.state.messages.messages == []
 
 
+def test_delete_keeps_registry_when_persistence_fails(registered_catalog):
+    env = _env()
+    mgr = SessionManager(env=env)
+    parent = mgr.create(_config(), owner_id=_OWNER, catalog_name=registered_catalog)
+    child = parent.spawn(_config())
+    env.session_repository.delete.side_effect = RuntimeError("database unavailable")
+
+    with pytest.raises(RuntimeError, match="database unavailable"):
+        mgr.delete(child.id)
+
+    assert mgr.get(child.id) is child
+    assert mgr.get(parent.id) is parent
+
+
 def test_delete_removes_children_and_unlinks_parent(registered_catalog):
     env = _env()
     mgr = SessionManager(env=env)
@@ -150,8 +200,9 @@ def test_delete_removes_children_and_unlinks_parent(registered_catalog):
 
     mgr.delete(child.id)
 
-    env.session_repository.delete.assert_any_call(grandchild.id)
-    env.session_repository.delete.assert_any_call(child.id)
+    env.session_repository.delete.assert_called_once()
+    deleted_ids = set(env.session_repository.delete.call_args.args[0])
+    assert deleted_ids == {child.id, grandchild.id}
     assert child.id not in parent.state.children
     with pytest.raises(BaseError):
         mgr.get(child.id)
