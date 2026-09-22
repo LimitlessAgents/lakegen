@@ -140,7 +140,8 @@ class Session:
                 raise RuntimeError(
                     "Session has no manager; create sessions via SessionManager."
                 )
-        return self._manager.create(
+            manager = self._manager
+        return manager.create(
             config,
             owner_id=self.state.owner_id,
             parent_id=self.id,

@@ -3,6 +3,7 @@
 import threading
 import time
 from dataclasses import replace
+from datetime import datetime
 from unittest.mock import MagicMock
 
 import pytest
@@ -54,14 +55,58 @@ def test_create_get_list(registered_catalog):
     mgr = SessionManager(env=env)
     a = mgr.create(_config(), owner_id=_OWNER, catalog_name=registered_catalog)
     b = mgr.create(_config(), owner_id=_OWNER, catalog_name=registered_catalog)
+    created_at = datetime.now()
+    env.session_repository.list_all.return_value = [
+        {"id": b.id, "name": None, "created_at": created_at},
+        {"id": a.id, "name": "First", "created_at": created_at},
+    ]
 
     assert env.session_repository.create.call_count == 2
-    env.session_repository.create.assert_any_call({"id": a.id})
-    env.session_repository.create.assert_any_call({"id": b.id})
+    env.session_repository.create.assert_any_call(
+        {"id": a.id, "owner_id": _OWNER}
+    )
+    env.session_repository.create.assert_any_call(
+        {"id": b.id, "owner_id": _OWNER}
+    )
     assert mgr.get(a.id) is a
     assert mgr.get(b.id) is b
-    assert {s.id for s in mgr.list()} == {a.id, b.id}
+    listed = mgr.list(owner_id=_OWNER)
+    assert [session.id for session in listed] == [b.id, a.id]
+    assert all(session.live for session in listed)
+    env.session_repository.list_all.assert_called_once_with(
+        owner_id=_OWNER,
+        limit=10,
+        offset=0,
+    )
     assert a.state.catalog_name == registered_catalog
+    env.persistence.ensure_schema.assert_called_once()
+
+
+def test_list_uses_requested_offset():
+    env = _env()
+    mgr = SessionManager(env=env)
+    env.session_repository.list_all.return_value = []
+
+    assert mgr.list(owner_id=_OWNER, offset=10) == []
+    env.session_repository.list_all.assert_called_once_with(
+        owner_id=_OWNER,
+        limit=10,
+        offset=10,
+    )
+
+
+def test_create_does_not_register_session_when_persistence_fails(
+    registered_catalog,
+):
+    env = _env()
+    env.session_repository.create.side_effect = RuntimeError("database unavailable")
+    mgr = SessionManager(env=env)
+
+    with pytest.raises(RuntimeError, match="database unavailable"):
+        mgr.create(_config(), owner_id=_OWNER, catalog_name=registered_catalog)
+
+    env.session_repository.list_all.return_value = []
+    assert mgr.list(owner_id=_OWNER) == []
 
 
 def test_create_without_catalog(registered_catalog):
@@ -84,19 +129,6 @@ def test_create_unknown_catalog_raises(registered_catalog):
         mgr.create(_config(), owner_id=_OWNER, catalog_name="missing")
 
 
-def test_create_does_not_register_session_when_persistence_fails(
-    registered_catalog,
-):
-    env = _env()
-    env.session_repository.create.side_effect = RuntimeError("database unavailable")
-    mgr = SessionManager(env=env)
-
-    with pytest.raises(RuntimeError, match="database unavailable"):
-        mgr.create(_config(), owner_id=_OWNER, catalog_name=registered_catalog)
-
-    assert mgr.list() == []
-
-
 def test_spawn_inherits_catalog(registered_catalog):
     mgr = SessionManager(env=_env())
     parent = mgr.create(_config(), owner_id=_OWNER, catalog_name=registered_catalog)
@@ -110,13 +142,16 @@ def test_spawn_inherits_catalog(registered_catalog):
 
 
 def test_delete_removes_children_and_unlinks_parent(registered_catalog):
-    mgr = SessionManager(env=_env())
+    env = _env()
+    mgr = SessionManager(env=env)
     parent = mgr.create(_config(), owner_id=_OWNER, catalog_name=registered_catalog)
     child = parent.spawn(_config())
     grandchild = child.spawn(_config())
 
     mgr.delete(child.id)
 
+    env.session_repository.delete.assert_any_call(grandchild.id)
+    env.session_repository.delete.assert_any_call(child.id)
     assert child.id not in parent.state.children
     with pytest.raises(BaseError):
         mgr.get(child.id)

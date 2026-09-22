@@ -7,6 +7,7 @@ error envelope.
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
@@ -39,6 +40,13 @@ class CatalogResponse(APIModel):
 
 class CreateSessionResponse(APIModel):
     id: str
+
+
+class SessionResponse(APIModel):
+    id: str
+    name: str | None
+    created_at: datetime
+    live: bool
 
 
 class TurnRequest(APIModel):

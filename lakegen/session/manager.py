@@ -2,12 +2,13 @@ from __future__ import annotations
 
 import threading
 import uuid
+from datetime import datetime
 
 from lakegen.agent import AgentConfig
 from lakegen.core.error.base import BaseError
 from lakegen.core.error.code import ErrorCode
 from lakegen.session.environment import Environment
-from lakegen.session.model import SessionState
+from lakegen.session.model import SessionInfo, SessionState
 from lakegen.session.session import Session
 
 _DEFAULT_SYSTEM_PROMPT = (
@@ -17,6 +18,7 @@ _DEFAULT_SYSTEM_PROMPT = (
 _DEFAULT_MODEL = "openrouter/free"
 _DEFAULT_PROVIDER = "openai"
 _DEFAULT_MAX_TURNS = 10
+_SESSION_PAGE_SIZE = 10
 
 
 def _default_agent_config() -> AgentConfig:
@@ -29,13 +31,12 @@ def _default_agent_config() -> AgentConfig:
 
 
 class SessionManager:
-    """Owns live sessions and persists their identities."""
+    """Owns session persistence and the in-process session registry."""
 
     def __init__(self, env: Environment | None = None) -> None:
         self.env = env if env is not None else Environment.default()
         self._sessions: dict[str, Session] = {}
         self._lock = threading.Lock()
-        
         self.env.persistence.ensure_schema()
 
     def create(
@@ -76,8 +77,14 @@ class SessionManager:
                 catalog_name=catalog_name,
                 parent_id=parent_id,
             )
-            session = Session(state=state, env=self.env, manager=self)
-            self.env.session_repository.create({"id": session_id})
+            session = Session(
+                state=state,
+                env=self.env,
+                manager=self,
+            )
+            self.env.session_repository.create(
+                {"id": session_id, "owner_id": owner_id}
+            )
             self._sessions[session_id] = session
 
             if parent_id is not None:
@@ -95,16 +102,33 @@ class SessionManager:
                 )
             return session
 
-    def list(self) -> list[Session]:
+    def list(self, *, owner_id: str, offset: int = 0) -> list[SessionInfo]:
+        """Return one persisted page, newest first."""
+        if offset < 0:
+            raise ValueError("offset must be non-negative.")
+
         with self._lock:
-            return list(self._sessions.values())
+            live_ids = set(self._sessions)
+
+        return [
+            SessionInfo(
+                id=str(row["id"]),
+                name=row["name"] if isinstance(row["name"], str) else None,
+                created_at=self._created_at(row),
+                live=str(row["id"]) in live_ids,
+            )
+            for row in self.env.session_repository.list_all(
+                owner_id=owner_id,
+                limit=_SESSION_PAGE_SIZE,
+                offset=offset,
+            )
+        ]
 
     def delete(self, session_id: str) -> None:
         """Remove a session. Children are deleted with it.
 
-        The manager lock is only held while updating the registry. ``close()``
-        runs afterward so an in-flight ``send`` on the deleted session cannot
-        freeze create/get/list for other sessions.
+        ``close()`` runs after persistence and registry updates so an in-flight
+        ``send`` cannot freeze create/get/list for other sessions.
         """
         to_close = self._unregister_tree(session_id)
         for session in to_close:
@@ -113,18 +137,12 @@ class SessionManager:
     def _unregister_tree(self, session_id: str) -> list[Session]:
         """Pop a session and its descendants from the registry. Caller closes them."""
         with self._lock:
-            session = self._sessions.pop(session_id, None)
+            session = self._sessions.get(session_id)
             if session is None:
                 raise BaseError(
                     ErrorCode.NOT_FOUND,
                     f"Session {session_id!r} not found.",
                 )
-
-            parent_id = session.state.parent_id
-            if parent_id is not None:
-                parent = self._sessions.get(parent_id)
-                if parent is not None and session_id in parent.state.children:
-                    parent.state.children.remove(session_id)
 
             to_close: list[Session] = []
             stack = [session]
@@ -132,7 +150,26 @@ class SessionManager:
                 current = stack.pop()
                 to_close.append(current)
                 for child_id in list(current.state.children):
-                    child = self._sessions.pop(child_id, None)
+                    child = self._sessions.get(child_id)
                     if child is not None:
                         stack.append(child)
+
+            for current in reversed(to_close):
+                self.env.session_repository.delete(current.id)
+
+            for current in to_close:
+                self._sessions.pop(current.id, None)
+
+            parent_id = session.state.parent_id
+            if parent_id is not None:
+                parent = self._sessions.get(parent_id)
+                if parent is not None and session_id in parent.state.children:
+                    parent.state.children.remove(session_id)
             return to_close
+
+    @staticmethod
+    def _created_at(row: dict[str, object]) -> datetime:
+        created_at = row["created_at"]
+        if not isinstance(created_at, datetime):
+            raise RuntimeError("Stored session created_at must be a datetime.")
+        return created_at

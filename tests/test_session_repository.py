@@ -18,11 +18,13 @@ def test_repository_contract_is_abstract() -> None:
 def test_create_inserts_session() -> None:
     database = MagicMock(spec=PostgresPersistence)
 
-    SessionRepository(database).create({"id": "session-1", "name": "Test"})
+    SessionRepository(database).create(
+        {"id": "session-1", "owner_id": "user-1", "name": "Test"}
+    )
 
     database.insert.assert_called_once_with(
         "sessions",
-        {"id": "session-1", "name": "Test"},
+        {"id": "session-1", "owner_id": "user-1", "name": "Test"},
     )
 
 
@@ -55,6 +57,41 @@ def test_exists_queries_by_id() -> None:
     assert SessionRepository(database).exists("session-1") is True
     database.fetch_one.assert_called_once_with(
         "SELECT 1 AS found FROM sessions WHERE id = %s",
+        ("session-1",),
+    )
+
+
+def test_list_all_is_owner_scoped_and_paginated() -> None:
+    database = MagicMock(spec=PostgresPersistence)
+    database.fetch_all.return_value = []
+
+    assert (
+        SessionRepository(database).list_all(
+            owner_id="user-1",
+            limit=10,
+            offset=10,
+        )
+        == []
+    )
+    statement, parameters = database.fetch_all.call_args.args
+    assert "WHERE owner_id = %s" in statement
+    assert "ORDER BY created_at DESC, id DESC" in statement
+    assert "LIMIT %s OFFSET %s" in statement
+    assert parameters == ("user-1", 10, 10)
+
+
+def test_delete_removes_turns_then_session() -> None:
+    database = MagicMock(spec=PostgresPersistence)
+    database.fetch_one.return_value = {"id": "session-1"}
+
+    SessionRepository(database).delete("session-1")
+
+    database.execute.assert_called_once_with(
+        "DELETE FROM agent_turns WHERE session_id = %s",
+        ("session-1",),
+    )
+    database.fetch_one.assert_called_once_with(
+        "DELETE FROM sessions WHERE id = %s RETURNING id",
         ("session-1",),
     )
 

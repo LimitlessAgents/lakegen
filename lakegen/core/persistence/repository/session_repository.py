@@ -15,6 +15,7 @@ class SessionRepository(Repository):
         session_id = self._required_string(payload, "id")
         row = {
             "id": session_id,
+            "owner_id": self._required_string(payload, "owner_id"),
             "name": payload.get("name"),
         }
 
@@ -35,6 +36,24 @@ class SessionRepository(Repository):
             self._raise_not_found(identifier)
         return row
 
+    def list_all(
+        self,
+        *,
+        owner_id: str,
+        limit: int,
+        offset: int,
+    ) -> list[dict[str, object]]:
+        return self._database.fetch_all(
+            """
+            SELECT id, name, created_at
+            FROM sessions
+            WHERE owner_id = %s
+            ORDER BY created_at DESC, id DESC
+            LIMIT %s OFFSET %s
+            """,
+            (owner_id, limit, offset),
+        )
+
     def exists(self, identifier: str) -> bool:
         if not identifier:
             return False
@@ -47,6 +66,10 @@ class SessionRepository(Repository):
         )
 
     def delete(self, identifier: str) -> None:
+        self._database.execute(
+            "DELETE FROM agent_turns WHERE session_id = %s",
+            (identifier,),
+        )
         row = self._database.fetch_one(
             "DELETE FROM sessions WHERE id = %s RETURNING id",
             (identifier,),
