@@ -85,9 +85,9 @@ class SessionRepository(Repository):
                 )
                 deleted = {str(row["id"]) for row in cursor.fetchall()}
 
-        missing = set(ids) - deleted
-        if missing:
-            self._raise_not_found(next(iter(missing)))
+            missing = set(ids) - deleted
+            if missing:
+                self._raise_not_found(next(iter(missing)))
 
     @staticmethod
     def _raise_not_found(identifier: str) -> None:

@@ -134,3 +134,17 @@ def test_delete_missing_raises_not_found() -> None:
         SessionRepository(database).delete("missing")
 
     assert exc_info.value.code == ErrorCode.NOT_FOUND
+    transaction = database.transaction.return_value
+    assert transaction.__exit__.call_args.args[0] is BaseError
+
+
+def test_delete_rolls_back_all_rows_when_any_id_is_missing() -> None:
+    database = MagicMock(spec=PostgresPersistence)
+    _connection, cursor = _transaction_connection(database)
+    cursor.fetchall.return_value = [{"id": "existing"}]
+
+    with pytest.raises(BaseError):
+        SessionRepository(database).delete(["existing", "missing"])
+
+    transaction = database.transaction.return_value
+    assert transaction.__exit__.call_args.args[0] is BaseError

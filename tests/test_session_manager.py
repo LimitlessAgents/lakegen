@@ -189,6 +189,7 @@ def test_delete_keeps_registry_when_persistence_fails(registered_catalog):
 
     assert mgr.get(child.id) is child
     assert mgr.get(parent.id) is parent
+    assert child.state.closed is False
 
 
 def test_delete_removes_children_and_unlinks_parent(registered_catalog):
@@ -273,8 +274,9 @@ def test_close_blocks_further_send_and_spawn(registered_catalog):
     assert mgr.get(session.id) is session
 
 
-def test_delete_does_not_hold_manager_lock_while_closing(registered_catalog):
-    """Other sessions stay usable while delete waits on an in-flight turn lock."""
+def test_delete_quiesces_session_without_blocking_unrelated_sessions(
+    registered_catalog,
+):
     mgr = SessionManager(env=_env())
     active = mgr.create(_config(), owner_id=_OWNER, catalog_name=registered_catalog)
     other = mgr.create(_config(), owner_id=_OWNER, catalog_name=registered_catalog)
@@ -300,21 +302,10 @@ def test_delete_does_not_hold_manager_lock_while_closing(registered_catalog):
     deleter = threading.Thread(target=do_delete)
     deleter.start()
 
-    deadline = time.time() + 2
-    while time.time() < deadline:
-        try:
-            mgr.get(active.id)
-        except BaseError:
-            break
-        time.sleep(0.01)
-    else:
-        release.set()
-        holder.join(timeout=1)
-        deleter.join(timeout=1)
-        pytest.fail("delete never unregistered the active session")
-
-    # Unregistered but not yet closed — close is blocked on session._lock.
+    time.sleep(0.05)
+    assert not delete_done.is_set()
     assert active.state.closed is False
+    assert mgr.get(active.id) is active
     assert mgr.get(other.id) is other
     created = mgr.create(_config(), owner_id=_OWNER, catalog_name=registered_catalog)
     assert mgr.get(created.id) is created
@@ -324,3 +315,35 @@ def test_delete_does_not_hold_manager_lock_while_closing(registered_catalog):
     deleter.join(timeout=2)
     assert delete_done.is_set()
     assert active.state.closed is True
+    with pytest.raises(BaseError):
+        mgr.get(active.id)
+
+
+def test_delete_blocks_spawn_and_send_before_deleting_rows(registered_catalog):
+    env = _env()
+    mgr = SessionManager(env=env)
+    session = mgr.create(
+        _config(),
+        owner_id=_OWNER,
+        catalog_name=registered_catalog,
+    )
+    deleting_rows = threading.Event()
+    release_delete = threading.Event()
+
+    def delete_rows(_ids) -> None:
+        deleting_rows.set()
+        assert release_delete.wait(timeout=2)
+
+    env.session_repository.delete.side_effect = delete_rows
+    deleter = threading.Thread(target=lambda: mgr.delete(session.id))
+    deleter.start()
+    assert deleting_rows.wait(timeout=1)
+
+    with pytest.raises(BaseError, match="closed"):
+        session.spawn(_config())
+    with pytest.raises(BaseError, match="closed"):
+        session.send("hello")
+
+    release_delete.set()
+    deleter.join(timeout=2)
+    assert not deleter.is_alive()

@@ -36,6 +36,7 @@ class SessionManager:
     def __init__(self, env: Environment | None = None) -> None:
         self.env = env if env is not None else Environment.default()
         self._sessions: dict[str, Session] = {}
+        self._deleting: set[str] = set()
         self._lock = threading.Lock()
         self.env.persistence.ensure_schema()
 
@@ -57,7 +58,9 @@ class SessionManager:
             config = _default_agent_config()
 
         with self._lock:
-            if parent_id is not None and parent_id not in self._sessions:
+            if parent_id is not None and (
+                parent_id not in self._sessions or parent_id in self._deleting
+            ):
                 raise BaseError(
                     ErrorCode.NOT_FOUND,
                     f"Parent session {parent_id!r} not found.",
@@ -127,14 +130,25 @@ class SessionManager:
     def delete(self, session_id: str) -> None:
         """Remove a session. Children are deleted with it.
 
-        ``close()`` runs after persistence and registry updates so an in-flight
-        ``send`` cannot freeze create/get/list for other sessions.
+        The tree is marked as deleting before sessions are quiesced, preventing
+        concurrent spawns and writes while keeping unrelated sessions usable.
         """
         to_close, parent_id = self._collect_tree(session_id)
-        self.env.session_repository.delete([session.id for session in to_close])
+        closed_states = [(session, session.close()) for session in to_close]
+        try:
+            self.env.session_repository.delete(
+                [session.id for session in to_close]
+            )
+        except Exception:
+            for session, was_closed in closed_states:
+                if not was_closed:
+                    session._reopen()
+            with self._lock:
+                self._deleting.difference_update(
+                    session.id for session in to_close
+                )
+            raise
         self._unregister_tree(session_id, to_close, parent_id)
-        for session in to_close:
-            session.close()
 
     def _collect_tree(self, session_id: str) -> tuple[list[Session], str | None]:
         with self._lock:
@@ -155,6 +169,13 @@ class SessionManager:
                     if child is not None:
                         stack.append(child)
 
+            ids = {session.id for session in to_close}
+            if ids & self._deleting:
+                raise BaseError(
+                    ErrorCode.NOT_FOUND,
+                    f"Session {session_id!r} not found.",
+                )
+            self._deleting.update(ids)
             return to_close, session.state.parent_id
 
     def _unregister_tree(
@@ -166,6 +187,7 @@ class SessionManager:
         with self._lock:
             for current in to_close:
                 self._sessions.pop(current.id, None)
+                self._deleting.discard(current.id)
 
             if parent_id is not None:
                 parent = self._sessions.get(parent_id)
