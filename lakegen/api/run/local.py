@@ -46,7 +46,7 @@ class LocalRunAdapter:
         offset: int = 0,
         limit: int = 20,
     ) -> list[AgentTurnInfo]:
-        self._require_owner(session_id, owner_id)
+        # self._require_owner(session_id, owner_id) # Will be uncommented either after session cache is removed or cache+persistence based solution is implemented
         return self._manager.list_turns(session_id, offset, limit)
 
     def run_turn(
