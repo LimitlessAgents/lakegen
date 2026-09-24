@@ -62,3 +62,13 @@ def test_get_missing_raises_not_found() -> None:
         AgentTurnRepository(database).get("missing")
 
     assert exc_info.value.code == ErrorCode.NOT_FOUND
+
+
+def test_list_is_session_scoped_and_paginated() -> None:
+    database = MagicMock(spec=PostgresPersistence)
+    database.fetch_all.return_value = []
+
+    assert AgentTurnRepository(database).list("session-1", 10, 20) == []
+    statement, parameters = database.fetch_all.call_args.args
+    assert "WHERE session_id = %s" in statement
+    assert parameters == ("session-1", 10, 20)

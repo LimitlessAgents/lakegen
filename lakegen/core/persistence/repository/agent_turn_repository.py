@@ -35,7 +35,7 @@ class AgentTurnRepository(Repository):
     def get(self, identifier: str) -> dict[str, object]:
         row = self._database.fetch_one(
             """
-            SELECT id, session_id, result, created_at
+            SELECT *
             FROM agent_turns
             WHERE id = %s
             """,
@@ -44,6 +44,24 @@ class AgentTurnRepository(Repository):
         if row is None:
             self._raise_not_found(identifier)
         return row
+
+    def list(
+        self,
+        identifier: str,
+        offset: int = 0,
+        limit: int = 20,
+    ) -> list[dict[str, object]]:
+        return self._database.fetch_all(
+            """
+            SELECT id, result, created_at
+            FROM agent_turns
+            WHERE session_id = %s
+            ORDER BY created_at DESC, id DESC
+            OFFSET %s
+            LIMIT %s
+            """,
+            (identifier, offset, limit),
+        )
 
     def exists(self, identifier: str) -> bool:
         if not identifier:

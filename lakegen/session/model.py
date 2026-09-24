@@ -29,3 +29,10 @@ class SessionState:
 class SessionTurnResult:
     id: str
     result: AgentLoopResult
+
+
+@dataclass(frozen=True)
+class AgentTurnInfo:
+    id: str
+    created_at: datetime
+    result: dict[str, object]

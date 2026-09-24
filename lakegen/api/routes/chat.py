@@ -5,8 +5,9 @@ import json
 import threading
 from collections.abc import AsyncIterator
 from queue import Empty, Queue
+from typing import Annotated
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Query, Request
 from sse_starlette.sse import EventSourceResponse
 
 from lakegen.api.auth.authenticator import Principal
@@ -17,6 +18,7 @@ from lakegen.api.run.runner import AgentEvent, AgentEventType, AgentRunner
 from lakegen.api.schema import ErrorBody, TurnRequest
 from lakegen.core.error.base import BaseError
 from lakegen.core.error.code import ErrorCode
+from lakegen.session import AgentTurnInfo
 
 router = APIRouter(
     prefix="/v1/sessions",
@@ -122,3 +124,19 @@ async def run_turn(
             await asyncio.shield(task)
 
     return EventSourceResponse(event_stream())
+
+
+@router.get("/{session_id}/turns")
+def list_turns(
+    session_id: str,
+    principal: Principal = Depends(require_principal),
+    agent_runner: AgentRunner = Depends(get_agent_runner),
+    offset: Annotated[int, Query(ge=0)] = 0,
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+) -> list[AgentTurnInfo]:
+    return agent_runner.list_turns(
+        session_id,
+        owner_id=principal.id,
+        offset=offset,
+        limit=limit,
+    )

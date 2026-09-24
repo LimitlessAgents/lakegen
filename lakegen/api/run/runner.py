@@ -8,7 +8,7 @@ from typing import Any, Protocol, runtime_checkable
 import threading
 
 from lakegen.agent import StopReason
-from lakegen.session.model import SessionInfo
+from lakegen.session.model import AgentTurnInfo, SessionInfo
 
 
 class AgentEventType(StrEnum):
@@ -46,6 +46,15 @@ class AgentRunner(Protocol):
     ) -> list[SessionInfo]: ...
 
     def delete_session(self, session_id: str, *, owner_id: str) -> None: ...
+
+    def list_turns(
+        self,
+        session_id: str,
+        *,
+        owner_id: str,
+        offset: int = 0,
+        limit: int = 20,
+    ) -> list[AgentTurnInfo]: ...
 
     def run_turn(
         self,

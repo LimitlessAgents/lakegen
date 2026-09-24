@@ -56,7 +56,7 @@ def test_create_get_list(registered_catalog):
     a = mgr.create(_config(), owner_id=_OWNER, catalog_name=registered_catalog)
     b = mgr.create(_config(), owner_id=_OWNER, catalog_name=registered_catalog)
     created_at = datetime.now()
-    env.session_repository.list_all.return_value = [
+    env.session_repository.list.return_value = [
         {"id": b.id, "name": None, "created_at": created_at},
         {"id": a.id, "name": "First", "created_at": created_at},
     ]
@@ -73,11 +73,7 @@ def test_create_get_list(registered_catalog):
     listed = mgr.list(owner_id=_OWNER)
     assert [session.id for session in listed] == [b.id, a.id]
     assert all(session.live for session in listed)
-    env.session_repository.list_all.assert_called_once_with(
-        owner_id=_OWNER,
-        limit=10,
-        offset=0,
-    )
+    env.session_repository.list.assert_called_once_with(_OWNER, 0, 10)
     assert a.state.catalog_name == registered_catalog
     env.persistence.ensure_schema.assert_called_once()
 
@@ -88,12 +84,12 @@ def test_list_holds_manager_lock_while_querying_persisted_rows():
     query_started = threading.Event()
     release_query = threading.Event()
 
-    def list_all(**_kwargs):
+    def list_rows(*_args):
         query_started.set()
         assert release_query.wait(timeout=1)
         return []
 
-    env.session_repository.list_all.side_effect = list_all
+    env.session_repository.list.side_effect = list_rows
 
     list_thread = threading.Thread(
         target=lambda: mgr.list(owner_id=_OWNER),
@@ -121,14 +117,10 @@ def test_list_holds_manager_lock_while_querying_persisted_rows():
 def test_list_uses_requested_offset():
     env = _env()
     mgr = SessionManager(env=env)
-    env.session_repository.list_all.return_value = []
+    env.session_repository.list.return_value = []
 
     assert mgr.list(owner_id=_OWNER, offset=10) == []
-    env.session_repository.list_all.assert_called_once_with(
-        owner_id=_OWNER,
-        limit=10,
-        offset=10,
-    )
+    env.session_repository.list.assert_called_once_with(_OWNER, 10, 10)
 
 
 def test_create_does_not_register_session_when_persistence_fails(
@@ -141,7 +133,7 @@ def test_create_does_not_register_session_when_persistence_fails(
     with pytest.raises(RuntimeError, match="database unavailable"):
         mgr.create(_config(), owner_id=_OWNER, catalog_name=registered_catalog)
 
-    env.session_repository.list_all.return_value = []
+    env.session_repository.list.return_value = []
     assert mgr.list(owner_id=_OWNER) == []
 
 
