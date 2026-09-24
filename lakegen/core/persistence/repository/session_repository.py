@@ -5,7 +5,6 @@ from psycopg.rows import dict_row
 
 from lakegen.core.error.base import BaseError
 from lakegen.core.error.code import ErrorCode
-from lakegen.core.persistence import PostgresPersistence, persistence
 from lakegen.core.persistence.repository.base import Repository
 
 
@@ -37,12 +36,11 @@ class SessionRepository(Repository):
             self._raise_not_found(identifier)
         return row
 
-    def list_all(
+    def list(
         self,
-        *,
-        owner_id: str,
-        limit: int,
-        offset: int,
+        identifier: str,
+        offset: int | None,
+        limit: int | None,
     ) -> list[dict[str, object]]:
         return self._database.fetch_all(
             """
@@ -52,7 +50,7 @@ class SessionRepository(Repository):
             ORDER BY created_at DESC, id DESC
             LIMIT %s OFFSET %s
             """,
-            (owner_id, limit, offset),
+            (identifier, limit if limit is not None else 100, offset or 0),
         )
 
     def exists(self, identifier: str) -> bool:

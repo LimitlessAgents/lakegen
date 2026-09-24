@@ -61,15 +61,15 @@ def test_exists_queries_by_id() -> None:
     )
 
 
-def test_list_all_is_owner_scoped_and_paginated() -> None:
+def test_list_is_owner_scoped_and_paginated() -> None:
     database = MagicMock(spec=PostgresPersistence)
     database.fetch_all.return_value = []
 
     assert (
-        SessionRepository(database).list_all(
-            owner_id="user-1",
-            limit=10,
-            offset=10,
+        SessionRepository(database).list(
+            "user-1",
+            10,
+            10,
         )
         == []
     )

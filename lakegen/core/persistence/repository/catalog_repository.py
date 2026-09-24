@@ -5,7 +5,6 @@ from psycopg.types.json import Jsonb
 
 from lakegen.core.error.base import BaseError
 from lakegen.core.error.code import ErrorCode
-from lakegen.core.persistence import PostgresPersistence, persistence
 from lakegen.core.persistence.repository.base import Repository
 
 

@@ -16,7 +16,7 @@ from lakegen.api.run.runner import AgentEvent, AgentEventType, TurnResult
 from lakegen.core.catalog.service import CatalogInfo
 from lakegen.core.error.base import BaseError
 from lakegen.core.error.code import ErrorCode
-from lakegen.session import SessionInfo
+from lakegen.session import AgentTurnInfo, SessionInfo
 
 _SESSION_ID = "550e8400-e29b-41d4-a716-446655440000"
 
@@ -267,6 +267,42 @@ def test_local_auth_x_user_header(client: TestClient, agent_runner: MagicMock) -
     res = client.post("/v1/sessions", headers={"X-User": "alice"})
     assert res.status_code == 201
     agent_runner.create_session.assert_called_once_with(owner_id="alice")
+
+
+def test_list_turns(client: TestClient, agent_runner: MagicMock) -> None:
+    agent_runner.list_turns.return_value = [
+        AgentTurnInfo(
+            id="turn-1",
+            created_at=datetime(2026, 9, 22),
+            result={
+                "final_message": "hello",
+                "stop_reason": "completed",
+                "turn_messages": {"messages": [{"role": "user", "content": "hi"}]},
+            },
+        )
+    ]
+    res = client.get(
+        f"/v1/sessions/{_SESSION_ID}/turns?offset=0&limit=20",
+        headers={"X-User": "alice"},
+    )
+    assert res.status_code == 200
+    assert res.json() == [
+        {
+            "id": "turn-1",
+            "created_at": "2026-09-22T00:00:00",
+            "result": {
+                "final_message": "hello",
+                "stop_reason": "completed",
+                "turn_messages": {"messages": [{"role": "user", "content": "hi"}]},
+            },
+        }
+    ]
+    agent_runner.list_turns.assert_called_once_with(
+        _SESSION_ID,
+        owner_id="alice",
+        offset=0,
+        limit=20,
+    )
 
 
 def test_turn_sse(client: TestClient, agent_runner: MagicMock) -> None:

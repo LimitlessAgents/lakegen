@@ -8,7 +8,7 @@ from lakegen.agent import AgentConfig
 from lakegen.core.error.base import BaseError
 from lakegen.core.error.code import ErrorCode
 from lakegen.session.environment import Environment
-from lakegen.session.model import SessionInfo, SessionState
+from lakegen.session.model import AgentTurnInfo, SessionInfo, SessionState
 from lakegen.session.session import Session
 
 _DEFAULT_SYSTEM_PROMPT = (
@@ -111,10 +111,10 @@ class SessionManager:
             raise ValueError("offset must be non-negative.")
 
         with self._lock:
-            rows = self.env.session_repository.list_all(
-                owner_id=owner_id,
-                limit=_SESSION_PAGE_SIZE,
-                offset=offset,
+            rows = self.env.session_repository.list(
+                owner_id,
+                offset,
+                _SESSION_PAGE_SIZE,
             )
             live_ids = set(self._sessions)
             return [
@@ -126,6 +126,19 @@ class SessionManager:
                 )
                 for row in rows
             ]
+
+    def list_turns(
+        self,
+        session_id: str,
+        offset: int,
+        limit: int,
+    ) -> list[AgentTurnInfo]:
+        if offset < 0:
+            raise ValueError("offset must be non-negative.")
+        if limit <= 0:
+            raise ValueError("limit must be positive.")
+        rows = self.env.agent_turn_repository.list(session_id, offset, limit)
+        return [self._agent_turn_info(row) for row in rows]
 
     def delete(self, session_id: str) -> None:
         """Remove a session. Children are deleted with it.
@@ -200,3 +213,14 @@ class SessionManager:
         if not isinstance(created_at, datetime):
             raise RuntimeError("Stored session created_at must be a datetime.")
         return created_at
+
+    @staticmethod
+    def _agent_turn_info(row: dict[str, object]) -> AgentTurnInfo:
+        result = row["result"]
+        if not isinstance(result, dict):
+            raise RuntimeError("Stored agent turn result must be an object.")
+        return AgentTurnInfo(
+            id=str(row["id"]),
+            created_at=SessionManager._created_at(row),
+            result=result,
+        )

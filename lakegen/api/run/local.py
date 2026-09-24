@@ -8,7 +8,7 @@ from lakegen.api.run.runner import AgentEvent, AgentEventType, TurnResult
 from lakegen.core.error.base import BaseError
 from lakegen.core.error.code import ErrorCode
 from lakegen.inference import StreamChunk
-from lakegen.session import Session, SessionInfo, SessionManager
+from lakegen.session import AgentTurnInfo, Session, SessionInfo, SessionManager
 from lakegen.session.environment import Environment
 
 
@@ -37,6 +37,17 @@ class LocalRunAdapter:
     def delete_session(self, session_id: str, *, owner_id: str) -> None:
         self._require_owner(session_id, owner_id)
         self._manager.delete(session_id)
+
+    def list_turns(
+        self,
+        session_id: str,
+        *,
+        owner_id: str,
+        offset: int = 0,
+        limit: int = 20,
+    ) -> list[AgentTurnInfo]:
+        # self._require_owner(session_id, owner_id) # Will be uncommented either after session cache is removed or cache+persistence based solution is implemented
+        return self._manager.list_turns(session_id, offset, limit)
 
     def run_turn(
         self,
