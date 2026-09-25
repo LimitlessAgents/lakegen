@@ -29,7 +29,7 @@ class SessionRepository(Repository):
 
     def get(self, identifier: str) -> dict[str, object]:
         row = self._database.fetch_one(
-            "SELECT id, name, created_at FROM sessions WHERE id = %s",
+            "SELECT id, owner_id, name, created_at FROM sessions WHERE id = %s",
             (identifier,),
         )
         if row is None:

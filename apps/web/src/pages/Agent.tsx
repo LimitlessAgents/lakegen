@@ -6,7 +6,14 @@ import { ChatMessage } from '../components/agent/ChatMessage';
 import { Composer } from '../components/agent/Composer';
 
 export function Agent() {
-  const { activeConversationRestored, messages, isStreaming, sendMessage } = useLakeGen();
+  const {
+    messages,
+    isStreaming,
+    sendMessage,
+    selectedSessionId,
+    sessionHistoryLoading,
+    sessionHistoryError,
+  } = useLakeGen();
   const scrollRef = useRef<HTMLDivElement>(null);
   const pinnedToBottomRef = useRef(true);
   const previousMessageCountRef = useRef(0);
@@ -48,15 +55,22 @@ export function Agent() {
         aria-busy={isStreaming}
         className="lg-scroll relative flex-1 overflow-y-auto"
       >
-        {messages.length === 0 ? (
+        {sessionHistoryLoading ? (
+          <div className="mx-auto max-w-[760px] px-8 pt-[18vh] text-[14px] text-ink-muted">
+            Loading session history…
+          </div>
+        ) : sessionHistoryError ? (
+          <div role="alert" className="mx-auto max-w-[760px] px-8 pt-[18vh] text-[14px] text-err">
+            {sessionHistoryError}
+          </div>
+        ) : selectedSessionId && messages.length === 0 ? (
+          <div className="mx-auto max-w-[760px] px-8 pt-[18vh] text-[14px] text-ink-muted">
+            This session has no messages.
+          </div>
+        ) : messages.length === 0 ? (
           <AgentEmptyState />
         ) : (
           <div className="mx-auto max-w-[760px] px-8 pb-10 pt-2">
-            {activeConversationRestored && (
-              <p className="border-b border-line-soft py-3 text-[12px] leading-[1.5] text-ink-faint">
-                Restored from your browser. The agent does not have the earlier messages as context.
-              </p>
-            )}
             {messages.map((message) => (
               <ChatMessage key={message.id} message={message} onRetry={retryMessage} />
             ))}

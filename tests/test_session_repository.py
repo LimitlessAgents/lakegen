@@ -32,12 +32,16 @@ def test_get_returns_session() -> None:
     database = MagicMock(spec=PostgresPersistence)
     row = {
         "id": "session-1",
+        "owner_id": "user-1",
         "name": "Test",
         "created_at": datetime.now(),
     }
     database.fetch_one.return_value = row
 
     assert SessionRepository(database).get("session-1") == row
+    statement, parameters = database.fetch_one.call_args.args
+    assert "owner_id" in statement
+    assert parameters == ("session-1",)
 
 
 def test_get_missing_raises_not_found() -> None:

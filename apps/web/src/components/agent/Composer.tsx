@@ -6,7 +6,18 @@ import { IconButton } from '../ui/IconButton';
 const MAX_MESSAGE_LENGTH = 10_000;
 
 export function Composer() {
-  const { catalogs, sendMessage, sendError, isStreaming, stopStreaming, activeCatalog } = useLakeGen();
+  const {
+    catalogs,
+    sendMessage,
+    sendError,
+    isStreaming,
+    stopStreaming,
+    activeCatalog,
+    selectedSessionId,
+    activeSessionLive,
+    sessionHistoryLoading,
+    sessionHistoryError,
+  } = useLakeGen();
   const [value, setValue] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -18,11 +29,17 @@ export function Composer() {
   }, [value]);
 
   const unavailableReason =
-    catalogs.length === 0
-      ? 'Connect a catalog before sending a message.'
-      : !activeCatalog
-        ? 'Select an active catalog before sending a message.'
-        : null;
+    sessionHistoryLoading
+      ? 'Wait for session history to load.'
+      : selectedSessionId && sessionHistoryError
+        ? 'Session history is unavailable. Retry it or start a new conversation.'
+        : selectedSessionId && !activeSessionLive
+          ? 'This session is history only. Start a new conversation to continue.'
+          : catalogs.length === 0
+            ? 'Connect a catalog before sending a message.'
+            : !activeCatalog
+              ? 'Select an active catalog before sending a message.'
+              : null;
   const cannotSend = Boolean(unavailableReason) || isStreaming || value.length > MAX_MESSAGE_LENGTH;
 
   async function submit() {

@@ -123,6 +123,44 @@ def test_list_uses_requested_offset():
     env.session_repository.list.assert_called_once_with(_OWNER, 10, 10)
 
 
+def test_list_turns_requires_persisted_owner():
+    env = _env()
+    mgr = SessionManager(env=env)
+    env.session_repository.get.return_value = {
+        "id": "session-1",
+        "owner_id": _OWNER,
+    }
+    created_at = datetime.now()
+    env.agent_turn_repository.list.return_value = [
+        {"id": "turn-1", "created_at": created_at, "result": {}}
+    ]
+
+    turns = mgr.list_turns(
+        "session-1",
+        owner_id=_OWNER,
+        offset=10,
+        limit=20,
+    )
+
+    assert [turn.id for turn in turns] == ["turn-1"]
+    env.agent_turn_repository.list.assert_called_once_with("session-1", 10, 20)
+
+
+def test_list_turns_hides_another_owners_session():
+    env = _env()
+    mgr = SessionManager(env=env)
+    env.session_repository.get.return_value = {
+        "id": "session-1",
+        "owner_id": "another-user",
+    }
+
+    with pytest.raises(BaseError) as exc_info:
+        mgr.list_turns("session-1", owner_id=_OWNER)
+
+    assert exc_info.value.code == ErrorCode.NOT_FOUND
+    env.agent_turn_repository.list.assert_not_called()
+
+
 def test_create_does_not_register_session_when_persistence_fails(
     registered_catalog,
 ):

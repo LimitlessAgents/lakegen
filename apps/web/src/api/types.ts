@@ -6,10 +6,12 @@ import type {
 } from './schema';
 
 export type {
+  AgentTurnInfo,
   CatalogResponse,
   CreateSessionResponse,
   ErrorCode,
   ErrorBody,
+  SessionResponse,
   TurnRequest,
 } from './schema';
 
