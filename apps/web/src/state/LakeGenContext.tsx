@@ -108,11 +108,14 @@ function readRetainedTurns(): Record<string, Message[]> {
 
 function writeRetainedTurns(sessionId: string, messages: Message[]) {
   const next = { ...readRetainedTurns(), [sessionId]: messages };
-  let serialized = JSON.stringify(next);
-  if (serialized.length > MAX_RETAINED_TURNS_BYTES) {
-    serialized = JSON.stringify({ [sessionId]: messages });
+  const latest = (msgs: Message[]) => msgs.reduce((t, m) => Math.max(t, m.createdAt), 0);
+  for (const id of Object.keys(next)
+    .filter((key) => key !== sessionId)
+    .sort((a, b) => latest(next[a]) - latest(next[b]))) {
+    if (JSON.stringify(next).length <= MAX_RETAINED_TURNS_BYTES) break;
+    delete next[id];
   }
-  writeLocal(RETAINED_TURNS_KEY, serialized);
+  writeLocal(RETAINED_TURNS_KEY, JSON.stringify(next));
 }
 
 function clearRetainedTurns(sessionId: string) {
