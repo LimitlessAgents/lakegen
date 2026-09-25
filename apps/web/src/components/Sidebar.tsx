@@ -19,7 +19,18 @@ function navClass(isActive: boolean, compact = false) {
 }
 
 export function Sidebar() {
-  const { activeCatalog, catalogs, activeConversationId, conversations, selectConversation } = useLakeGen();
+  const {
+    activeCatalog,
+    catalogs,
+    sessions,
+    sessionsLoading,
+    sessionsLoadingMore,
+    sessionsError,
+    sessionsHasMore,
+    loadMoreSessions,
+    selectedSessionId,
+    selectSession,
+  } = useLakeGen();
 
   return (
     <>
@@ -53,26 +64,54 @@ export function Sidebar() {
         </nav>
 
         <div className="mt-5 min-h-0 px-2.5">
-          <div className="px-2.5 text-2xs uppercase tracking-wider text-ink-faint">Conversations</div>
+          <div className="px-2.5 text-2xs uppercase tracking-wider text-ink-faint">Sessions</div>
           <div className="lg-scroll mt-1 max-h-[35vh] overflow-y-auto">
-            {conversations.map((conversation) => {
-              const title = conversation.messages.find((message) => message.role === 'user')?.text;
+            {sessionsLoading && (
+              <p className="px-2.5 py-1.5 text-[12px] text-ink-faint">Loading sessions…</p>
+            )}
+            {!sessionsLoading && sessions.length === 0 && !sessionsError && (
+              <p className="px-2.5 py-1.5 text-[12px] text-ink-faint">No sessions yet</p>
+            )}
+            {sessions.map((session) => {
+              const createdAt = new Date(session.created_at);
+              const fallback = Number.isNaN(createdAt.getTime())
+                ? 'Untitled session'
+                : createdAt.toLocaleString(undefined, {
+                    dateStyle: 'medium',
+                    timeStyle: 'short',
+                  });
+              const title = session.name?.trim() || fallback;
               return (
                 <button
-                  key={conversation.id}
+                  key={session.id}
                   type="button"
-                  onClick={() => selectConversation(conversation.id)}
+                  onClick={() => void selectSession(session)}
                   className={`block w-full truncate rounded-md px-2.5 py-1.5 text-left text-[12px] transition-colors ${
-                    conversation.id === activeConversationId
+                    session.id === selectedSessionId
                       ? 'bg-line-soft font-medium text-ink'
                       : 'text-ink-muted hover:bg-line-soft/70 hover:text-ink'
                   }`}
-                  title={title ?? 'New conversation'}
+                  title={`${title}${session.live ? '' : ' (history only)'}`}
                 >
-                  {title ?? 'New conversation'}
+                  {title}
                 </button>
               );
             })}
+            {sessionsError && (
+              <p role="alert" className="px-2.5 py-1.5 text-[12px] text-err">
+                {sessionsError}
+              </p>
+            )}
+            {(sessionsHasMore || (sessionsError && sessions.length === 0)) && (
+              <button
+                type="button"
+                disabled={sessionsLoadingMore}
+                onClick={() => void loadMoreSessions()}
+                className="block w-full rounded-md px-2.5 py-1.5 text-left text-[12px] font-medium text-accent hover:bg-line-soft/70 disabled:cursor-wait disabled:text-ink-faint"
+              >
+                {sessionsLoadingMore ? 'Loading…' : sessions.length === 0 ? 'Retry' : 'Load 10 more'}
+              </button>
+            )}
           </div>
         </div>
 

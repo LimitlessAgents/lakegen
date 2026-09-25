@@ -1,8 +1,10 @@
 import type {
+  AgentTurnInfo,
   CatalogCreateRequest,
   CatalogResponse,
   CreateSessionResponse,
   ErrorBody,
+  SessionResponse,
 } from './types';
 
 export class ApiError extends Error {
@@ -71,4 +73,20 @@ export function deleteCatalog(name: string): Promise<void> {
 
 export function createSession(): Promise<CreateSessionResponse> {
   return request('/v1/sessions', { method: 'POST' });
+}
+
+export function listSessions(offset = 0): Promise<SessionResponse[]> {
+  return request(`/v1/sessions?offset=${offset}`);
+}
+
+export function listSessionTurns(
+  sessionId: string,
+  offset = 0,
+  limit = 100,
+  signal?: AbortSignal,
+): Promise<AgentTurnInfo[]> {
+  return request(
+    `/v1/sessions/${encodeURIComponent(sessionId)}/turns?offset=${offset}&limit=${limit}`,
+    { signal },
+  );
 }

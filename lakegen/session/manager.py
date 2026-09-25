@@ -130,13 +130,21 @@ class SessionManager:
     def list_turns(
         self,
         session_id: str,
-        offset: int,
-        limit: int,
+        *,
+        owner_id: str,
+        offset: int = 0,
+        limit: int = 20,
     ) -> list[AgentTurnInfo]:
         if offset < 0:
             raise ValueError("offset must be non-negative.")
         if limit <= 0:
             raise ValueError("limit must be positive.")
+        row = self.env.session_repository.get(session_id)
+        if row.get("owner_id") != owner_id:
+            raise BaseError(
+                ErrorCode.NOT_FOUND,
+                f"Session {session_id!r} not found.",
+            )
         rows = self.env.agent_turn_repository.list(session_id, offset, limit)
         return [self._agent_turn_info(row) for row in rows]
 
