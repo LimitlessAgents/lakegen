@@ -1,0 +1,48 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: lakegen
+      POSTGRES_PASSWORD: lakegen
+      POSTGRES_DB: lakegen
+    volumes:
+      - lakegen_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U lakegen -d lakegen"]
+      interval: 2s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: .
+      dockerfile: lakegen/Dockerfile
+    env_file: .env
+    environment:
+      LAKEGEN_DATABASE_URL: postgresql://lakegen:lakegen@postgres:5432/lakegen
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          'python -c "import urllib.request; urllib.request.urlopen(\"http://127.0.0.1:8000/health\")"',
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 15s
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    ports:
+      - "127.0.0.1:8080:80"
+    depends_on:
+      api:
+        condition: service_healthy
+
+volumes:
+  lakegen_pg_data:

@@ -59,42 +59,44 @@ more detail is needed.
 
 ## Quickstart
 
-### Prerequisites
+### Docker
 
-- Python 3.13 or newer
-- [uv](https://docs.astral.sh/uv/)
-- Node.js and npm
-- A running PostgreSQL instance
-- Access to an OpenAI-compatible inference API
+**Prerequisites:** [Docker](https://docs.docker.com/get-docker/) with Compose
+v2 and an OpenAI-compatible inference API key.
 
-Clone the repository, then create a `.env` file in the project root:
+Copy [`.env.example`](.env.example) to `.env`, set `OPENAI_API_KEY`, then run
+`docker compose up -d` from the repository root.
 
-```dotenv
-OPENAI_API_KEY=your-api-key
-LAKEGEN_DATABASE_URL=postgresql://user:password@localhost:5432/lakegen
+Open [http://localhost:8080](http://localhost:8080).
 
-# Optional when using OpenRouter or another compatible provider
-OPENAI_BASE_URL=https://your-provider.example/v1
-```
+### Manual development
 
-Install the backend dependencies and start the API:
+For debugging with hot reload, run the API and web app on the host instead of
+Compose.
+
+**Prerequisites:** Python 3.13+, [uv](https://docs.astral.sh/uv/), Node.js and
+npm, PostgreSQL, and an inference API key.
+
+In `.env`, set `OPENAI_API_KEY` and `LAKEGEN_DATABASE_URL` (see
+[`.env.example`](.env.example)). Optional: `OPENAI_BASE_URL` for OpenRouter or
+another compatible provider.
+
+API (repo root):
 
 ```bash
 uv sync
-uvicorn lakegen.api.app:app --reload
+uv run uvicorn lakegen.api.app:app --reload
 ```
 
-In a second terminal, start the web application:
+Web (second terminal):
 
 ```bash
-cd apps/web
-npm install
-npm run dev
+cd apps/web && npm install && npm run dev
 ```
 
-Open [http://localhost:5173](http://localhost:5173), add a catalog, and begin a
-conversation. The API is available on port `8000`, and its health endpoint is
-`GET /health`.
+UI: [http://localhost:5173](http://localhost:5173). API:
+[http://localhost:8000](http://localhost:8000) (`GET /health`). Vite proxies
+`/v1` and `/health` to the API.
 
 ## Project status
 
