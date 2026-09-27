@@ -59,42 +59,16 @@ more detail is needed.
 
 ## Quickstart
 
-### Prerequisites
+**Prerequisites:** [Docker](https://docs.docker.com/get-docker/) with Compose
+v2 and an OpenAI-compatible inference API key.
 
-- Python 3.13 or newer
-- [uv](https://docs.astral.sh/uv/)
-- Node.js and npm
-- A running PostgreSQL instance
-- Access to an OpenAI-compatible inference API
+Copy [`.env.example`](.env.example) to `.env`, set `OPENAI_API_KEY`, then run
+`docker compose up -d` from the repository root.
 
-Clone the repository, then create a `.env` file in the project root:
+Open [http://localhost:8080](http://localhost:8080), add a catalog, and begin a
+conversation. The UI and API share that URL (`GET /health` is proxied to the
+backend).
 
-```dotenv
-OPENAI_API_KEY=your-api-key
-LAKEGEN_DATABASE_URL=postgresql://user:password@localhost:5432/lakegen
-
-# Optional when using OpenRouter or another compatible provider
-OPENAI_BASE_URL=https://your-provider.example/v1
-```
-
-Install the backend dependencies and start the API:
-
-```bash
-uv sync
-uvicorn lakegen.api.app:app --reload
-```
-
-In a second terminal, start the web application:
-
-```bash
-cd apps/web
-npm install
-npm run dev
-```
-
-Open [http://localhost:5173](http://localhost:5173), add a catalog, and begin a
-conversation. The API is available on port `8000`, and its health endpoint is
-`GET /health`.
 
 ## Project status
 
