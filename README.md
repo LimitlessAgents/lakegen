@@ -85,7 +85,7 @@ API (repo root):
 
 ```bash
 uv sync
-uvicorn lakegen.api.app:app --reload
+uv run uvicorn lakegen.api.app:app --reload
 ```
 
 Web (second terminal):
