@@ -7,9 +7,10 @@ RUN apt-get update \
 WORKDIR /app
 
 COPY pyproject.toml uv.lock README.md ./
+COPY lakegen ./lakegen
+
 RUN uv sync --frozen --no-dev
 
-COPY lakegen ./lakegen
 
 EXPOSE 8000
 

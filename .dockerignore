@@ -3,6 +3,8 @@
 **/__pycache__
 **/*.py[oc]
 apps/web/node_modules
+apps/web/.vite
+apps/web/dist
 brag-output
 .env
 .cursor

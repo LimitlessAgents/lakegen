@@ -59,16 +59,44 @@ more detail is needed.
 
 ## Quickstart
 
+### Docker
+
 **Prerequisites:** [Docker](https://docs.docker.com/get-docker/) with Compose
 v2 and an OpenAI-compatible inference API key.
 
 Copy [`.env.example`](.env.example) to `.env`, set `OPENAI_API_KEY`, then run
 `docker compose up -d` from the repository root.
 
-Open [http://localhost:8080](http://localhost:8080), add a catalog, and begin a
-conversation. The UI and API share that URL (`GET /health` is proxied to the
-backend).
+Open [http://localhost:8080](http://localhost:8080).
 
+### Manual development
+
+For debugging with hot reload, run the API and web app on the host instead of
+Compose.
+
+**Prerequisites:** Python 3.13+, [uv](https://docs.astral.sh/uv/), Node.js and
+npm, PostgreSQL, and an inference API key.
+
+In `.env`, set `OPENAI_API_KEY` and `LAKEGEN_DATABASE_URL` (see
+[`.env.example`](.env.example)). Optional: `OPENAI_BASE_URL` for OpenRouter or
+another compatible provider.
+
+API (repo root):
+
+```bash
+uv sync
+uvicorn lakegen.api.app:app --reload
+```
+
+Web (second terminal):
+
+```bash
+cd apps/web && npm install && npm run dev
+```
+
+UI: [http://localhost:5173](http://localhost:5173). API:
+[http://localhost:8000](http://localhost:8000) (`GET /health`). Vite proxies
+`/v1` and `/health` to the API.
 
 ## Project status
 
