@@ -10,11 +10,9 @@ from lakegen.core.error.code import ErrorCode
 from lakegen.session.environment import Environment
 from lakegen.session.model import AgentTurnInfo, SessionInfo, SessionState
 from lakegen.session.session import Session
+from lakegen.prompt import PROMPT as _DEFAULT_SYSTEM_PROMPT
 
-_DEFAULT_SYSTEM_PROMPT = (
-    "You are a lakehouse operator. Help users with their requests "
-    "with their lakehouses"
-)
+
 _DEFAULT_MODEL = "openrouter/free"
 _DEFAULT_PROVIDER = "openai"
 _DEFAULT_MAX_TURNS = 10
