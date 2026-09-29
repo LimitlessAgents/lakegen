@@ -129,13 +129,6 @@ class AgentLoop:
 
         append_message(Message(role=Role.USER, content=user_text))
 
-        system_prompt = (
-            f"{agent_config.system_prompt}\n\n"
-            f"Active catalog: {catalog_name!r}. "
-            "All tools operate on this catalog. "
-            "Do not ask which catalog to use."
-        )
-
         try:
             while turns < agent_config.max_turns:
                 if cancel_event.is_set():
@@ -157,7 +150,7 @@ class AgentLoop:
 
                 chat_request = ChatRequest(
                     model=agent_config.model,
-                    system_prompt=system_prompt,
+                    system_prompt=self._build_prompt(agent_config, catalog_name),
                     tools=self._tools.list_definitions(),
                     messages=current_messages(),
                 )
@@ -273,4 +266,17 @@ class AgentLoop:
                 tool_calls=tool_calls,
             ),
             tokens=tokens,
+        )
+    
+
+    def _build_prompt(
+        self,
+        agent_config: AgentConfig,
+        catalog_name: str
+    ) -> str:
+        return (
+            f"{agent_config.system_prompt}\n\n"
+            f"Active catalog: {catalog_name!r}. "
+            "All tools operate on this catalog. "
+            "Do not ask which catalog to use."
         )
