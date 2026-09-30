@@ -42,9 +42,11 @@ export function Composer() {
               : null;
   const cannotSend = Boolean(unavailableReason) || isStreaming || value.length > MAX_MESSAGE_LENGTH;
 
-  async function submit() {
+  function submit() {
     if (!value.trim() || cannotSend) return;
-    if (await sendMessage(value)) setValue('');
+    const text = value;
+    setValue('');
+    void sendMessage(text);
   }
 
   return (
