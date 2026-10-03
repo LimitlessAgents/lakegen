@@ -510,6 +510,71 @@ def test_get_hydrates_persisted_session(registered_catalog):
     env.agent_turn_repository.list.assert_called_once_with(session_id, 0, 20)
 
 
+def test_pin_session_does_not_replace_fresher_cached_session(registered_catalog):
+    env = _env()
+    mgr = SessionManager(env=env, cache_size=1)
+    stale = open_session(
+        mgr,
+        _config(),
+        owner_id=_OWNER,
+        catalog_name=registered_catalog,
+    )
+    session_id = stale.id
+    mgr.create(_config(), owner_id=_OWNER, catalog_name=registered_catalog)
+
+    created_at = datetime.now()
+    env.session_repository.get.return_value = {
+        "id": session_id,
+        "owner_id": _OWNER,
+        "catalog_name": registered_catalog,
+        "created_at": created_at,
+    }
+    env.agent_turn_repository.list.return_value = []
+
+    fresh = mgr.get(session_id)
+    assert fresh is not stale
+
+    mgr.pin_session(session_id, stale)
+    assert mgr.get(session_id) is fresh
+
+
+def test_get_hydration_does_not_block_other_sessions(registered_catalog):
+    env = _env()
+    mgr = SessionManager(env=env)
+    slow_id = "00000000-0000-0000-0000-000000000001"
+    hydrate_started = threading.Event()
+    release_hydrate = threading.Event()
+
+    def get_row(session_id: str):
+        return {
+            "id": session_id,
+            "owner_id": _OWNER,
+            "catalog_name": registered_catalog,
+            "created_at": datetime.now(),
+        }
+
+    env.session_repository.get.side_effect = get_row
+
+    def list_turns(session_id: str, *_args, **_kwargs):
+        if session_id == slow_id:
+            hydrate_started.set()
+            assert release_hydrate.wait(timeout=2)
+        return []
+
+    env.agent_turn_repository.list.side_effect = list_turns
+
+    hydrator = threading.Thread(target=lambda: mgr.get(slow_id))
+    hydrator.start()
+    assert hydrate_started.wait(timeout=2)
+
+    other_id = mgr.create(_config(), owner_id=_OWNER, catalog_name=registered_catalog)
+    other = mgr.get(other_id)
+    assert other.id == other_id
+
+    release_hydrate.set()
+    hydrator.join(timeout=2)
+
+
 def test_delete_blocks_spawn_and_send_before_deleting_rows(registered_catalog):
     env = _env()
     mgr = SessionManager(env=env)

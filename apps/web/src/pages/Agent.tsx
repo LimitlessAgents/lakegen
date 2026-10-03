@@ -20,7 +20,7 @@ export function Agent() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const pinnedToBottomRef = useRef(true);
   const previousMessageCountRef = useRef(0);
-  const historyScrollAnchorRef = useRef<number | null>(null);
+  const historyScrollAnchorRef = useRef<{ sessionId: string; height: number } | null>(null);
   const [showJumpToLatest, setShowJumpToLatest] = useState(false);
   const retryMessage = useCallback((text: string) => {
     void sendMessage(text);
@@ -30,13 +30,22 @@ export function Agent() {
     document.title = 'Agent · LakeGen';
   }, []);
 
+  useEffect(() => {
+    historyScrollAnchorRef.current = null;
+    pinnedToBottomRef.current = true;
+    previousMessageCountRef.current = 0;
+  }, [selectedSessionId]);
+
   useLayoutEffect(() => {
     const container = scrollRef.current;
     if (!container) return;
 
-    if (historyScrollAnchorRef.current !== null && !sessionHistoryLoadingMore) {
-      const delta = container.scrollHeight - historyScrollAnchorRef.current;
-      if (delta > 0) container.scrollTop += delta;
+    const anchor = historyScrollAnchorRef.current;
+    if (anchor !== null && !sessionHistoryLoadingMore) {
+      if (anchor.sessionId === selectedSessionId) {
+        const delta = container.scrollHeight - anchor.height;
+        if (delta > 0) container.scrollTop += delta;
+      }
       historyScrollAnchorRef.current = null;
       previousMessageCountRef.current = messages.length;
       return;
@@ -49,7 +58,7 @@ export function Agent() {
       });
     }
     previousMessageCountRef.current = messages.length;
-  }, [isStreaming, messages, sessionHistoryLoadingMore]);
+  }, [isStreaming, messages, selectedSessionId, sessionHistoryLoadingMore]);
 
   function handleScroll() {
     const container = scrollRef.current;
@@ -63,7 +72,9 @@ export function Agent() {
       && !sessionHistoryLoading
       && !sessionHistoryLoadingMore
     ) {
-      historyScrollAnchorRef.current = container.scrollHeight;
+      if (selectedSessionId) {
+        historyScrollAnchorRef.current = { sessionId: selectedSessionId, height: container.scrollHeight };
+      }
       void loadMoreSessionHistory();
     }
   }

@@ -43,6 +43,7 @@ interface Conversation {
   updatedAt: number;
   historyTurnOffset: number;
   historyHasMore: boolean;
+  boundCatalogName: string | null;
 }
 
 interface LakeGenValue {
@@ -56,6 +57,7 @@ interface LakeGenValue {
   activeCatalogName: string | null;
   setActiveCatalogName: (name: string) => void;
   activeCatalog: CatalogResponse | null;
+  isActiveCatalogLocked: boolean;
   sessions: SessionResponse[];
   sessionsLoading: boolean;
   sessionsLoadingMore: boolean;
@@ -203,7 +205,8 @@ export function LakeGenProvider({ children }: { children: React.ReactNode }) {
   const sessionsRef = useRef<SessionResponse[]>([]);
   const sessionsRevisionRef = useRef(0);
   const sessionsLoadingMoreRef = useRef(false);
-  const sessionHistoryLoadingMoreRef = useRef(false);
+  const historyMoreInFlightSessionRef = useRef<string | null>(null);
+  const historyMoreAbortRef = useRef<AbortController | null>(null);
   const conversationsRef = useRef(conversations);
   const activeConversationIdRef = useRef(activeConversationId);
   const selectedSessionIdRef = useRef(selectedSessionId);
@@ -233,6 +236,7 @@ export function LakeGenProvider({ children }: { children: React.ReactNode }) {
       updatedAt: Date.now(),
       historyTurnOffset: 0,
       historyHasMore: false,
+      boundCatalogName: null,
     };
     updateConversations((current) => ({ ...current, [conversation.id]: conversation }));
     activeConversationIdRef.current = conversation.id;
@@ -304,6 +308,10 @@ export function LakeGenProvider({ children }: { children: React.ReactNode }) {
 
   const selectSession = useCallback(async (session: SessionResponse) => {
     historyAbortRef.current?.abort();
+    historyMoreAbortRef.current?.abort();
+    historyMoreAbortRef.current = null;
+    historyMoreInFlightSessionRef.current = null;
+    setSessionHistoryLoadingMore(false);
     const controller = new AbortController();
     historyAbortRef.current = controller;
     selectedSessionIdRef.current = session.id;
@@ -356,6 +364,7 @@ export function LakeGenProvider({ children }: { children: React.ReactNode }) {
               ...previous,
               historyTurnOffset,
               historyHasMore,
+              boundCatalogName: session.catalog_name ?? previous.boundCatalogName,
             },
           };
         }
@@ -375,6 +384,7 @@ export function LakeGenProvider({ children }: { children: React.ReactNode }) {
             updatedAt: Date.parse(session.created_at) || Date.now(),
             historyTurnOffset,
             historyHasMore,
+            boundCatalogName: session.catalog_name ?? previous?.boundCatalogName ?? null,
           },
         };
       });
@@ -408,20 +418,26 @@ export function LakeGenProvider({ children }: { children: React.ReactNode }) {
   const loadMoreSessionHistory = useCallback(async () => {
     const sessionId = selectedSessionIdRef.current;
     const conversationId = activeConversationIdRef.current;
-    if (!sessionId || !conversationId || sessionHistoryLoadingMoreRef.current) return;
+    if (!sessionId || !conversationId || historyMoreInFlightSessionRef.current === sessionId) {
+      return;
+    }
     const conversation = conversationsRef.current[conversationId];
     if (!conversation?.sessionId || conversation.sessionId !== sessionId) return;
     if (!conversation.historyHasMore) return;
 
-    sessionHistoryLoadingMoreRef.current = true;
+    historyMoreAbortRef.current?.abort();
+    const controller = new AbortController();
+    historyMoreAbortRef.current = controller;
+    historyMoreInFlightSessionRef.current = sessionId;
     setSessionHistoryLoadingMore(true);
     try {
       const page = await listSessionTurns(
         sessionId,
         conversation.historyTurnOffset,
         TURN_PAGE_SIZE,
+        controller.signal,
       );
-      if (selectedSessionIdRef.current !== sessionId) return;
+      if (controller.signal.aborted || selectedSessionIdRef.current !== sessionId) return;
       const older = messagesFromTurns(page);
       updateConversations((current) => {
         const currentConversation = current[conversationId];
@@ -439,13 +455,21 @@ export function LakeGenProvider({ children }: { children: React.ReactNode }) {
         };
       });
     } catch (error) {
+      if (controller.signal.aborted || selectedSessionIdRef.current !== sessionId) return;
       notify({
         tone: 'error',
         message: error instanceof Error ? error.message : 'Failed to load older messages',
       });
     } finally {
-      sessionHistoryLoadingMoreRef.current = false;
-      setSessionHistoryLoadingMore(false);
+      if (historyMoreAbortRef.current === controller) {
+        historyMoreAbortRef.current = null;
+      }
+      if (historyMoreInFlightSessionRef.current === sessionId) {
+        historyMoreInFlightSessionRef.current = null;
+      }
+      if (selectedSessionIdRef.current === sessionId) {
+        setSessionHistoryLoadingMore(false);
+      }
     }
   }, [notify, updateConversations]);
 
@@ -499,6 +523,7 @@ export function LakeGenProvider({ children }: { children: React.ReactNode }) {
     () => catalogs.find((c) => c.name === activeCatalogName) ?? null,
     [catalogs, activeCatalogName],
   );
+  const isActiveCatalogLocked = Boolean(activeConversation?.boundCatalogName);
 
   const updateActiveCatalog = useCallback((name: string | null) => {
     activeCatalogNameRef.current = name;
@@ -508,7 +533,14 @@ export function LakeGenProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const setActiveCatalogName = useCallback(
-    (name: string) => updateActiveCatalog(name),
+    (name: string) => {
+      const conversationId = activeConversationIdRef.current;
+      const boundCatalogName = conversationId
+        ? conversationsRef.current[conversationId]?.boundCatalogName
+        : null;
+      if (boundCatalogName) return;
+      updateActiveCatalog(name);
+    },
     [updateActiveCatalog],
   );
 
@@ -582,6 +614,10 @@ export function LakeGenProvider({ children }: { children: React.ReactNode }) {
   const newConversation = useCallback(() => {
     historyAbortRef.current?.abort();
     historyAbortRef.current = null;
+    historyMoreAbortRef.current?.abort();
+    historyMoreAbortRef.current = null;
+    historyMoreInFlightSessionRef.current = null;
+    setSessionHistoryLoadingMore(false);
     activeConversationIdRef.current = null;
     setActiveConversationId(null);
     selectedSessionIdRef.current = null;
@@ -673,6 +709,7 @@ export function LakeGenProvider({ children }: { children: React.ReactNode }) {
                 ...current,
                 updatedAt: Date.now(),
                 historyTurnOffset: current.historyTurnOffset + 1,
+                boundCatalogName: current.boundCatalogName ?? activeCatalogNameRef.current,
                 messages: current.messages.map((message) =>
                   message.id === assistantId
                     ? {
@@ -758,6 +795,7 @@ export function LakeGenProvider({ children }: { children: React.ReactNode }) {
     activeCatalogName,
     setActiveCatalogName,
     activeCatalog,
+    isActiveCatalogLocked,
     sessions,
     sessionsLoading,
     sessionsLoadingMore,

@@ -65,6 +65,12 @@ class Session:
                     ErrorCode.NOT_FOUND,
                     f"Session {self.id!r} not found.",
                 )
+            cached = self._manager._cache.get(self.id)
+            if cached is not None and cached is not self:
+                raise BaseError(
+                    ErrorCode.NOT_FOUND,
+                    f"Session {self.id!r} not found.",
+                )
 
     def _resolve_catalog(self, catalog_name: str | None) -> str:
         stored = self.state.catalog_name
@@ -102,7 +108,7 @@ class Session:
         ``model`` and ``provider`` apply to this turn only.
         """
         if self._manager is not None:
-            self._manager.pin_session(self.id, self)
+            self._manager.pin_session(self.id)
         try:
             with self._lock:
                 self._ensure_open()

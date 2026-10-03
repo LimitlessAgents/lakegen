@@ -69,11 +69,12 @@ class SessionManager:
             )
         )
         self._deleting: set[str] = set()
+        self._hydrate_locks: dict[str, threading.Lock] = {}
         self._lock = threading.Lock()
         if self.env.persistence.configured:
             self.env.persistence.ensure_schema()
 
-    def pin_session(self, session_id: str, session: Session) -> None:
+    def pin_session(self, session_id: str, session: Session | None = None) -> None:
         with self._lock:
             if session_id in self._deleting:
                 raise BaseError(
@@ -162,18 +163,36 @@ class SessionManager:
             cached = self._cache.get(session_id)
             if cached is not None:
                 return cached
+            hydrate_lock = self._hydrate_locks.setdefault(session_id, threading.Lock())
+
+        with hydrate_lock:
+            with self._lock:
+                if session_id in self._deleting:
+                    raise BaseError(
+                        ErrorCode.NOT_FOUND,
+                        f"Session {session_id!r} not found.",
+                    )
+                cached = self._cache.get(session_id)
+                if cached is not None:
+                    return cached
 
             session = self._hydrate(session_id)
-            if (
-                session_id in self._deleting
-                or not self.env.session_repository.exists(session_id)
-            ):
-                raise BaseError(
-                    ErrorCode.NOT_FOUND,
-                    f"Session {session_id!r} not found.",
-                )
-            self._cache.set(session_id, session)
-            return session
+
+            with self._lock:
+                if (
+                    session_id in self._deleting
+                    or not self.env.session_repository.exists(session_id)
+                ):
+                    raise BaseError(
+                        ErrorCode.NOT_FOUND,
+                        f"Session {session_id!r} not found.",
+                    )
+                cached = self._cache.get(session_id)
+                if cached is not None:
+                    return cached
+                self._cache.set(session_id, session)
+                self._hydrate_locks.pop(session_id, None)
+                return session
 
     def list(self, *, owner_id: str, offset: int = 0) -> list[SessionInfo]:
         """Return one persisted page, newest first."""
