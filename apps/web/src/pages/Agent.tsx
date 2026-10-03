@@ -21,6 +21,7 @@ export function Agent() {
   const pinnedToBottomRef = useRef(true);
   const previousMessageCountRef = useRef(0);
   const historyScrollAnchorRef = useRef<{ sessionId: string; height: number } | null>(null);
+  const previousSessionIdRef = useRef(selectedSessionId);
   const [showJumpToLatest, setShowJumpToLatest] = useState(false);
   const retryMessage = useCallback((text: string) => {
     void sendMessage(text);
@@ -30,15 +31,17 @@ export function Agent() {
     document.title = 'Agent · LakeGen';
   }, []);
 
-  useEffect(() => {
-    historyScrollAnchorRef.current = null;
-    pinnedToBottomRef.current = true;
-    previousMessageCountRef.current = 0;
-  }, [selectedSessionId]);
-
   useLayoutEffect(() => {
     const container = scrollRef.current;
     if (!container) return;
+
+    if (previousSessionIdRef.current !== selectedSessionId) {
+      previousSessionIdRef.current = selectedSessionId;
+      historyScrollAnchorRef.current = null;
+      pinnedToBottomRef.current = true;
+      previousMessageCountRef.current = 0;
+      setShowJumpToLatest(false);
+    }
 
     const anchor = historyScrollAnchorRef.current;
     if (anchor !== null && !sessionHistoryLoadingMore) {

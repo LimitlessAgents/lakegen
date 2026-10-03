@@ -319,6 +319,7 @@ export function LakeGenProvider({ children }: { children: React.ReactNode }) {
     setSessionHistoryError(null);
     setSendError(null);
     if (session.catalog_name) {
+      activeCatalogNameRef.current = session.catalog_name;
       setActiveCatalogNameState(session.catalog_name);
       writeLocal(ACTIVE_CATALOG_KEY, session.catalog_name);
     }
@@ -463,12 +464,10 @@ export function LakeGenProvider({ children }: { children: React.ReactNode }) {
     } finally {
       if (historyMoreAbortRef.current === controller) {
         historyMoreAbortRef.current = null;
-      }
-      if (historyMoreInFlightSessionRef.current === sessionId) {
         historyMoreInFlightSessionRef.current = null;
-      }
-      if (selectedSessionIdRef.current === sessionId) {
-        setSessionHistoryLoadingMore(false);
+        if (selectedSessionIdRef.current === sessionId) {
+          setSessionHistoryLoadingMore(false);
+        }
       }
     }
   }, [notify, updateConversations]);
@@ -651,6 +650,7 @@ export function LakeGenProvider({ children }: { children: React.ReactNode }) {
         setSendError('A response is already being generated.');
         return false;
       }
+      const catalogName = activeCatalogNameRef.current;
       const assistantId = uid('msg');
       updateConversation(conversation.id, (current) => ({
         ...current,
@@ -683,6 +683,10 @@ export function LakeGenProvider({ children }: { children: React.ReactNode }) {
       setSendError(null);
       const controller = new AbortController();
       abortsRef.current.set(conversation.id, controller);
+      updateConversation(conversation.id, (current) => ({
+        ...current,
+        boundCatalogName: current.boundCatalogName ?? catalogName,
+      }));
 
       const expireSession = () => {
         updateConversation(conversation.id, (current) => ({ ...current, sessionId: null }));
@@ -695,7 +699,7 @@ export function LakeGenProvider({ children }: { children: React.ReactNode }) {
           sessionId,
           {
             text: trimmed,
-            catalog_name: activeCatalogName,
+            catalog_name: catalogName,
           },
           (event) => {
             if (event.type === 'text_delta') {
@@ -709,7 +713,6 @@ export function LakeGenProvider({ children }: { children: React.ReactNode }) {
                 ...current,
                 updatedAt: Date.now(),
                 historyTurnOffset: current.historyTurnOffset + 1,
-                boundCatalogName: current.boundCatalogName ?? activeCatalogNameRef.current,
                 messages: current.messages.map((message) =>
                   message.id === assistantId
                     ? {
@@ -781,7 +784,7 @@ export function LakeGenProvider({ children }: { children: React.ReactNode }) {
       }
       return true;
     },
-    [activeCatalogName, createConversation, ensureSession, notify, patchAssistant, updateConversation],
+    [createConversation, ensureSession, notify, patchAssistant, updateConversation],
   );
 
   const value: LakeGenValue = {
