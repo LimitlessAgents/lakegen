@@ -56,6 +56,11 @@ def install_openapi(app: FastAPI) -> None:
 
 
 def openapi_document() -> dict[str, Any]:
+    from unittest.mock import MagicMock
+
     from lakegen.api.app import create_app
 
-    return create_app().openapi()
+    return create_app(
+        agent_runner=MagicMock(),
+        catalogs_service=MagicMock(),
+    ).openapi()

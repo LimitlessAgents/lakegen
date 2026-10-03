@@ -17,6 +17,7 @@ class SessionRepository(Repository):
             "id": session_id,
             "owner_id": self._required_string(payload, "owner_id"),
             "name": payload.get("name"),
+            "catalog_name": payload.get("catalog_name"),
         }
 
         try:
@@ -29,7 +30,7 @@ class SessionRepository(Repository):
 
     def get(self, identifier: str) -> dict[str, object]:
         row = self._database.fetch_one(
-            "SELECT id, owner_id, name, created_at FROM sessions WHERE id = %s",
+            "SELECT id, owner_id, name, catalog_name, created_at FROM sessions WHERE id = %s",
             (identifier,),
         )
         if row is None:
@@ -44,13 +45,37 @@ class SessionRepository(Repository):
     ) -> list[dict[str, object]]:
         return self._database.fetch_all(
             """
-            SELECT id, name, created_at
+            SELECT id, name, catalog_name, created_at
             FROM sessions
             WHERE owner_id = %s
             ORDER BY created_at DESC, id DESC
             LIMIT %s OFFSET %s
             """,
             (identifier, limit if limit is not None else 100, offset or 0),
+        )
+
+    def set_catalog_name(self, session_id: str, catalog_name: str) -> None:
+        row = self._database.fetch_one(
+            """
+            UPDATE sessions
+            SET catalog_name = %s
+            WHERE id = %s
+              AND (catalog_name IS NULL OR catalog_name = %s)
+            RETURNING catalog_name
+            """,
+            (catalog_name, session_id, catalog_name),
+        )
+        if row is not None:
+            return
+        existing = self._database.fetch_one(
+            "SELECT catalog_name FROM sessions WHERE id = %s",
+            (session_id,),
+        )
+        if existing is None:
+            self._raise_not_found(session_id)
+        raise BaseError(
+            ErrorCode.INVALID_ARGUMENT,
+            "Session catalog cannot be changed.",
         )
 
     def exists(self, identifier: str) -> bool:

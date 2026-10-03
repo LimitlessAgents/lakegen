@@ -23,13 +23,8 @@ class LocalRunAdapter:
     ) -> None:
         self._manager = manager if manager is not None else SessionManager(env=env)
 
-    @property
-    def manager(self) -> SessionManager:
-        return self._manager
-
     def create_session(self, *, owner_id: str) -> str:
-        session = self._manager.create(owner_id=owner_id)
-        return session.id
+        return self._manager.create(owner_id=owner_id)
 
     def list_sessions(self, *, owner_id: str, offset: int = 0) -> list[SessionInfo]:
         return self._manager.list(owner_id=owner_id, offset=offset)

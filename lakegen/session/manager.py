@@ -1,12 +1,15 @@
 from __future__ import annotations
 
+import os
 import threading
 import uuid
 from datetime import datetime
 
 from lakegen.agent import AgentConfig
+from lakegen.agent.serialization import conversation_from_turn_rows
 from lakegen.core.error.base import BaseError
 from lakegen.core.error.code import ErrorCode
+from lakegen.session.cache import SessionCache
 from lakegen.session.environment import Environment
 from lakegen.session.model import AgentTurnInfo, SessionInfo, SessionState
 from lakegen.session.session import Session
@@ -17,6 +20,8 @@ _DEFAULT_MODEL = "openrouter/free"
 _DEFAULT_PROVIDER = "openai"
 _DEFAULT_MAX_TURNS = 10
 _SESSION_PAGE_SIZE = 10
+_DEFAULT_CACHE_SIZE = 32
+_DEFAULT_HYDRATE_TURN_LIMIT = 20
 
 
 def _default_agent_config() -> AgentConfig:
@@ -28,15 +33,64 @@ def _default_agent_config() -> AgentConfig:
     )
 
 
-class SessionManager:
-    """Owns session persistence and the in-process session registry."""
+def _int_env(name: str, default: int) -> int:
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    try:
+        return max(1, int(raw))
+    except ValueError:
+        return default
 
-    def __init__(self, env: Environment | None = None) -> None:
+
+class SessionManager:
+    """Owns session persistence and a bounded in-process session cache."""
+
+    def __init__(
+        self,
+        env: Environment | None = None,
+        *,
+        cache_size: int | None = None,
+        hydrate_turn_limit: int | None = None,
+    ) -> None:
         self.env = env if env is not None else Environment.default()
-        self._sessions: dict[str, Session] = {}
+        self._cache = SessionCache(
+            cache_size if cache_size is not None else _int_env(
+                "LAKEGEN_SESSION_CACHE_SIZE",
+                _DEFAULT_CACHE_SIZE,
+            )
+        )
+        self._hydrate_turn_limit = (
+            hydrate_turn_limit
+            if hydrate_turn_limit is not None
+            else _int_env(
+                "LAKEGEN_SESSION_HYDRATE_TURN_LIMIT",
+                _DEFAULT_HYDRATE_TURN_LIMIT,
+            )
+        )
         self._deleting: set[str] = set()
+        self._hydrate_locks: dict[str, threading.Lock] = {}
         self._lock = threading.Lock()
-        self.env.persistence.ensure_schema()
+        if self.env.persistence.configured:
+            self.env.persistence.ensure_schema()
+
+    def pin_session(self, session_id: str, session: Session | None = None) -> None:
+        with self._lock:
+            if session_id in self._deleting:
+                raise BaseError(
+                    ErrorCode.NOT_FOUND,
+                    f"Session {session_id!r} not found.",
+                )
+            if not self.env.session_repository.exists(session_id):
+                raise BaseError(
+                    ErrorCode.NOT_FOUND,
+                    f"Session {session_id!r} not found.",
+                )
+            self._cache.pin(session_id, session)
+
+    def unpin_session(self, session_id: str) -> None:
+        with self._lock:
+            self._cache.unpin(session_id)
 
     def create(
         self,
@@ -45,8 +99,10 @@ class SessionManager:
         owner_id: str,
         catalog_name: str | None = None,
         parent_id: str | None = None,
-    ) -> Session:
+    ) -> str:
         """Create a new session. Pass ``parent_id`` for a subagent thread.
+
+        Returns the new session id; use :meth:`get` before running turns.
 
         Omitting ``config`` uses session defaults. Root sessions may omit
         ``catalog_name``; it must be supplied on the first turn. Child sessions
@@ -56,16 +112,14 @@ class SessionManager:
             config = _default_agent_config()
 
         with self._lock:
-            if parent_id is not None and (
-                parent_id not in self._sessions or parent_id in self._deleting
-            ):
+            if parent_id is not None and parent_id in self._deleting:
                 raise BaseError(
                     ErrorCode.NOT_FOUND,
                     f"Parent session {parent_id!r} not found.",
                 )
 
             if parent_id is not None:
-                catalog_name = self._sessions[parent_id].state.catalog_name
+                catalog_name = self._catalog_name_for_parent(parent_id)
             elif catalog_name is not None:
                 self.env.catalog_service.require(catalog_name)
 
@@ -84,46 +138,81 @@ class SessionManager:
                 manager=self,
             )
             self.env.session_repository.create(
-                {"id": session_id, "owner_id": owner_id}
+                {
+                    "id": session_id,
+                    "owner_id": owner_id,
+                    "catalog_name": catalog_name,
+                }
             )
-            self._sessions[session_id] = session
+            self._cache.set(session_id, session)
 
             if parent_id is not None:
-                self._sessions[parent_id].state.children.append(session_id)
+                parent = self._cache.get(parent_id)
+                if parent is not None:
+                    parent.state.children.append(session_id)
 
-            return session
+            return session_id
 
     def get(self, session_id: str) -> Session:
         with self._lock:
-            session = self._sessions.get(session_id)
-            if session is None:
+            if session_id in self._deleting:
                 raise BaseError(
                     ErrorCode.NOT_FOUND,
                     f"Session {session_id!r} not found.",
                 )
-            return session
+            cached = self._cache.get(session_id)
+            if cached is not None:
+                return cached
+            hydrate_lock = self._hydrate_locks.setdefault(session_id, threading.Lock())
+
+        with hydrate_lock:
+            with self._lock:
+                if session_id in self._deleting:
+                    raise BaseError(
+                        ErrorCode.NOT_FOUND,
+                        f"Session {session_id!r} not found.",
+                    )
+                cached = self._cache.get(session_id)
+                if cached is not None:
+                    return cached
+
+            session = self._hydrate(session_id)
+
+            with self._lock:
+                if (
+                    session_id in self._deleting
+                    or not self.env.session_repository.exists(session_id)
+                ):
+                    raise BaseError(
+                        ErrorCode.NOT_FOUND,
+                        f"Session {session_id!r} not found.",
+                    )
+                cached = self._cache.get(session_id)
+                if cached is not None:
+                    return cached
+                self._cache.set(session_id, session)
+                self._hydrate_locks.pop(session_id, None)
+                return session
 
     def list(self, *, owner_id: str, offset: int = 0) -> list[SessionInfo]:
         """Return one persisted page, newest first."""
         if offset < 0:
             raise ValueError("offset must be non-negative.")
 
-        with self._lock:
-            rows = self.env.session_repository.list(
-                owner_id,
-                offset,
-                _SESSION_PAGE_SIZE,
+        rows = self.env.session_repository.list(
+            owner_id,
+            offset,
+            _SESSION_PAGE_SIZE,
+        )
+        return [
+            SessionInfo(
+                id=str(row["id"]),
+                name=row["name"] if isinstance(row["name"], str) else None,
+                created_at=self._created_at(row),
+                catalog_name=self._optional_catalog_name(row),
             )
-            live_ids = set(self._sessions)
-            return [
-                SessionInfo(
-                    id=str(row["id"]),
-                    name=row["name"] if isinstance(row["name"], str) else None,
-                    created_at=self._created_at(row),
-                    live=str(row["id"]) in live_ids,
-                )
-                for row in rows
-            ]
+            for row in rows
+        ]
 
     def list_turns(
         self,
@@ -147,71 +236,76 @@ class SessionManager:
         return [self._agent_turn_info(row) for row in rows]
 
     def delete(self, session_id: str) -> None:
-        """Remove a session. Children are deleted with it.
+        """Remove a persisted session and drop any cached copy."""
+        with self._lock:
+            if session_id in self._deleting:
+                raise BaseError(
+                    ErrorCode.NOT_FOUND,
+                    f"Session {session_id!r} not found.",
+                )
+            cached = self._cache.get(session_id)
 
-        The tree is marked as deleting before sessions are quiesced, preventing
-        concurrent spawns and writes while keeping unrelated sessions usable.
-        """
-        to_close, parent_id = self._collect_tree(session_id)
-        closed_states = [(session, session.close()) for session in to_close]
+        closed: Session | None = None
+        if cached is not None:
+            with cached._lock:
+                self._mark_deleting(session_id)
+                cached.state.closed = True
+                closed = cached
+            self._cache.pop(session_id)
+        else:
+            self._mark_deleting(session_id)
+
         try:
-            self.env.session_repository.delete(
-                [session.id for session in to_close]
-            )
+            self.env.session_repository.delete(session_id)
         except Exception:
-            for session, was_closed in closed_states:
-                if not was_closed:
-                    session._reopen()
+            if closed is not None:
+                closed._reopen()
+                self._cache.set(session_id, closed)
             with self._lock:
-                self._deleting.difference_update(
-                    session.id for session in to_close
-                )
+                self._deleting.discard(session_id)
             raise
-        self._unregister_tree(session_id, to_close, parent_id)
 
-    def _collect_tree(self, session_id: str) -> tuple[list[Session], str | None]:
         with self._lock:
-            session = self._sessions.get(session_id)
-            if session is None:
+            self._deleting.discard(session_id)
+
+    def _mark_deleting(self, session_id: str) -> None:
+        with self._lock:
+            if session_id in self._deleting:
                 raise BaseError(
                     ErrorCode.NOT_FOUND,
                     f"Session {session_id!r} not found.",
                 )
+            self._deleting.add(session_id)
 
-            to_close: list[Session] = []
-            stack = [session]
-            while stack:
-                current = stack.pop()
-                to_close.append(current)
-                for child_id in list(current.state.children):
-                    child = self._sessions.get(child_id)
-                    if child is not None:
-                        stack.append(child)
+    def _hydrate(self, session_id: str) -> Session:
+        row = self.env.session_repository.get(session_id)
+        turn_rows = self.env.agent_turn_repository.list(
+            session_id,
+            0,
+            self._hydrate_turn_limit,
+        )
+        messages = conversation_from_turn_rows(turn_rows)
+        state = SessionState(
+            id=session_id,
+            config=_default_agent_config(),
+            owner_id=str(row["owner_id"]),
+            catalog_name=self._optional_catalog_name(row),
+            created_at=self._created_at(row),
+            messages=messages,
+        )
+        return Session(state=state, env=self.env, manager=self)
 
-            ids = {session.id for session in to_close}
-            if ids & self._deleting:
-                raise BaseError(
-                    ErrorCode.NOT_FOUND,
-                    f"Session {session_id!r} not found.",
-                )
-            self._deleting.update(ids)
-            return to_close, session.state.parent_id
+    def _catalog_name_for_parent(self, parent_id: str) -> str | None:
+        parent = self._cache.get(parent_id)
+        if parent is not None:
+            return parent.state.catalog_name
+        row = self.env.session_repository.get(parent_id)
+        return self._optional_catalog_name(row)
 
-    def _unregister_tree(
-        self,
-        session_id: str,
-        to_close: list[Session],
-        parent_id: str | None,
-    ) -> None:
-        with self._lock:
-            for current in to_close:
-                self._sessions.pop(current.id, None)
-                self._deleting.discard(current.id)
-
-            if parent_id is not None:
-                parent = self._sessions.get(parent_id)
-                if parent is not None and session_id in parent.state.children:
-                    parent.state.children.remove(session_id)
+    @staticmethod
+    def _optional_catalog_name(row: dict[str, object]) -> str | None:
+        catalog_name = row.get("catalog_name")
+        return catalog_name if isinstance(catalog_name, str) else None
 
     @staticmethod
     def _created_at(row: dict[str, object]) -> datetime:

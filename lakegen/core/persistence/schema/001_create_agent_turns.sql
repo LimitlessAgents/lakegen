@@ -2,6 +2,7 @@ CREATE TABLE IF NOT EXISTS sessions (
     id UUID PRIMARY KEY,
     name VARCHAR,
     owner_id VARCHAR,
+    catalog_name VARCHAR,
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 

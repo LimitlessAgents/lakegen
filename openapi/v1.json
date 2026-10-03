@@ -1820,9 +1820,16 @@
             "format": "date-time",
             "title": "Created At"
           },
-          "live": {
-            "type": "boolean",
-            "title": "Live"
+          "catalog_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Catalog Name"
           }
         },
         "additionalProperties": false,
@@ -1831,7 +1838,7 @@
           "id",
           "name",
           "created_at",
-          "live"
+          "catalog_name"
         ],
         "title": "SessionResponse"
       },

@@ -15,6 +15,32 @@ def test_repository_contract_is_abstract() -> None:
         Repository()
 
 
+def test_set_catalog_name_updates_when_unset() -> None:
+    database = MagicMock(spec=PostgresPersistence)
+    database.fetch_one.side_effect = [
+        {"catalog_name": "prod"},
+        None,
+    ]
+
+    SessionRepository(database).set_catalog_name("session-1", "prod")
+
+    database.fetch_one.assert_called_once()
+    assert "UPDATE sessions" in database.fetch_one.call_args.args[0]
+
+
+def test_set_catalog_name_rejects_change() -> None:
+    database = MagicMock(spec=PostgresPersistence)
+    database.fetch_one.side_effect = [
+        None,
+        {"catalog_name": "prod"},
+    ]
+
+    with pytest.raises(BaseError) as exc_info:
+        SessionRepository(database).set_catalog_name("session-1", "staging")
+
+    assert exc_info.value.code == ErrorCode.INVALID_ARGUMENT
+
+
 def test_create_inserts_session() -> None:
     database = MagicMock(spec=PostgresPersistence)
 
@@ -24,7 +50,12 @@ def test_create_inserts_session() -> None:
 
     database.insert.assert_called_once_with(
         "sessions",
-        {"id": "session-1", "owner_id": "user-1", "name": "Test"},
+        {
+            "id": "session-1",
+            "owner_id": "user-1",
+            "name": "Test",
+            "catalog_name": None,
+        },
     )
 
 
