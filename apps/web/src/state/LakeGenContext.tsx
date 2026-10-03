@@ -684,7 +684,7 @@ export function LakeGenProvider({ children }: { children: React.ReactNode }) {
         updateConversation(conversation.id, (current) => ({
           ...current,
           isStreaming: false,
-          boundCatalogName: current.sessionId ? current.boundCatalogName : null,
+          boundCatalogName: conversation.boundCatalogName,
         }));
         return true;
       }
