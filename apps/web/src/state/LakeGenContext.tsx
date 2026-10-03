@@ -650,12 +650,17 @@ export function LakeGenProvider({ children }: { children: React.ReactNode }) {
         setSendError('A response is already being generated.');
         return false;
       }
-      const catalogName = activeCatalogNameRef.current;
+      const catalogName = conversation.boundCatalogName ?? activeCatalogNameRef.current;
+      if (!catalogName) {
+        setSendError('Select an active catalog before sending a message.');
+        return false;
+      }
       const assistantId = uid('msg');
       updateConversation(conversation.id, (current) => ({
         ...current,
         isStreaming: true,
         updatedAt: Date.now(),
+        boundCatalogName: current.boundCatalogName ?? catalogName,
         messages: [
           ...current.messages,
           { id: uid('msg'), role: 'user', text: trimmed, createdAt: Date.now() },
@@ -676,17 +681,17 @@ export function LakeGenProvider({ children }: { children: React.ReactNode }) {
           status: 'error',
           errorMessage: message,
         }));
-        updateConversation(conversation.id, (current) => ({ ...current, isStreaming: false }));
+        updateConversation(conversation.id, (current) => ({
+          ...current,
+          isStreaming: false,
+          boundCatalogName: current.sessionId ? current.boundCatalogName : null,
+        }));
         return true;
       }
 
       setSendError(null);
       const controller = new AbortController();
       abortsRef.current.set(conversation.id, controller);
-      updateConversation(conversation.id, (current) => ({
-        ...current,
-        boundCatalogName: current.boundCatalogName ?? catalogName,
-      }));
 
       const expireSession = () => {
         updateConversation(conversation.id, (current) => ({ ...current, sessionId: null }));
