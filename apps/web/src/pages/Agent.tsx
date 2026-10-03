@@ -12,7 +12,10 @@ export function Agent() {
     sendMessage,
     selectedSessionId,
     sessionHistoryLoading,
+    sessionHistoryLoadingMore,
+    sessionHistoryHasMore,
     sessionHistoryError,
+    loadMoreSessionHistory,
   } = useLakeGen();
   const scrollRef = useRef<HTMLDivElement>(null);
   const pinnedToBottomRef = useRef(true);
@@ -42,6 +45,14 @@ export function Agent() {
     const pinned = container.scrollHeight - container.scrollTop - container.clientHeight < 48;
     pinnedToBottomRef.current = pinned;
     setShowJumpToLatest(!pinned && isStreaming);
+    if (
+      container.scrollTop < 80
+      && sessionHistoryHasMore
+      && !sessionHistoryLoading
+      && !sessionHistoryLoadingMore
+    ) {
+      void loadMoreSessionHistory();
+    }
   }
 
   return (
@@ -71,6 +82,9 @@ export function Agent() {
           <AgentEmptyState />
         ) : (
           <div className="mx-auto max-w-[760px] px-8 pb-10 pt-2">
+            {sessionHistoryLoadingMore && (
+              <p className="py-2 text-center text-[13px] text-ink-muted">Loading older messages…</p>
+            )}
             {messages.map((message) => (
               <ChatMessage key={message.id} message={message} onRetry={retryMessage} />
             ))}

@@ -82,7 +82,7 @@ export function listSessions(offset = 0): Promise<SessionResponse[]> {
 export function listSessionTurns(
   sessionId: string,
   offset = 0,
-  limit = 100,
+  limit = 20,
   signal?: AbortSignal,
 ): Promise<AgentTurnInfo[]> {
   return request(

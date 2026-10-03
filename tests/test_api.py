@@ -59,7 +59,7 @@ def agent_runner() -> MagicMock:
             id=_SESSION_ID,
             name="Test",
             created_at=datetime(2026, 9, 22),
-            live=True,
+            catalog_name="prod",
         )
     ]
 
@@ -224,7 +224,7 @@ def test_list_sessions_uses_fixed_page_and_offset(
             "id": _SESSION_ID,
             "name": "Test",
             "created_at": "2026-09-22T00:00:00",
-            "live": True,
+            "catalog_name": "prod",
         }
     ]
     agent_runner.list_sessions.assert_called_once_with(

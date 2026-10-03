@@ -28,7 +28,7 @@ def list_sessions(
             id=session.id,
             name=session.name,
             created_at=session.created_at,
-            live=session.live,
+            catalog_name=session.catalog_name,
         )
         for session in agent_runner.list_sessions(
             owner_id=principal.id,

@@ -91,7 +91,7 @@ export function Sidebar() {
                       ? 'bg-line-soft font-medium text-ink'
                       : 'text-ink-muted hover:bg-line-soft/70 hover:text-ink'
                   }`}
-                  title={`${title}${session.live ? '' : ' (history only)'}`}
+                  title={title}
                 >
                   {title}
                 </button>

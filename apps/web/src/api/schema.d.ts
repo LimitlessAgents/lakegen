@@ -357,8 +357,8 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
-            /** Live */
-            live: boolean;
+            /** Catalog Name */
+            catalog_name: string | null;
         };
         /**
          * SqlCatalogSpec
