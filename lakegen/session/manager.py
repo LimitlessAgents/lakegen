@@ -73,11 +73,23 @@ class SessionManager:
         if self.env.persistence.configured:
             self.env.persistence.ensure_schema()
 
-    def pin_session(self, session_id: str) -> None:
-        self._cache.pin(session_id)
+    def pin_session(self, session_id: str, session: Session) -> None:
+        with self._lock:
+            if session_id in self._deleting:
+                raise BaseError(
+                    ErrorCode.NOT_FOUND,
+                    f"Session {session_id!r} not found.",
+                )
+            if not self.env.session_repository.exists(session_id):
+                raise BaseError(
+                    ErrorCode.NOT_FOUND,
+                    f"Session {session_id!r} not found.",
+                )
+            self._cache.pin(session_id, session)
 
     def unpin_session(self, session_id: str) -> None:
-        self._cache.unpin(session_id)
+        with self._lock:
+            self._cache.unpin(session_id)
 
     def create(
         self,
@@ -86,8 +98,10 @@ class SessionManager:
         owner_id: str,
         catalog_name: str | None = None,
         parent_id: str | None = None,
-    ) -> Session:
+    ) -> str:
         """Create a new session. Pass ``parent_id`` for a subagent thread.
+
+        Returns the new session id; use :meth:`get` before running turns.
 
         Omitting ``config`` uses session defaults. Root sessions may omit
         ``catalog_name``; it must be supplied on the first turn. Child sessions
@@ -136,7 +150,7 @@ class SessionManager:
                 if parent is not None:
                     parent.state.children.append(session_id)
 
-            return session
+            return session_id
 
     def get(self, session_id: str) -> Session:
         with self._lock:
@@ -149,10 +163,11 @@ class SessionManager:
             if cached is not None:
                 return cached
 
-        session = self._hydrate(session_id)
-
-        with self._lock:
-            if session_id in self._deleting:
+            session = self._hydrate(session_id)
+            if (
+                session_id in self._deleting
+                or not self.env.session_repository.exists(session_id)
+            ):
                 raise BaseError(
                     ErrorCode.NOT_FOUND,
                     f"Session {session_id!r} not found.",

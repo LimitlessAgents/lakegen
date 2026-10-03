@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -11,8 +12,7 @@ from lakegen.api.routes import catalogs, chat, health, sessions
 from lakegen.api.run.runner import AgentRunner
 from lakegen.core.catalog.service import CatalogService
 
-from dotenv import load_dotenv
-load_dotenv()
+_app: FastAPI | None = None
 
 
 def create_app(
@@ -28,6 +28,7 @@ def create_app(
     Pass ``authenticator`` / ``agent_runner`` / ``catalogs_service`` to override
     defaults (tests).
     """
+    load_dotenv()
     state = build_app_state(
         authenticator=authenticator,
         agent_runner=agent_runner,
@@ -58,4 +59,10 @@ def create_app(
     return app
 
 
-app = create_app()
+def __getattr__(name: str):
+    global _app
+    if name == "app":
+        if _app is None:
+            _app = create_app()
+        return _app
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

@@ -54,6 +54,17 @@ class Session:
                 ErrorCode.NOT_FOUND,
                 f"Session {self.id!r} is closed.",
             )
+        if self._manager is not None:
+            if self.id in self._manager._deleting:
+                raise BaseError(
+                    ErrorCode.NOT_FOUND,
+                    f"Session {self.id!r} not found.",
+                )
+            if not self.env.session_repository.exists(self.id):
+                raise BaseError(
+                    ErrorCode.NOT_FOUND,
+                    f"Session {self.id!r} not found.",
+                )
 
     def _resolve_catalog(self, catalog_name: str | None) -> str:
         stored = self.state.catalog_name
@@ -91,7 +102,7 @@ class Session:
         ``model`` and ``provider`` apply to this turn only.
         """
         if self._manager is not None:
-            self._manager.pin_session(self.id)
+            self._manager.pin_session(self.id, self)
         try:
             with self._lock:
                 self._ensure_open()
@@ -146,8 +157,11 @@ class Session:
         )
         self.state.messages.messages.extend(loop_result.turn_messages.messages)
 
-    def spawn(self, config: AgentConfig) -> Session:
-        """Create a child session that shares this session's Environment."""
+    def spawn(self, config: AgentConfig) -> str:
+        """Create a child session that shares this session's Environment.
+
+        Returns the child session id; use :meth:`SessionManager.get` before use.
+        """
         with self._lock:
             self._ensure_open()
             if self._manager is None:

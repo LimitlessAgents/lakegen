@@ -19,6 +19,8 @@ from lakegen.inference import Message, Role
 from lakegen.core.persistence import PostgresPersistence
 from lakegen.session import Environment, SessionManager
 
+from tests.conftest import open_session
+
 
 @pytest.fixture()
 def registered_catalogs():
@@ -59,7 +61,7 @@ def _env(agent_turn_repository=None):
 
 def test_send_uses_per_turn_model(registered_catalogs, monkeypatch):
     mgr = SessionManager(env=_env())
-    session = mgr.create(_config(), owner_id="user-1", catalog_name="prod")
+    session = open_session(mgr, _config(), owner_id="user-1", catalog_name="prod")
 
     captured: dict = {}
 
@@ -80,7 +82,9 @@ def test_send_uses_per_turn_model(registered_catalogs, monkeypatch):
 
 def test_send_assigns_and_persists_turn_id(registered_catalogs, monkeypatch):
     agent_turn_repository = MagicMock()
-    session = SessionManager(env=_env(agent_turn_repository)).create(
+    mgr = SessionManager(env=_env(agent_turn_repository))
+    session = open_session(
+        mgr,
         _config(),
         owner_id="user-1",
         catalog_name="prod",
@@ -135,7 +139,9 @@ def test_send_assigns_and_persists_turn_id(registered_catalogs, monkeypatch):
 
 def test_send_persists_and_commits_crashed_turn(registered_catalogs, monkeypatch):
     agent_turn_repository = MagicMock()
-    session = SessionManager(env=_env(agent_turn_repository)).create(
+    mgr = SessionManager(env=_env(agent_turn_repository))
+    session = open_session(
+        mgr,
         _config(),
         owner_id="user-1",
         catalog_name="prod",
@@ -167,7 +173,7 @@ def test_send_persists_and_commits_crashed_turn(registered_catalogs, monkeypatch
 
 def test_send_rejects_catalog_change(registered_catalogs, monkeypatch):
     mgr = SessionManager(env=_env())
-    session = mgr.create(_config(), owner_id="user-1", catalog_name="prod")
+    session = open_session(mgr, _config(), owner_id="user-1", catalog_name="prod")
     monkeypatch.setattr(
         session._loop,
         "invoke",
@@ -186,6 +192,6 @@ def test_send_rejects_catalog_change(registered_catalogs, monkeypatch):
 
 def test_send_unknown_catalog_raises(registered_catalogs):
     mgr = SessionManager(env=_env())
-    session = mgr.create(_config(), owner_id="user-1")
+    session = open_session(mgr, _config(), owner_id="user-1")
     with pytest.raises(BaseError, match="not registered"):
         session.send("hello", catalog_name="missing")

@@ -36,9 +36,13 @@ class SessionCache:
         with self._lock:
             self._items.pop(session_id, None)
 
-    def pin(self, session_id: str) -> None:
+    def pin(self, session_id: str, session: Session | None = None) -> None:
         with self._lock:
             self._pin_counts[session_id] = self._pin_counts.get(session_id, 0) + 1
+            if session is not None:
+                self._items[session_id] = session
+                self._items.move_to_end(session_id)
+                self._evict()
 
     def unpin(self, session_id: str) -> None:
         with self._lock:

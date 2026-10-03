@@ -356,7 +356,7 @@ def test_local_run_adapter_create_and_turn() -> None:
     session = MagicMock()
     session.id = _SESSION_ID
     session.state.owner_id = "alice"
-    manager.create.return_value = session
+    manager.create.return_value = _SESSION_ID
 
     def _send(
         text,
