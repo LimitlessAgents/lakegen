@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useLakeGen } from '../state/LakeGenContext';
 import { AgentHeader } from '../components/agent/AgentHeader';
 import { AgentEmptyState } from '../components/agent/AgentEmptyState';
@@ -20,6 +20,7 @@ export function Agent() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const pinnedToBottomRef = useRef(true);
   const previousMessageCountRef = useRef(0);
+  const historyScrollAnchorRef = useRef<number | null>(null);
   const [showJumpToLatest, setShowJumpToLatest] = useState(false);
   const retryMessage = useCallback((text: string) => {
     void sendMessage(text);
@@ -29,15 +30,26 @@ export function Agent() {
     document.title = 'Agent · LakeGen';
   }, []);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const container = scrollRef.current;
-    if (!container || !pinnedToBottomRef.current) return;
-    container.scrollTo({
-      top: container.scrollHeight,
-      behavior: messages.length > previousMessageCountRef.current ? 'smooth' : 'auto',
-    });
+    if (!container) return;
+
+    if (historyScrollAnchorRef.current !== null && !sessionHistoryLoadingMore) {
+      const delta = container.scrollHeight - historyScrollAnchorRef.current;
+      if (delta > 0) container.scrollTop += delta;
+      historyScrollAnchorRef.current = null;
+      previousMessageCountRef.current = messages.length;
+      return;
+    }
+
+    if (pinnedToBottomRef.current) {
+      container.scrollTo({
+        top: container.scrollHeight,
+        behavior: messages.length > previousMessageCountRef.current ? 'smooth' : 'auto',
+      });
+    }
     previousMessageCountRef.current = messages.length;
-  }, [isStreaming, messages]);
+  }, [isStreaming, messages, sessionHistoryLoadingMore]);
 
   function handleScroll() {
     const container = scrollRef.current;
@@ -51,6 +63,7 @@ export function Agent() {
       && !sessionHistoryLoading
       && !sessionHistoryLoadingMore
     ) {
+      historyScrollAnchorRef.current = container.scrollHeight;
       void loadMoreSessionHistory();
     }
   }

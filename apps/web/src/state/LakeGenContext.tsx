@@ -203,6 +203,7 @@ export function LakeGenProvider({ children }: { children: React.ReactNode }) {
   const sessionsRef = useRef<SessionResponse[]>([]);
   const sessionsRevisionRef = useRef(0);
   const sessionsLoadingMoreRef = useRef(false);
+  const sessionHistoryLoadingMoreRef = useRef(false);
   const conversationsRef = useRef(conversations);
   const activeConversationIdRef = useRef(activeConversationId);
   const selectedSessionIdRef = useRef(selectedSessionId);
@@ -407,11 +408,12 @@ export function LakeGenProvider({ children }: { children: React.ReactNode }) {
   const loadMoreSessionHistory = useCallback(async () => {
     const sessionId = selectedSessionIdRef.current;
     const conversationId = activeConversationIdRef.current;
-    if (!sessionId || !conversationId || sessionHistoryLoadingMore) return;
+    if (!sessionId || !conversationId || sessionHistoryLoadingMoreRef.current) return;
     const conversation = conversationsRef.current[conversationId];
     if (!conversation?.sessionId || conversation.sessionId !== sessionId) return;
     if (!conversation.historyHasMore) return;
 
+    sessionHistoryLoadingMoreRef.current = true;
     setSessionHistoryLoadingMore(true);
     try {
       const page = await listSessionTurns(
@@ -442,9 +444,10 @@ export function LakeGenProvider({ children }: { children: React.ReactNode }) {
         message: error instanceof Error ? error.message : 'Failed to load older messages',
       });
     } finally {
+      sessionHistoryLoadingMoreRef.current = false;
       setSessionHistoryLoadingMore(false);
     }
-  }, [notify, sessionHistoryLoadingMore, updateConversations]);
+  }, [notify, updateConversations]);
 
   const ensureSession = useCallback((conversationId: string): Promise<string> => {
     const conversation = conversationsRef.current[conversationId];
@@ -666,11 +669,20 @@ export function LakeGenProvider({ children }: { children: React.ReactNode }) {
               }));
             } else if (event.type === 'turn_done') {
               clearRetainedTurns(sessionId);
-              patchAssistant(conversation.id, assistantId, (m) => ({
-                ...m,
-                role: 'assistant',
-                status: event.data.stop_reason === 'completed' ? 'done' : 'incomplete',
-                stopReason: event.data.stop_reason,
+              updateConversation(conversation.id, (current) => ({
+                ...current,
+                updatedAt: Date.now(),
+                historyTurnOffset: current.historyTurnOffset + 1,
+                messages: current.messages.map((message) =>
+                  message.id === assistantId
+                    ? {
+                        ...message,
+                        role: 'assistant',
+                        status: event.data.stop_reason === 'completed' ? 'done' : 'incomplete',
+                        stopReason: event.data.stop_reason,
+                      }
+                    : message,
+                ),
               }));
             } else if (event.type === 'error') {
               streamError = true;
