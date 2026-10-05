@@ -363,9 +363,9 @@ export function LakeGenProvider({ children }: { children: React.ReactNode }) {
             ...current,
             [previous.id]: {
               ...previous,
+              boundCatalogName: session.catalog_name ?? previous.boundCatalogName,
               historyTurnOffset,
               historyHasMore,
-              boundCatalogName: session.catalog_name ?? previous.boundCatalogName,
             },
           };
         }
@@ -383,9 +383,9 @@ export function LakeGenProvider({ children }: { children: React.ReactNode }) {
             messages,
             isStreaming: false,
             updatedAt: Date.parse(session.created_at) || Date.now(),
+            boundCatalogName: session.catalog_name ?? previous?.boundCatalogName ?? null,
             historyTurnOffset,
             historyHasMore,
-            boundCatalogName: session.catalog_name ?? previous?.boundCatalogName ?? null,
           },
         };
       });
@@ -655,6 +655,7 @@ export function LakeGenProvider({ children }: { children: React.ReactNode }) {
         setSendError('Select an active catalog before sending a message.');
         return false;
       }
+
       const assistantId = uid('msg');
       updateConversation(conversation.id, (current) => ({
         ...current,

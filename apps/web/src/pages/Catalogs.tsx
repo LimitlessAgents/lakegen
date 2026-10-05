@@ -16,14 +16,12 @@ export function Catalogs() {
     catalogsRefreshing,
     refreshCatalogs,
     activeCatalogName,
-    setActiveCatalogName,
     removeCatalog,
   } = useLakeGen();
   const [panelOpen, setPanelOpen] = useState(false);
   const [catalogToRemove, setCatalogToRemove] = useState<string | null>(null);
   const [removingName, setRemovingName] = useState<string | null>(null);
   const [removeError, setRemoveError] = useState<string | null>(null);
-  const connected = catalogs.filter((c) => c.connected).length;
 
   useEffect(() => {
     document.title = 'Catalogs · LakeGen';
@@ -51,11 +49,6 @@ export function Catalogs() {
     <main className="flex h-full min-w-0 flex-1 flex-col bg-canvas">
       <header className="flex h-header shrink-0 items-center gap-3 border-b border-line px-8">
         <h1 className="text-[13px] font-medium text-ink">Catalogs</h1>
-        {catalogs.length > 0 && (
-          <span className="text-[13px] text-ink-faint">
-            {connected} cached connection{connected === 1 ? '' : 's'}
-          </span>
-        )}
         <div className="ml-auto flex items-center gap-2">
           <Button
             variant="ghost"
@@ -107,14 +100,12 @@ export function Catalogs() {
         ) : (
           <div className="px-8 py-6">
             <div className="overflow-x-auto rounded-xl border border-line bg-panel">
-              <table className="min-w-[720px] w-full border-collapse text-left">
+              <table className="min-w-[480px] w-full table-fixed border-collapse text-left">
                 <thead className="border-b border-line bg-canvas">
                   <tr>
-                    <th scope="col" className="px-4 py-2 text-2xs font-medium uppercase tracking-wider text-ink-faint">Name</th>
-                    <th scope="col" className="px-4 py-2 text-2xs font-medium uppercase tracking-wider text-ink-faint">Type</th>
-                    <th scope="col" className="px-4 py-2 text-2xs font-medium uppercase tracking-wider text-ink-faint">Warehouse</th>
-                    <th scope="col" className="px-4 py-2 text-2xs font-medium uppercase tracking-wider text-ink-faint">Connection</th>
-                    <th scope="col" className="w-10 px-2 py-2"><span className="sr-only">Actions</span></th>
+                    <th scope="col" className="w-1/3 px-4 py-2 text-2xs font-medium uppercase tracking-wider text-ink-faint">Name</th>
+                    <th scope="col" className="w-1/3 px-4 py-2 text-center text-2xs font-medium uppercase tracking-wider text-ink-faint">Type</th>
+                    <th scope="col" className="w-1/3 px-4 py-2 text-right text-2xs font-medium uppercase tracking-wider text-ink-faint">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -124,7 +115,6 @@ export function Catalogs() {
                       catalog={catalog}
                       isActive={catalog.name === activeCatalogName}
                       removing={catalog.name === removingName}
-                      onSetActive={() => setActiveCatalogName(catalog.name)}
                       onRemove={() => {
                         setRemoveError(null);
                         setCatalogToRemove(catalog.name);
@@ -139,13 +129,11 @@ export function Catalogs() {
       </div>
 
       <AddCatalogPanel open={panelOpen} onClose={() => setPanelOpen(false)} />
-      {/* TODO(backend): `connected` is an in-process cache flag (core/catalog/service.py:110-118),
-          not a health check. Expose an on-demand catalog probe before treating it as one. */}
       <ConfirmDialog
         open={catalogToRemove !== null}
-        title="Remove catalog?"
-        description={`Remove ${catalogToRemove ?? ''} and delete its stored credentials. This cannot be undone.`}
-        confirmLabel="Remove catalog"
+        title="Delete catalog?"
+        description={`Delete ${catalogToRemove ?? ''} and its stored credentials. This cannot be undone.`}
+        confirmLabel="Confirm"
         busy={removingName !== null}
         onCancel={() => setCatalogToRemove(null)}
         onConfirm={() => {
