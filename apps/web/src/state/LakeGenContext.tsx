@@ -35,18 +35,12 @@ const TURN_PAGE_SIZE = 20;
 const MAX_RETAINED_TURNS_BYTES = 200_000;
 const SESSION_EXPIRED_MESSAGE = 'This agent session expired. Retry to continue in a new session.';
 
-function sessionBoundCatalogName(session: SessionResponse): string | null {
-  const catalogName = (session as SessionResponse & { catalog_name?: string | null }).catalog_name;
-  return catalogName ?? null;
-}
-
 interface Conversation {
   id: string;
   sessionId: string | null;
   messages: Message[];
   isStreaming: boolean;
   updatedAt: number;
-  live: boolean;
   historyTurnOffset: number;
   historyHasMore: boolean;
   boundCatalogName: string | null;
@@ -240,7 +234,6 @@ export function LakeGenProvider({ children }: { children: React.ReactNode }) {
       messages: [],
       isStreaming: false,
       updatedAt: Date.now(),
-      live: true,
       historyTurnOffset: 0,
       historyHasMore: false,
       boundCatalogName: null,
@@ -370,11 +363,9 @@ export function LakeGenProvider({ children }: { children: React.ReactNode }) {
             ...current,
             [previous.id]: {
               ...previous,
-              live: session.live,
-              boundCatalogName: sessionBoundCatalogName(session) ?? previous.boundCatalogName,
+              boundCatalogName: session.catalog_name ?? previous.boundCatalogName,
               historyTurnOffset,
               historyHasMore,
-              boundCatalogName: session.catalog_name ?? previous.boundCatalogName,
             },
           };
         }
@@ -392,11 +383,9 @@ export function LakeGenProvider({ children }: { children: React.ReactNode }) {
             messages,
             isStreaming: false,
             updatedAt: Date.parse(session.created_at) || Date.now(),
-            live: session.live,
-            boundCatalogName: sessionBoundCatalogName(session) ?? previous?.boundCatalogName ?? null,
+            boundCatalogName: session.catalog_name ?? previous?.boundCatalogName ?? null,
             historyTurnOffset,
             historyHasMore,
-            boundCatalogName: session.catalog_name ?? previous?.boundCatalogName ?? null,
           },
         };
       });
@@ -659,11 +648,6 @@ export function LakeGenProvider({ children }: { children: React.ReactNode }) {
           : createConversation();
       if (conversation.isStreaming) {
         setSendError('A response is already being generated.');
-        return false;
-      }
-      const catalogName = conversation.boundCatalogName ?? activeCatalogNameRef.current;
-      if (!catalogName) {
-        setSendError('Select an active catalog before sending a message.');
         return false;
       }
       const catalogName = conversation.boundCatalogName ?? activeCatalogNameRef.current;

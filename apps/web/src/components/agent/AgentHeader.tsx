@@ -31,11 +31,6 @@ export function AgentHeader() {
           <span>Session catalog</span>
           <span className="font-mono text-ink">
             {activeCatalog?.name ?? activeCatalogName ?? 'unknown'}
-          <span className="flex items-center gap-1.5">
-            {activeCatalog && (
-              <StatusDot state={activeCatalog.connected ? 'connected' : 'unverified'} />
-            )}
-            <span className="font-mono text-ink">{activeCatalog?.name ?? activeCatalogName ?? 'unknown'}</span>
           </span>
         </div>
       ) : (
@@ -55,24 +50,6 @@ export function AgentHeader() {
               )}
               <ChevronDownIcon className="h-3.5 w-3.5 text-ink-faint" strokeWidth={2} />
             </button>
-          <button
-            type="button"
-            className="flex h-7 items-center gap-2 rounded-md border border-transparent px-2 text-[13px] text-ink-muted transition-colors hover:border-line hover:bg-panel"
-          >
-            <span>Active catalog</span>
-            {activeCatalog ? (
-              <span className="flex items-center gap-1.5">
-                <StatusDot state={activeCatalog.connected ? 'connected' : 'unverified'} />
-                <span className="sr-only">
-                  {activeCatalog.connected ? 'Connection cached' : 'Connection not verified'}
-                </span>
-                <span className="font-mono text-ink">{activeCatalog.name}</span>
-              </span>
-            ) : (
-              <span className="text-ink-faint">none</span>
-            )}
-            <ChevronDownIcon className="h-3.5 w-3.5 text-ink-faint" strokeWidth={2} />
-          </button>
           }
         >
           {(close) => (
@@ -99,7 +76,6 @@ export function AgentHeader() {
                     catalog.name === activeCatalog?.name ? 'bg-line-soft/70' : ''
                   }`}
                 >
-                  <StatusDot state={catalog.connected ? 'connected' : 'unverified'} />
                   <span className="font-mono text-[13px] text-ink">{catalog.name}</span>
                   <span className="ml-auto">
                     <TypeBadge type={catalog.catalog_type} />
