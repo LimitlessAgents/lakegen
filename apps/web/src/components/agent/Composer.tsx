@@ -14,7 +14,6 @@ export function Composer() {
     stopStreaming,
     activeCatalog,
     selectedSessionId,
-    activeSessionLive,
     sessionHistoryLoading,
     sessionHistoryError,
   } = useLakeGen();
@@ -33,9 +32,7 @@ export function Composer() {
       ? 'Wait for session history to load.'
       : selectedSessionId && sessionHistoryError
         ? 'Session history is unavailable. Retry it or start a new conversation.'
-        : selectedSessionId && !activeSessionLive
-          ? 'This session is history only. Start a new conversation to continue.'
-          : catalogs.length === 0
+        : catalogs.length === 0
             ? 'Connect a catalog before sending a message.'
             : !activeCatalog
               ? 'Select an active catalog before sending a message.'

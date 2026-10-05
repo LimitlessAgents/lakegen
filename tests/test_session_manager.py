@@ -11,7 +11,10 @@ import pytest
 from lakegen.agent import AgentConfig
 from lakegen.core.error.base import BaseError
 from lakegen.core.error.code import ErrorCode
+from lakegen.core.persistence import PostgresPersistence
 from lakegen.session import Environment, SessionManager
+
+from tests.conftest import open_session
 
 
 @pytest.fixture()
@@ -41,10 +44,12 @@ def _env():
             raise BaseError(ErrorCode.NOT_FOUND, "Catalog is not registered.")
 
     catalogs.require.side_effect = require
+    persistence = MagicMock(spec=PostgresPersistence)
+    persistence.configured = False
     return replace(
         Environment.default(),
         catalog_service=catalogs,
-        persistence=MagicMock(),
+        persistence=persistence,
         session_repository=MagicMock(),
         agent_turn_repository=MagicMock(),
     )
@@ -53,32 +58,44 @@ def _env():
 def test_create_get_list(registered_catalog):
     env = _env()
     mgr = SessionManager(env=env)
-    a = mgr.create(_config(), owner_id=_OWNER, catalog_name=registered_catalog)
-    b = mgr.create(_config(), owner_id=_OWNER, catalog_name=registered_catalog)
+    a_id = mgr.create(_config(), owner_id=_OWNER, catalog_name=registered_catalog)
+    b_id = mgr.create(_config(), owner_id=_OWNER, catalog_name=registered_catalog)
+    a = mgr.get(a_id)
+    b = mgr.get(b_id)
     created_at = datetime.now()
     env.session_repository.list.return_value = [
-        {"id": b.id, "name": None, "created_at": created_at},
-        {"id": a.id, "name": "First", "created_at": created_at},
+        {
+            "id": b_id,
+            "name": None,
+            "catalog_name": registered_catalog,
+            "created_at": created_at,
+        },
+        {
+            "id": a_id,
+            "name": "First",
+            "catalog_name": registered_catalog,
+            "created_at": created_at,
+        },
     ]
 
     assert env.session_repository.create.call_count == 2
     env.session_repository.create.assert_any_call(
-        {"id": a.id, "owner_id": _OWNER}
+        {"id": a_id, "owner_id": _OWNER, "catalog_name": registered_catalog}
     )
     env.session_repository.create.assert_any_call(
-        {"id": b.id, "owner_id": _OWNER}
+        {"id": b_id, "owner_id": _OWNER, "catalog_name": registered_catalog}
     )
-    assert mgr.get(a.id) is a
-    assert mgr.get(b.id) is b
+    assert mgr.get(a_id) is a
+    assert mgr.get(b_id) is b
     listed = mgr.list(owner_id=_OWNER)
     assert [session.id for session in listed] == [b.id, a.id]
-    assert all(session.live for session in listed)
+    assert all(session.catalog_name == registered_catalog for session in listed)
     env.session_repository.list.assert_called_once_with(_OWNER, 0, 10)
     assert a.state.catalog_name == registered_catalog
-    env.persistence.ensure_schema.assert_called_once()
+    env.persistence.ensure_schema.assert_not_called()
 
 
-def test_list_holds_manager_lock_while_querying_persisted_rows():
+def test_list_does_not_block_create(registered_catalog):
     env = _env()
     mgr = SessionManager(env=env)
     query_started = threading.Event()
@@ -100,18 +117,20 @@ def test_list_holds_manager_lock_while_querying_persisted_rows():
     create_finished = threading.Event()
 
     def create_while_listing() -> None:
-        mgr.create(_config(), owner_id=_OWNER)
+        mgr.create(
+            _config(),
+            owner_id=_OWNER,
+            catalog_name=registered_catalog,
+        )
         create_finished.set()
 
     create_thread = threading.Thread(target=create_while_listing)
     create_thread.start()
-    time.sleep(0.05)
-    assert not create_finished.is_set()
+    assert create_finished.wait(timeout=1)
 
     release_query.set()
     list_thread.join(timeout=2)
     create_thread.join(timeout=2)
-    assert create_finished.is_set()
 
 
 def test_list_uses_requested_offset():
@@ -177,14 +196,14 @@ def test_create_does_not_register_session_when_persistence_fails(
 
 def test_create_without_catalog(registered_catalog):
     mgr = SessionManager(env=_env())
-    session = mgr.create(_config(), owner_id=_OWNER)
+    session = open_session(mgr, _config(), owner_id=_OWNER)
     assert session.state.catalog_name is None
     assert session.state.owner_id == _OWNER
 
 
 def test_send_requires_catalog_on_first_turn(registered_catalog):
     mgr = SessionManager(env=_env())
-    session = mgr.create(_config(), owner_id=_OWNER)
+    session = open_session(mgr, _config(), owner_id=_OWNER)
     with pytest.raises(BaseError, match="catalog_name is required"):
         session.send("hello")
 
@@ -197,8 +216,8 @@ def test_create_unknown_catalog_raises(registered_catalog):
 
 def test_spawn_inherits_catalog(registered_catalog):
     mgr = SessionManager(env=_env())
-    parent = mgr.create(_config(), owner_id=_OWNER, catalog_name=registered_catalog)
-    child = parent.spawn(_config(system_prompt="child"))
+    parent = open_session(mgr, _config(), owner_id=_OWNER, catalog_name=registered_catalog)
+    child = mgr.get(parent.spawn(_config(system_prompt="child")))
 
     assert child.parent_id == parent.id
     assert child.id in parent.state.children
@@ -210,8 +229,8 @@ def test_spawn_inherits_catalog(registered_catalog):
 def test_delete_keeps_registry_when_persistence_fails(registered_catalog):
     env = _env()
     mgr = SessionManager(env=env)
-    parent = mgr.create(_config(), owner_id=_OWNER, catalog_name=registered_catalog)
-    child = parent.spawn(_config())
+    parent = open_session(mgr, _config(), owner_id=_OWNER, catalog_name=registered_catalog)
+    child = mgr.get(parent.spawn(_config()))
     env.session_repository.delete.side_effect = RuntimeError("database unavailable")
 
     with pytest.raises(RuntimeError, match="database unavailable"):
@@ -222,34 +241,42 @@ def test_delete_keeps_registry_when_persistence_fails(registered_catalog):
     assert child.state.closed is False
 
 
-def test_delete_removes_children_and_unlinks_parent(registered_catalog):
+def test_delete_removes_only_requested_session(registered_catalog):
     env = _env()
     mgr = SessionManager(env=env)
-    parent = mgr.create(_config(), owner_id=_OWNER, catalog_name=registered_catalog)
-    child = parent.spawn(_config())
-    grandchild = child.spawn(_config())
+    parent = open_session(mgr, _config(), owner_id=_OWNER, catalog_name=registered_catalog)
+    child = mgr.get(parent.spawn(_config()))
 
     mgr.delete(child.id)
 
-    env.session_repository.delete.assert_called_once()
-    deleted_ids = set(env.session_repository.delete.call_args.args[0])
-    assert deleted_ids == {child.id, grandchild.id}
-    assert child.id not in parent.state.children
+    env.session_repository.delete.assert_called_once_with(child.id)
+    env.session_repository.get.side_effect = BaseError(
+        ErrorCode.NOT_FOUND,
+        "missing",
+    )
     with pytest.raises(BaseError):
         mgr.get(child.id)
-    with pytest.raises(BaseError):
-        mgr.get(grandchild.id)
     assert mgr.get(parent.id) is parent
 
 
 def test_get_missing_raises(registered_catalog):
-    mgr = SessionManager(env=_env())
+    env = _env()
+    env.session_repository.get.side_effect = BaseError(
+        ErrorCode.NOT_FOUND,
+        "missing",
+    )
+    mgr = SessionManager(env=env)
     with pytest.raises(BaseError):
         mgr.get("00000000-0000-0000-0000-000000000099")
 
 
 def test_create_with_missing_parent_raises(registered_catalog):
-    mgr = SessionManager(env=_env())
+    env = _env()
+    env.session_repository.get.side_effect = BaseError(
+        ErrorCode.NOT_FOUND,
+        "missing parent",
+    )
+    mgr = SessionManager(env=env)
     with pytest.raises(BaseError):
         mgr.create(
             _config(),
@@ -261,7 +288,7 @@ def test_create_with_missing_parent_raises(registered_catalog):
 
 def test_delete_closes_session_so_send_and_spawn_fail(registered_catalog):
     mgr = SessionManager(env=_env())
-    session = mgr.create(_config(), owner_id=_OWNER, catalog_name=registered_catalog)
+    session = open_session(mgr, _config(), owner_id=_OWNER, catalog_name=registered_catalog)
 
     mgr.delete(session.id)
 
@@ -272,26 +299,20 @@ def test_delete_closes_session_so_send_and_spawn_fail(registered_catalog):
         session.spawn(_config())
 
 
-def test_delete_closes_cascaded_children(registered_catalog):
+def test_delete_closes_cached_session(registered_catalog):
     mgr = SessionManager(env=_env())
-    parent = mgr.create(_config(), owner_id=_OWNER, catalog_name=registered_catalog)
-    child = parent.spawn(_config())
-    grandchild = child.spawn(_config())
+    parent = open_session(mgr, _config(), owner_id=_OWNER, catalog_name=registered_catalog)
+    child = mgr.get(parent.spawn(_config()))
 
     mgr.delete(parent.id)
 
     assert parent.state.closed is True
-    assert child.state.closed is True
-    assert grandchild.state.closed is True
-    with pytest.raises(BaseError, match="closed"):
-        child.send("hello")
-    with pytest.raises(BaseError, match="closed"):
-        grandchild.spawn(_config())
+    assert child.state.closed is False
 
 
 def test_close_blocks_further_send_and_spawn(registered_catalog):
     mgr = SessionManager(env=_env())
-    session = mgr.create(_config(), owner_id=_OWNER, catalog_name=registered_catalog)
+    session = open_session(mgr, _config(), owner_id=_OWNER, catalog_name=registered_catalog)
 
     session.close()
 
@@ -307,9 +328,10 @@ def test_close_blocks_further_send_and_spawn(registered_catalog):
 def test_delete_quiesces_session_without_blocking_unrelated_sessions(
     registered_catalog,
 ):
-    mgr = SessionManager(env=_env())
-    active = mgr.create(_config(), owner_id=_OWNER, catalog_name=registered_catalog)
-    other = mgr.create(_config(), owner_id=_OWNER, catalog_name=registered_catalog)
+    env = _env()
+    mgr = SessionManager(env=env)
+    active = open_session(mgr, _config(), owner_id=_OWNER, catalog_name=registered_catalog)
+    other = open_session(mgr, _config(), owner_id=_OWNER, catalog_name=registered_catalog)
 
     holding = threading.Event()
     release = threading.Event()
@@ -337,22 +359,227 @@ def test_delete_quiesces_session_without_blocking_unrelated_sessions(
     assert active.state.closed is False
     assert mgr.get(active.id) is active
     assert mgr.get(other.id) is other
-    created = mgr.create(_config(), owner_id=_OWNER, catalog_name=registered_catalog)
-    assert mgr.get(created.id) is created
+    created_id = mgr.create(_config(), owner_id=_OWNER, catalog_name=registered_catalog)
+    created = mgr.get(created_id)
+    assert mgr.get(created_id) is created
 
     release.set()
     holder.join(timeout=2)
     deleter.join(timeout=2)
     assert delete_done.is_set()
     assert active.state.closed is True
+    env.session_repository.get.side_effect = BaseError(
+        ErrorCode.NOT_FOUND,
+        "missing",
+    )
     with pytest.raises(BaseError):
         mgr.get(active.id)
+
+
+def test_delete_closes_evicted_session_when_pinned(registered_catalog):
+    env = _env()
+    mgr = SessionManager(env=env, cache_size=1)
+    evicted = open_session(
+        mgr,
+        _config(),
+        owner_id=_OWNER,
+        catalog_name=registered_catalog,
+    )
+    mgr.create(_config(), owner_id=_OWNER, catalog_name=registered_catalog)
+
+    mgr.pin_session(evicted.id, evicted)
+    mgr.delete(evicted.id)
+
+    assert evicted.state.closed is True
+
+
+def test_pin_session_rejects_deleted_session(registered_catalog):
+    env = _env()
+    mgr = SessionManager(env=env, cache_size=1)
+    session = open_session(
+        mgr,
+        _config(),
+        owner_id=_OWNER,
+        catalog_name=registered_catalog,
+    )
+    session_id = session.id
+    mgr.create(_config(), owner_id=_OWNER, catalog_name=registered_catalog)
+
+    mgr.delete(session_id)
+    env.session_repository.exists.return_value = False
+    with pytest.raises(BaseError, match="not found"):
+        mgr.pin_session(session_id, session)
+
+
+def test_get_does_not_cache_session_deleted_during_hydrate(registered_catalog):
+    env = _env()
+    mgr = SessionManager(env=env)
+    session_id = "00000000-0000-0000-0000-000000000001"
+    created_at = datetime.now()
+    env.session_repository.get.return_value = {
+        "id": session_id,
+        "owner_id": _OWNER,
+        "catalog_name": registered_catalog,
+        "created_at": created_at,
+    }
+    env.session_repository.exists.return_value = False
+
+    with pytest.raises(BaseError, match="not found"):
+        mgr.get(session_id)
+
+    env.session_repository.exists.assert_called_once_with(session_id)
+
+
+def test_get_concurrent_hydrate_returns_same_session(registered_catalog):
+    env = _env()
+    mgr = SessionManager(env=env)
+    session_id = "00000000-0000-0000-0000-000000000001"
+    created_at = datetime.now()
+    env.session_repository.get.return_value = {
+        "id": session_id,
+        "owner_id": _OWNER,
+        "catalog_name": registered_catalog,
+        "created_at": created_at,
+    }
+    hydrate_calls = 0
+    release_hydrate = threading.Event()
+
+    def slow_list(*_args, **_kwargs):
+        nonlocal hydrate_calls
+        hydrate_calls += 1
+        if hydrate_calls == 1:
+            release_hydrate.wait(timeout=2)
+        return []
+
+    env.agent_turn_repository.list.side_effect = slow_list
+
+    first: list = []
+
+    def first_get() -> None:
+        first.append(mgr.get(session_id))
+
+    thread = threading.Thread(target=first_get)
+    thread.start()
+    time.sleep(0.05)
+    second = mgr.get(session_id)
+    release_hydrate.set()
+    thread.join(timeout=2)
+
+    assert hydrate_calls == 1
+    assert first[0] is second
+
+
+def test_get_hydrates_persisted_session(registered_catalog):
+    env = _env()
+    mgr = SessionManager(env=env, cache_size=8, hydrate_turn_limit=20)
+    created_at = datetime.now()
+    session_id = "00000000-0000-0000-0000-000000000001"
+    env.session_repository.get.return_value = {
+        "id": session_id,
+        "owner_id": _OWNER,
+        "catalog_name": registered_catalog,
+        "created_at": created_at,
+    }
+    env.agent_turn_repository.list.return_value = [
+        {
+            "id": "turn-1",
+            "created_at": created_at,
+            "result": {
+                "final_message": "ok",
+                "stop_reason": "completed",
+                "turn_messages": {
+                    "messages": [
+                        {
+                            "role": "user",
+                            "content": "hello",
+                            "tool_calls": None,
+                            "tool_call_id": None,
+                            "tool_name": None,
+                        }
+                    ]
+                },
+            },
+        }
+    ]
+
+    session = mgr.get(session_id)
+
+    assert session.state.owner_id == _OWNER
+    assert session.state.catalog_name == registered_catalog
+    assert [message.content for message in session.state.messages.messages] == ["hello"]
+    env.agent_turn_repository.list.assert_called_once_with(session_id, 0, 20)
+
+
+def test_pin_session_does_not_replace_fresher_cached_session(registered_catalog):
+    env = _env()
+    mgr = SessionManager(env=env, cache_size=1)
+    stale = open_session(
+        mgr,
+        _config(),
+        owner_id=_OWNER,
+        catalog_name=registered_catalog,
+    )
+    session_id = stale.id
+    mgr.create(_config(), owner_id=_OWNER, catalog_name=registered_catalog)
+
+    created_at = datetime.now()
+    env.session_repository.get.return_value = {
+        "id": session_id,
+        "owner_id": _OWNER,
+        "catalog_name": registered_catalog,
+        "created_at": created_at,
+    }
+    env.agent_turn_repository.list.return_value = []
+
+    fresh = mgr.get(session_id)
+    assert fresh is not stale
+
+    mgr.pin_session(session_id, stale)
+    assert mgr.get(session_id) is fresh
+
+
+def test_get_hydration_does_not_block_other_sessions(registered_catalog):
+    env = _env()
+    mgr = SessionManager(env=env)
+    slow_id = "00000000-0000-0000-0000-000000000001"
+    hydrate_started = threading.Event()
+    release_hydrate = threading.Event()
+
+    def get_row(session_id: str):
+        return {
+            "id": session_id,
+            "owner_id": _OWNER,
+            "catalog_name": registered_catalog,
+            "created_at": datetime.now(),
+        }
+
+    env.session_repository.get.side_effect = get_row
+
+    def list_turns(session_id: str, *_args, **_kwargs):
+        if session_id == slow_id:
+            hydrate_started.set()
+            assert release_hydrate.wait(timeout=2)
+        return []
+
+    env.agent_turn_repository.list.side_effect = list_turns
+
+    hydrator = threading.Thread(target=lambda: mgr.get(slow_id))
+    hydrator.start()
+    assert hydrate_started.wait(timeout=2)
+
+    other_id = mgr.create(_config(), owner_id=_OWNER, catalog_name=registered_catalog)
+    other = mgr.get(other_id)
+    assert other.id == other_id
+
+    release_hydrate.set()
+    hydrator.join(timeout=2)
 
 
 def test_delete_blocks_spawn_and_send_before_deleting_rows(registered_catalog):
     env = _env()
     mgr = SessionManager(env=env)
-    session = mgr.create(
+    session = open_session(
+        mgr,
         _config(),
         owner_id=_OWNER,
         catalog_name=registered_catalog,
@@ -371,7 +598,7 @@ def test_delete_blocks_spawn_and_send_before_deleting_rows(registered_catalog):
 
     with pytest.raises(BaseError, match="closed"):
         session.spawn(_config())
-    with pytest.raises(BaseError, match="closed"):
+    with pytest.raises(BaseError, match="not found"):
         session.send("hello")
 
     release_delete.set()

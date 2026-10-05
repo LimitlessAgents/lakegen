@@ -9,7 +9,7 @@ class SessionInfo:
     id: str
     name: str | None
     created_at: datetime
-    live: bool
+    catalog_name: str | None
 
 
 @dataclass

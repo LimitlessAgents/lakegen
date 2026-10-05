@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useLakeGen } from '../state/LakeGenContext';
 import { AgentHeader } from '../components/agent/AgentHeader';
 import { AgentEmptyState } from '../components/agent/AgentEmptyState';
@@ -12,11 +12,16 @@ export function Agent() {
     sendMessage,
     selectedSessionId,
     sessionHistoryLoading,
+    sessionHistoryLoadingMore,
+    sessionHistoryHasMore,
     sessionHistoryError,
+    loadMoreSessionHistory,
   } = useLakeGen();
   const scrollRef = useRef<HTMLDivElement>(null);
   const pinnedToBottomRef = useRef(true);
   const previousMessageCountRef = useRef(0);
+  const historyScrollAnchorRef = useRef<{ sessionId: string; height: number } | null>(null);
+  const previousSessionIdRef = useRef(selectedSessionId);
   const [showJumpToLatest, setShowJumpToLatest] = useState(false);
   const retryMessage = useCallback((text: string) => {
     void sendMessage(text);
@@ -26,15 +31,37 @@ export function Agent() {
     document.title = 'Agent · LakeGen';
   }, []);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const container = scrollRef.current;
-    if (!container || !pinnedToBottomRef.current) return;
-    container.scrollTo({
-      top: container.scrollHeight,
-      behavior: messages.length > previousMessageCountRef.current ? 'smooth' : 'auto',
-    });
+    if (!container) return;
+
+    if (previousSessionIdRef.current !== selectedSessionId) {
+      previousSessionIdRef.current = selectedSessionId;
+      historyScrollAnchorRef.current = null;
+      pinnedToBottomRef.current = true;
+      previousMessageCountRef.current = 0;
+      setShowJumpToLatest(false);
+    }
+
+    const anchor = historyScrollAnchorRef.current;
+    if (anchor !== null && !sessionHistoryLoadingMore) {
+      if (anchor.sessionId === selectedSessionId) {
+        const delta = container.scrollHeight - anchor.height;
+        if (delta > 0) container.scrollTop += delta;
+      }
+      historyScrollAnchorRef.current = null;
+      previousMessageCountRef.current = messages.length;
+      return;
+    }
+
+    if (pinnedToBottomRef.current) {
+      container.scrollTo({
+        top: container.scrollHeight,
+        behavior: messages.length > previousMessageCountRef.current ? 'smooth' : 'auto',
+      });
+    }
     previousMessageCountRef.current = messages.length;
-  }, [isStreaming, messages]);
+  }, [isStreaming, messages, selectedSessionId, sessionHistoryLoadingMore]);
 
   function handleScroll() {
     const container = scrollRef.current;
@@ -42,6 +69,17 @@ export function Agent() {
     const pinned = container.scrollHeight - container.scrollTop - container.clientHeight < 48;
     pinnedToBottomRef.current = pinned;
     setShowJumpToLatest(!pinned && isStreaming);
+    if (
+      container.scrollTop < 80
+      && sessionHistoryHasMore
+      && !sessionHistoryLoading
+      && !sessionHistoryLoadingMore
+    ) {
+      if (selectedSessionId) {
+        historyScrollAnchorRef.current = { sessionId: selectedSessionId, height: container.scrollHeight };
+      }
+      void loadMoreSessionHistory();
+    }
   }
 
   return (
@@ -71,6 +109,9 @@ export function Agent() {
           <AgentEmptyState />
         ) : (
           <div className="mx-auto max-w-[760px] px-8 pb-10 pt-2">
+            {sessionHistoryLoadingMore && (
+              <p className="py-2 text-center text-[13px] text-ink-muted">Loading older messages…</p>
+            )}
             {messages.map((message) => (
               <ChatMessage key={message.id} message={message} onRetry={retryMessage} />
             ))}

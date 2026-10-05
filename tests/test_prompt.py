@@ -87,5 +87,7 @@ def _test_env():
 
 def test_session_default_config_uses_product_prompt():
     mgr = SessionManager(env=_test_env())
-    session = mgr.create(owner_id="user-1", catalog_name="prod")
+    from tests.conftest import open_session
+
+    session = open_session(mgr, owner_id="user-1", catalog_name="prod")
     assert session.state.config.system_prompt == PROMPT

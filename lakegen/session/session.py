@@ -54,6 +54,42 @@ class Session:
                 ErrorCode.NOT_FOUND,
                 f"Session {self.id!r} is closed.",
             )
+        if self._manager is not None:
+            if self.id in self._manager._deleting:
+                raise BaseError(
+                    ErrorCode.NOT_FOUND,
+                    f"Session {self.id!r} not found.",
+                )
+            if not self.env.session_repository.exists(self.id):
+                raise BaseError(
+                    ErrorCode.NOT_FOUND,
+                    f"Session {self.id!r} not found.",
+                )
+            cached = self._manager._cache.get(self.id)
+            if cached is not None and cached is not self:
+                raise BaseError(
+                    ErrorCode.NOT_FOUND,
+                    f"Session {self.id!r} not found.",
+                )
+
+    def _resolve_catalog(self, catalog_name: str | None) -> str:
+        stored = self.state.catalog_name
+        if stored is not None:
+            if catalog_name is not None and catalog_name != stored:
+                raise BaseError(
+                    ErrorCode.INVALID_ARGUMENT,
+                    "Session catalog cannot be changed.",
+                )
+            return stored
+        if catalog_name is None:
+            raise BaseError(
+                ErrorCode.INVALID_ARGUMENT,
+                "catalog_name is required.",
+            )
+        self.env.catalog_service.require(catalog_name)
+        self.env.session_repository.set_catalog_name(self.id, catalog_name)
+        self.state.catalog_name = catalog_name
+        return catalog_name
 
     def send(
         self,
@@ -71,52 +107,47 @@ class Session:
         ``catalog_name`` is required on the first turn if the session has none yet.
         ``model`` and ``provider`` apply to this turn only.
         """
-        with self._lock:
-            self._ensure_open()
-            turn_id = str(uuid.uuid4())
-            switched_from: str | None = None
-            effective_catalog = catalog_name if catalog_name is not None else self.state.catalog_name
-            if effective_catalog is None:
-                raise BaseError(
-                    ErrorCode.INVALID_ARGUMENT,
-                    "catalog_name is required.",
-                )
-            if catalog_name is not None and catalog_name != self.state.catalog_name:
-                self.env.catalog_service.require(catalog_name)
-                switched_from = self.state.catalog_name
-                self.state.catalog_name = catalog_name
-            elif self.state.catalog_name is None:
-                self.env.catalog_service.require(effective_catalog)
-                self.state.catalog_name = effective_catalog
+        if self._manager is not None:
+            self._manager.pin_session(self.id)
+        try:
+            with self._lock:
+                self._ensure_open()
+                turn_id = str(uuid.uuid4())
+                effective_catalog = self._resolve_catalog(catalog_name)
 
-            base = self.state.config
-            agent_config = AgentConfig(
-                model=model if model is not None else base.model,
-                system_prompt=base.system_prompt,
-                provider=provider if provider is not None else base.provider,
-                max_turns=base.max_turns,
-            )
-            try:
-                loop_result = self._loop.invoke(
-                    agent_config=agent_config,
-                    conversation=self.state.messages,
-                    user_text=user_text,
-                    catalog_name=self.state.catalog_name,
-                    catalog_switched_from=switched_from,
-                    stream=stream,
-                    on_chunk=on_chunk,
-                    cancel_event=(
-                        cancel_event
-                        if cancel_event is not None
-                        else threading.Event()
-                    ),
+                base = self.state.config
+                agent_config = AgentConfig(
+                    model=model if model is not None else base.model,
+                    system_prompt=base.system_prompt,
+                    provider=provider if provider is not None else base.provider,
+                    max_turns=base.max_turns,
                 )
-            except AgentLoopFailure as failure:
-                self._persist_and_commit_turn(turn_id, failure.result)
-                raise failure.error.with_traceback(failure.error.__traceback__) from None
+                try:
+                    loop_result = self._loop.invoke(
+                        agent_config=agent_config,
+                        conversation=self.state.messages,
+                        user_text=user_text,
+                        catalog_name=effective_catalog,
+                        catalog_switched_from=None,
+                        stream=stream,
+                        on_chunk=on_chunk,
+                        cancel_event=(
+                            cancel_event
+                            if cancel_event is not None
+                            else threading.Event()
+                        ),
+                    )
+                except AgentLoopFailure as failure:
+                    self._persist_and_commit_turn(turn_id, failure.result)
+                    raise failure.error.with_traceback(
+                        failure.error.__traceback__
+                    ) from None
 
-            self._persist_and_commit_turn(turn_id, loop_result)
-            return SessionTurnResult(id=turn_id, result=loop_result)
+                self._persist_and_commit_turn(turn_id, loop_result)
+                return SessionTurnResult(id=turn_id, result=loop_result)
+        finally:
+            if self._manager is not None:
+                self._manager.unpin_session(self.id)
 
     def _persist_and_commit_turn(
         self,
@@ -132,8 +163,11 @@ class Session:
         )
         self.state.messages.messages.extend(loop_result.turn_messages.messages)
 
-    def spawn(self, config: AgentConfig) -> Session:
-        """Create a child session that shares this session's Environment."""
+    def spawn(self, config: AgentConfig) -> str:
+        """Create a child session that shares this session's Environment.
+
+        Returns the child session id; use :meth:`SessionManager.get` before use.
+        """
         with self._lock:
             self._ensure_open()
             if self._manager is None:

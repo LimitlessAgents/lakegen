@@ -31,7 +31,7 @@ const ACTIVE_CATALOG_KEY = 'lakegen.activeCatalog';
 const RETAINED_TURNS_KEY = 'lakegen.retainedTurns';
 const EMPTY_MESSAGES: Message[] = [];
 const SESSION_PAGE_SIZE = 10;
-const TURN_PAGE_SIZE = 100;
+const TURN_PAGE_SIZE = 20;
 const MAX_RETAINED_TURNS_BYTES = 200_000;
 const SESSION_EXPIRED_MESSAGE = 'This agent session expired. Retry to continue in a new session.';
 
@@ -47,6 +47,8 @@ interface Conversation {
   isStreaming: boolean;
   updatedAt: number;
   live: boolean;
+  historyTurnOffset: number;
+  historyHasMore: boolean;
   boundCatalogName: string | null;
 }
 
@@ -71,8 +73,10 @@ interface LakeGenValue {
   selectedSessionId: string | null;
   selectSession: (session: SessionResponse) => Promise<void>;
   sessionHistoryLoading: boolean;
+  sessionHistoryLoadingMore: boolean;
+  sessionHistoryHasMore: boolean;
   sessionHistoryError: string | null;
-  activeSessionLive: boolean;
+  loadMoreSessionHistory: () => Promise<void>;
   messages: Message[];
   isStreaming: boolean;
   sendError: string | null;
@@ -195,6 +199,7 @@ export function LakeGenProvider({ children }: { children: React.ReactNode }) {
   const [sessionsError, setSessionsError] = useState<string | null>(null);
   const [sessionsHasMore, setSessionsHasMore] = useState(false);
   const [sessionHistoryLoading, setSessionHistoryLoading] = useState(false);
+  const [sessionHistoryLoadingMore, setSessionHistoryLoadingMore] = useState(false);
   const [sessionHistoryError, setSessionHistoryError] = useState<string | null>(null);
   const [conversations, setConversations] = useState<Record<string, Conversation>>({});
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
@@ -206,6 +211,8 @@ export function LakeGenProvider({ children }: { children: React.ReactNode }) {
   const sessionsRef = useRef<SessionResponse[]>([]);
   const sessionsRevisionRef = useRef(0);
   const sessionsLoadingMoreRef = useRef(false);
+  const historyMoreInFlightSessionRef = useRef<string | null>(null);
+  const historyMoreAbortRef = useRef<AbortController | null>(null);
   const conversationsRef = useRef(conversations);
   const activeConversationIdRef = useRef(activeConversationId);
   const selectedSessionIdRef = useRef(selectedSessionId);
@@ -216,8 +223,7 @@ export function LakeGenProvider({ children }: { children: React.ReactNode }) {
   const activeConversation = activeConversationId ? conversations[activeConversationId] : undefined;
   const messages = activeConversation?.messages ?? EMPTY_MESSAGES;
   const isStreaming = activeConversation?.isStreaming ?? false;
-  const activeSessionLive = activeConversation?.live ?? true;
-
+  const sessionHistoryHasMore = activeConversation?.historyHasMore ?? false;
   const updateConversations = useCallback(
     (update: (current: Record<string, Conversation>) => Record<string, Conversation>) => {
       const next = update(conversationsRef.current);
@@ -235,6 +241,8 @@ export function LakeGenProvider({ children }: { children: React.ReactNode }) {
       isStreaming: false,
       updatedAt: Date.now(),
       live: true,
+      historyTurnOffset: 0,
+      historyHasMore: false,
       boundCatalogName: null,
     };
     updateConversations((current) => ({ ...current, [conversation.id]: conversation }));
@@ -307,12 +315,21 @@ export function LakeGenProvider({ children }: { children: React.ReactNode }) {
 
   const selectSession = useCallback(async (session: SessionResponse) => {
     historyAbortRef.current?.abort();
+    historyMoreAbortRef.current?.abort();
+    historyMoreAbortRef.current = null;
+    historyMoreInFlightSessionRef.current = null;
+    setSessionHistoryLoadingMore(false);
     const controller = new AbortController();
     historyAbortRef.current = controller;
     selectedSessionIdRef.current = session.id;
     setSelectedSessionId(session.id);
     setSessionHistoryError(null);
     setSendError(null);
+    if (session.catalog_name) {
+      activeCatalogNameRef.current = session.catalog_name;
+      setActiveCatalogNameState(session.catalog_name);
+      writeLocal(ACTIVE_CATALOG_KEY, session.catalog_name);
+    }
 
     const existing = Object.values(conversationsRef.current).find(
       (conversation) => conversation.sessionId === session.id,
@@ -321,7 +338,7 @@ export function LakeGenProvider({ children }: { children: React.ReactNode }) {
       updateConversations((current) => {
         const conversation = current[existing.id];
         if (!conversation) return current;
-        return { ...current, [existing.id]: { ...conversation, live: session.live } };
+        return current;
       });
       activeConversationIdRef.current = existing.id;
       setActiveConversationId(existing.id);
@@ -332,19 +349,16 @@ export function LakeGenProvider({ children }: { children: React.ReactNode }) {
     }
 
     try {
-      const turns: AgentTurnInfo[] = [];
-      for (let offset = 0; ; offset += TURN_PAGE_SIZE) {
-        const page = await listSessionTurns(
-          session.id,
-          offset,
-          TURN_PAGE_SIZE,
-          controller.signal,
-        );
-        turns.push(...page);
-        if (page.length < TURN_PAGE_SIZE) break;
-      }
+      const page = await listSessionTurns(
+        session.id,
+        0,
+        TURN_PAGE_SIZE,
+        controller.signal,
+      );
       if (controller.signal.aborted || selectedSessionIdRef.current !== session.id) return;
-      const history = messagesFromTurns(turns);
+      const history = messagesFromTurns(page);
+      const historyTurnOffset = page.length;
+      const historyHasMore = page.length === TURN_PAGE_SIZE;
       const retained = history.length > 0 ? [] : readRetainedTurns()[session.id] ?? [];
       if (history.length > 0) clearRetainedTurns(session.id);
       updateConversations((current) => {
@@ -358,6 +372,9 @@ export function LakeGenProvider({ children }: { children: React.ReactNode }) {
               ...previous,
               live: session.live,
               boundCatalogName: sessionBoundCatalogName(session) ?? previous.boundCatalogName,
+              historyTurnOffset,
+              historyHasMore,
+              boundCatalogName: session.catalog_name ?? previous.boundCatalogName,
             },
           };
         }
@@ -377,6 +394,9 @@ export function LakeGenProvider({ children }: { children: React.ReactNode }) {
             updatedAt: Date.parse(session.created_at) || Date.now(),
             live: session.live,
             boundCatalogName: sessionBoundCatalogName(session) ?? previous?.boundCatalogName ?? null,
+            historyTurnOffset,
+            historyHasMore,
+            boundCatalogName: session.catalog_name ?? previous?.boundCatalogName ?? null,
           },
         };
       });
@@ -407,6 +427,62 @@ export function LakeGenProvider({ children }: { children: React.ReactNode }) {
     }
   }, [notify, updateConversations]);
 
+  const loadMoreSessionHistory = useCallback(async () => {
+    const sessionId = selectedSessionIdRef.current;
+    const conversationId = activeConversationIdRef.current;
+    if (!sessionId || !conversationId || historyMoreInFlightSessionRef.current === sessionId) {
+      return;
+    }
+    const conversation = conversationsRef.current[conversationId];
+    if (!conversation?.sessionId || conversation.sessionId !== sessionId) return;
+    if (!conversation.historyHasMore) return;
+
+    historyMoreAbortRef.current?.abort();
+    const controller = new AbortController();
+    historyMoreAbortRef.current = controller;
+    historyMoreInFlightSessionRef.current = sessionId;
+    setSessionHistoryLoadingMore(true);
+    try {
+      const page = await listSessionTurns(
+        sessionId,
+        conversation.historyTurnOffset,
+        TURN_PAGE_SIZE,
+        controller.signal,
+      );
+      if (controller.signal.aborted || selectedSessionIdRef.current !== sessionId) return;
+      const older = messagesFromTurns(page);
+      updateConversations((current) => {
+        const currentConversation = current[conversationId];
+        if (!currentConversation || currentConversation.sessionId !== sessionId) {
+          return current;
+        }
+        return {
+          ...current,
+          [conversationId]: {
+            ...currentConversation,
+            messages: [...older, ...currentConversation.messages],
+            historyTurnOffset: currentConversation.historyTurnOffset + page.length,
+            historyHasMore: page.length === TURN_PAGE_SIZE,
+          },
+        };
+      });
+    } catch (error) {
+      if (controller.signal.aborted || selectedSessionIdRef.current !== sessionId) return;
+      notify({
+        tone: 'error',
+        message: error instanceof Error ? error.message : 'Failed to load older messages',
+      });
+    } finally {
+      if (historyMoreAbortRef.current === controller) {
+        historyMoreAbortRef.current = null;
+        historyMoreInFlightSessionRef.current = null;
+        if (selectedSessionIdRef.current === sessionId) {
+          setSessionHistoryLoadingMore(false);
+        }
+      }
+    }
+  }, [notify, updateConversations]);
+
   const ensureSession = useCallback((conversationId: string): Promise<string> => {
     const conversation = conversationsRef.current[conversationId];
     if (conversation?.sessionId) return Promise.resolve(conversation.sessionId);
@@ -421,7 +497,7 @@ export function LakeGenProvider({ children }: { children: React.ReactNode }) {
           if (!currentConversation) return current;
           return {
             ...current,
-            [conversationId]: { ...currentConversation, sessionId: id, live: true },
+            [conversationId]: { ...currentConversation, sessionId: id },
           };
         });
         retainConversation(conversationsRef.current[conversationId]);
@@ -548,6 +624,10 @@ export function LakeGenProvider({ children }: { children: React.ReactNode }) {
   const newConversation = useCallback(() => {
     historyAbortRef.current?.abort();
     historyAbortRef.current = null;
+    historyMoreAbortRef.current?.abort();
+    historyMoreAbortRef.current = null;
+    historyMoreInFlightSessionRef.current = null;
+    setSessionHistoryLoadingMore(false);
     activeConversationIdRef.current = null;
     setActiveConversationId(null);
     selectedSessionIdRef.current = null;
@@ -581,8 +661,9 @@ export function LakeGenProvider({ children }: { children: React.ReactNode }) {
         setSendError('A response is already being generated.');
         return false;
       }
-      if (!conversation.live) {
-        setSendError('This session is no longer active. Start a new conversation to continue.');
+      const catalogName = conversation.boundCatalogName ?? activeCatalogNameRef.current;
+      if (!catalogName) {
+        setSendError('Select an active catalog before sending a message.');
         return false;
       }
       const catalogName = conversation.boundCatalogName ?? activeCatalogNameRef.current;
@@ -650,11 +731,20 @@ export function LakeGenProvider({ children }: { children: React.ReactNode }) {
               }));
             } else if (event.type === 'turn_done') {
               clearRetainedTurns(sessionId);
-              patchAssistant(conversation.id, assistantId, (m) => ({
-                ...m,
-                role: 'assistant',
-                status: event.data.stop_reason === 'completed' ? 'done' : 'incomplete',
-                stopReason: event.data.stop_reason,
+              updateConversation(conversation.id, (current) => ({
+                ...current,
+                updatedAt: Date.now(),
+                historyTurnOffset: current.historyTurnOffset + 1,
+                messages: current.messages.map((message) =>
+                  message.id === assistantId
+                    ? {
+                        ...message,
+                        role: 'assistant',
+                        status: event.data.stop_reason === 'completed' ? 'done' : 'incomplete',
+                        stopReason: event.data.stop_reason,
+                      }
+                    : message,
+                ),
               }));
             } else if (event.type === 'error') {
               streamError = true;
@@ -716,7 +806,7 @@ export function LakeGenProvider({ children }: { children: React.ReactNode }) {
       }
       return true;
     },
-    [activeCatalogName, createConversation, ensureSession, notify, patchAssistant, updateConversation],
+    [createConversation, ensureSession, notify, patchAssistant, updateConversation],
   );
 
   const value: LakeGenValue = {
@@ -740,8 +830,10 @@ export function LakeGenProvider({ children }: { children: React.ReactNode }) {
     selectedSessionId,
     selectSession,
     sessionHistoryLoading,
+    sessionHistoryLoadingMore,
+    sessionHistoryHasMore,
     sessionHistoryError,
-    activeSessionLive,
+    loadMoreSessionHistory,
     messages,
     isStreaming,
     sendError,
