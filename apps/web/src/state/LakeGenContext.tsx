@@ -35,6 +35,11 @@ const TURN_PAGE_SIZE = 100;
 const MAX_RETAINED_TURNS_BYTES = 200_000;
 const SESSION_EXPIRED_MESSAGE = 'This agent session expired. Retry to continue in a new session.';
 
+function sessionBoundCatalogName(session: SessionResponse): string | null {
+  const catalogName = (session as SessionResponse & { catalog_name?: string | null }).catalog_name;
+  return catalogName ?? null;
+}
+
 interface Conversation {
   id: string;
   sessionId: string | null;
@@ -42,6 +47,7 @@ interface Conversation {
   isStreaming: boolean;
   updatedAt: number;
   live: boolean;
+  boundCatalogName: string | null;
 }
 
 interface LakeGenValue {
@@ -55,6 +61,7 @@ interface LakeGenValue {
   activeCatalogName: string | null;
   setActiveCatalogName: (name: string) => void;
   activeCatalog: CatalogResponse | null;
+  isActiveCatalogLocked: boolean;
   sessions: SessionResponse[];
   sessionsLoading: boolean;
   sessionsLoadingMore: boolean;
@@ -228,6 +235,7 @@ export function LakeGenProvider({ children }: { children: React.ReactNode }) {
       isStreaming: false,
       updatedAt: Date.now(),
       live: true,
+      boundCatalogName: null,
     };
     updateConversations((current) => ({ ...current, [conversation.id]: conversation }));
     activeConversationIdRef.current = conversation.id;
@@ -346,7 +354,11 @@ export function LakeGenProvider({ children }: { children: React.ReactNode }) {
         if (previous?.isStreaming) {
           return {
             ...current,
-            [previous.id]: { ...previous, live: session.live },
+            [previous.id]: {
+              ...previous,
+              live: session.live,
+              boundCatalogName: sessionBoundCatalogName(session) ?? previous.boundCatalogName,
+            },
           };
         }
         const id = previous?.id ?? `session_${session.id}`;
@@ -364,6 +376,7 @@ export function LakeGenProvider({ children }: { children: React.ReactNode }) {
             isStreaming: false,
             updatedAt: Date.parse(session.created_at) || Date.now(),
             live: session.live,
+            boundCatalogName: sessionBoundCatalogName(session) ?? previous?.boundCatalogName ?? null,
           },
         };
       });
@@ -444,6 +457,7 @@ export function LakeGenProvider({ children }: { children: React.ReactNode }) {
     () => catalogs.find((c) => c.name === activeCatalogName) ?? null,
     [catalogs, activeCatalogName],
   );
+  const isActiveCatalogLocked = Boolean(activeConversation?.boundCatalogName);
 
   const updateActiveCatalog = useCallback((name: string | null) => {
     activeCatalogNameRef.current = name;
@@ -453,7 +467,14 @@ export function LakeGenProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const setActiveCatalogName = useCallback(
-    (name: string) => updateActiveCatalog(name),
+    (name: string) => {
+      const conversationId = activeConversationIdRef.current;
+      const boundCatalogName = conversationId
+        ? conversationsRef.current[conversationId]?.boundCatalogName
+        : null;
+      if (boundCatalogName) return;
+      updateActiveCatalog(name);
+    },
     [updateActiveCatalog],
   );
 
@@ -564,12 +585,18 @@ export function LakeGenProvider({ children }: { children: React.ReactNode }) {
         setSendError('This session is no longer active. Start a new conversation to continue.');
         return false;
       }
+      const catalogName = conversation.boundCatalogName ?? activeCatalogNameRef.current;
+      if (!catalogName) {
+        setSendError('Select an active catalog before sending a message.');
+        return false;
+      }
 
       const assistantId = uid('msg');
       updateConversation(conversation.id, (current) => ({
         ...current,
         isStreaming: true,
         updatedAt: Date.now(),
+        boundCatalogName: current.boundCatalogName ?? catalogName,
         messages: [
           ...current.messages,
           { id: uid('msg'), role: 'user', text: trimmed, createdAt: Date.now() },
@@ -590,7 +617,11 @@ export function LakeGenProvider({ children }: { children: React.ReactNode }) {
           status: 'error',
           errorMessage: message,
         }));
-        updateConversation(conversation.id, (current) => ({ ...current, isStreaming: false }));
+        updateConversation(conversation.id, (current) => ({
+          ...current,
+          isStreaming: false,
+          boundCatalogName: conversation.boundCatalogName,
+        }));
         return true;
       }
 
@@ -609,7 +640,7 @@ export function LakeGenProvider({ children }: { children: React.ReactNode }) {
           sessionId,
           {
             text: trimmed,
-            catalog_name: activeCatalogName,
+            catalog_name: catalogName,
           },
           (event) => {
             if (event.type === 'text_delta') {
@@ -699,6 +730,7 @@ export function LakeGenProvider({ children }: { children: React.ReactNode }) {
     activeCatalogName,
     setActiveCatalogName,
     activeCatalog,
+    isActiveCatalogLocked,
     sessions,
     sessionsLoading,
     sessionsLoadingMore,
