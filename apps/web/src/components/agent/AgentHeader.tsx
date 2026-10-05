@@ -1,7 +1,6 @@
 import { ChevronDownIcon, PlusIcon } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useLakeGen } from '../../state/LakeGenContext';
-import { StatusDot } from '../ui/StatusDot';
 import { TypeBadge } from '../ui/TypeBadge';
 import { Menu } from '../ui/Menu';
 
@@ -25,13 +24,7 @@ export function AgentHeader() {
         >
           <span>Active catalog</span>
           {activeCatalog ? (
-            <span className="flex items-center gap-1.5">
-              <StatusDot state={activeCatalog.connected ? 'connected' : 'unverified'} />
-              <span className="sr-only">
-                {activeCatalog.connected ? 'Connection cached' : 'Connection not verified'}
-              </span>
-              <span className="font-mono text-ink">{activeCatalog.name}</span>
-            </span>
+            <span className="font-mono text-ink">{activeCatalog.name}</span>
           ) : (
             <span className="text-ink-faint">none</span>
           )}
@@ -63,7 +56,6 @@ export function AgentHeader() {
                   catalog.name === activeCatalog?.name ? 'bg-line-soft/70' : ''
                 }`}
               >
-                <StatusDot state={catalog.connected ? 'connected' : 'unverified'} />
                 <span className="font-mono text-[13px] text-ink">{catalog.name}</span>
                 <span className="ml-auto">
                   <TypeBadge type={catalog.catalog_type} />
