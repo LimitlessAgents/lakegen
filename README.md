@@ -5,105 +5,120 @@
 <h1 align="center">LakeGen</h1>
 
 <p align="center">
-  An AI-powered operator for modern lakehouses.
+  <strong>The AI agent for your lakehouse.</strong>
 </p>
 
-LakeGen turns natural-language requests into lakehouse operations. Instead of
-switching between catalog consoles, SQL clients, and infrastructure tools,
-teams can connect a catalog and use one conversational control plane to
-understand and operate their lakehouse.
+LakeGen is an AI layer for managing lakehouses. It understands your data
+environment, reasons across operational context, and uses lakehouse-native
+tools to investigate problems and carry out work.
 
-LakeGen currently focuses on [Apache Iceberg](https://iceberg.apache.org/) and
-supports AWS Glue, Iceberg REST, and SQL-backed catalogs.
+<video src="static/videos/product_demo.mp4" controls width="100%" title="LakeGen product demo"></video>
 
-> [!IMPORTANT]
-> LakeGen is an early-stage project under active development. APIs and workflows
-> may change, and the current release is intended for local development and
-> evaluation rather than production deployment.
+> If the preview is unavailable, [watch the product demo](static/videos/product_demo.mp4).
 
-## Why LakeGen
+**Navigate:** [Overview](#overview) ·
+[What it helps you do](#what-lakegen-helps-you-do) ·
+[Development](#development) · [Project status](#project-status) ·
+[Contributing](#contributing) · [License](#license)
 
-Operating a lakehouse requires detailed knowledge of catalogs, namespaces,
-storage layouts, and vendor-specific interfaces. LakeGen provides an
-intelligent operational layer over that infrastructure while preserving the
-underlying Iceberg model.
+## Overview
 
-- **Natural-language operations** — interact with lakehouse infrastructure
-  through a conversational workflow.
-- **Apache Iceberg intelligence** — understand tables, schemas, snapshots,
-  partitions, manifests, references, and history.
-- **Multiple catalog backends** — connect AWS Glue, Iceberg REST, or SQL
-  catalogs through a consistent interface.
-- **Streaming responses** — receive agent progress and results through
-  Server-Sent Events (SSE).
-- **OpenAI-compatible inference** — use OpenAI or another compatible model
-  provider.
-- **Credential-aware connections** — keep catalog configuration and secrets
-  separate from the agent workflow.
+LakeGen provides a conversational control plane over
+[Apache Iceberg™](https://iceberg.apache.org/). It combines catalog-aware tools,
+an agent runtime, and a streamed web interface so teams can understand and
+operate their lakehouse through one consistent workflow.
 
-## How it works
+Supported catalog backends:
 
-LakeGen combines a React web application with a FastAPI backend, an agentic
-runtime, and PyIceberg catalog integrations.
+- AWS Glue
+- Apache Iceberg™ REST
+- SQL-backed catalogs
 
-```text
-Web interface → FastAPI and SSE → Agent runtime → PyIceberg → Iceberg catalog
-                                  ↓
-                           PostgreSQL history
-```
+## What LakeGen helps you do
 
-The agent interprets a request, selects the appropriate read-only tool, queries
-the active catalog, and returns the result as a streamed conversation. This
-keeps the user experience simple while exposing Iceberg's metadata model when
-more detail is needed.
+- **Understand your lakehouse** — get answers grounded in the structure and
+  live metadata of your data environment.
+- **Investigate issues faster** — examine tables, partitions, manifests, files,
+  and references without navigating several specialized tools.
+- **Trace how data changed** — follow snapshots and table history to understand
+  what changed, when it changed, and what state came before.
+- **Preserve operational context** — continue work across turns without
+  repeatedly explaining your catalog or the investigation.
+- **Work consistently across catalogs** — use the same workflow with AWS Glue,
+  Apache Iceberg™ REST, and SQL-backed catalogs.
+
 
 ## Quickstart
 
-### Docker
+The recommended path runs the complete stack with Docker Compose.
 
-**Prerequisites:** [Docker](https://docs.docker.com/get-docker/) with Compose
-v2 and an OpenAI-compatible inference API key.
+### 1. Prerequisites
 
-Copy [`.env.example`](.env.example) to `.env`, set `OPENAI_API_KEY`, then run
-`docker compose up -d` from the repository root.
+- [Docker](https://docs.docker.com/get-docker/)
+- An OpenAI or OpenAI-compatible API key
 
-Open [http://localhost:8080](http://localhost:8080).
+### 2. Configure inference
 
-### Manual development
+From the repository root:
 
-For debugging with hot reload, run the API and web app on the host instead of
-Compose.
+```bash
+cp .env.example .env
+```
 
-**Prerequisites:** Python 3.13+, [uv](https://docs.astral.sh/uv/), Node.js and
+Set your key in `.env`:
+
+```dotenv
+OPENAI_API_KEY=your-api-key
+```
+
+For another OpenAI-compatible provider, also set `OPENAI_BASE_URL`.
+
+### 3. Start LakeGen
+
+```bash
+docker compose up -d
+```
+
+Docker starts PostgreSQL, the FastAPI service, and the web application. Once
+the services are healthy, open [http://localhost:8080](http://localhost:8080).
+
+Your PostgreSQL data remains in the `lakegen_pg_data` Docker volume.
+
+## Development
+
+Run the API and web application on the host when you need hot reload or local
+debugging.
+
+**Requirements:** Python 3.13+, [uv](https://docs.astral.sh/uv/), Node.js,
 npm, PostgreSQL, and an inference API key.
 
-In `.env`, set `OPENAI_API_KEY` and `LAKEGEN_DATABASE_URL` (see
-[`.env.example`](.env.example)). Optional: `OPENAI_BASE_URL` for OpenRouter or
-another compatible provider.
+1. Copy `.env.example` to `.env`.
+2. Set `OPENAI_API_KEY` and `LAKEGEN_DATABASE_URL`.
+3. Start the API from the repository root:
 
-API (repo root):
+   ```bash
+   uv sync
+   uv run uvicorn lakegen.api.app:app --reload
+   ```
 
-```bash
-uv sync
-uv run uvicorn lakegen.api.app:app --reload
-```
+4. Start the web application in a second terminal:
 
-Web (second terminal):
+   ```bash
+   cd apps/web
+   npm install
+   npm run dev
+   ```
 
-```bash
-cd apps/web && npm install && npm run dev
-```
-
-UI: [http://localhost:5173](http://localhost:5173). API:
-[http://localhost:8000](http://localhost:8000) (`GET /health`). Vite proxies
-`/v1` and `/health` to the API.
+Open [http://localhost:5173](http://localhost:5173). The API runs at
+[http://localhost:8000](http://localhost:8000), with health status available
+at [`/health`](http://localhost:8000/health). Vite proxies `/v1` and `/health`
+to the API during development.
 
 ## Project status
 
-The current release provides read-only metadata exploration, local session
-management, streamed agent turns, and PostgreSQL-backed turn persistence.
-Authentication is designed for local development and must be replaced before
-LakeGen is used in a shared or multi-tenant environment.
+The current release supports read-only lakehouse investigation, persistent
+conversational context, streamed agent execution, and PostgreSQL-backed
+catalog and turn persistence.
 
 ## Contributing
 
