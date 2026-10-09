@@ -1,56 +1,79 @@
 <p align="center">
-  <img src="static/logo.png" alt="LakeGen logo" width="180" />
+  <img src="static/logo.png" alt="LakeGen logo" width="160" />
 </p>
 
 <h1 align="center">LakeGen</h1>
 
 <p align="center">
-  <strong>The AI agent for your lakehouse.</strong>
+  <strong>The AI agent for your lakehouse.</strong><br />
+  Understand your data environment, preserve operational context, and carry
+  out lakehouse work through one interface.
 </p>
 
-LakeGen is an AI layer for managing lakehouses. It understands your data
-environment, reasons across operational context, and uses lakehouse-native
-tools to investigate problems and carry out work.
+<p align="center">
+  <img src="https://img.shields.io/badge/Python-3.13%2B-3776AB?style=flat-square&amp;logo=python&amp;logoColor=white" alt="Python 3.13+" />
+  <img src="https://img.shields.io/badge/Docker-Compose-2496ED?style=flat-square&amp;logo=docker&amp;logoColor=white" alt="Docker Compose" />
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-2F855A?style=flat-square" alt="MIT License" /></a>
+</p>
 
-<video src="static/videos/product_demo.mp4" controls width="100%" title="LakeGen product demo"></video>
+<p align="center">
+  <a href="#overview">Overview</a> ·
+  <a href="#what-lakegen-helps-you-do">What it helps you do</a> ·
+  <a href="#quickstart">Quickstart</a> ·
+  <a href="#development">Development</a> ·
+  <a href="#project-status">Status</a> ·
+  <a href="#contributing">Contributing</a>
+</p>
 
-> If the preview is unavailable, [watch the product demo](static/videos/product_demo.mp4).
-
-**Navigate:** [Overview](#overview) ·
-[What it helps you do](#what-lakegen-helps-you-do) ·
-[Development](#development) · [Project status](#project-status) ·
-[Contributing](#contributing) · [License](#license)
+---
 
 ## Overview
 
-LakeGen provides a conversational control plane over
-[Apache Iceberg™](https://iceberg.apache.org/). It combines catalog-aware tools,
-an agent runtime, and a streamed web interface so teams can understand and
-operate their lakehouse through one consistent workflow.
+LakeGen is an AI layer for managing lakehouses built on
+[Apache Iceberg™](https://iceberg.apache.org/). It combines lakehouse-aware
+tools, an agent runtime, and a streamed web interface so teams can investigate,
+understand, and operate their data environment through one consistent workflow.
 
-Supported catalog backends:
-
-- AWS Glue
-- Apache Iceberg™ REST
-- SQL-backed catalogs
+<p align="center">
+  <strong>AWS Glue</strong> &nbsp;·&nbsp;
+  <strong>Apache Iceberg™ REST</strong> &nbsp;·&nbsp;
+  <strong>SQL-backed catalogs</strong>
+</p>
 
 ## What LakeGen helps you do
 
-- **Understand your lakehouse** — get answers grounded in the structure and
-  live metadata of your data environment.
-- **Investigate issues faster** — examine tables, partitions, manifests, files,
-  and references without navigating several specialized tools.
-- **Trace how data changed** — follow snapshots and table history to understand
-  what changed, when it changed, and what state came before.
-- **Preserve operational context** — continue work across turns without
-  repeatedly explaining your catalog or the investigation.
-- **Work consistently across catalogs** — use the same workflow with AWS Glue,
-  Apache Iceberg™ REST, and SQL-backed catalogs.
-
+<table>
+  <tr>
+    <td width="50%" valign="top">
+      <strong>Understand your lakehouse</strong><br />
+      Get answers grounded in the structure and live state of your data
+      environment.
+    </td>
+    <td width="50%" valign="top">
+      <strong>Investigate issues faster</strong><br />
+      Examine tables, partitions, manifests, files, and references without
+      moving between specialized tools.
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <strong>Trace how data changed</strong><br />
+      Follow snapshots and table history to understand what changed and what
+      state came before.
+    </td>
+    <td width="50%" valign="top">
+      <strong>Preserve operational context</strong><br />
+      Continue work across turns without repeatedly explaining your catalog or
+      investigation.
+    </td>
+  </tr>
+</table>
 
 ## Quickstart
 
-The recommended path runs the complete stack with Docker Compose.
+> [!TIP]
+> This path runs the complete LakeGen stack. You only need Docker and an
+> inference API key.
 
 ### 1. Prerequisites
 
@@ -79,15 +102,21 @@ For another OpenAI-compatible provider, also set `OPENAI_BASE_URL`.
 docker compose up -d
 ```
 
-Docker starts PostgreSQL, the FastAPI service, and the web application. Once
-the services are healthy, open [http://localhost:8080](http://localhost:8080).
+Docker starts PostgreSQL, the API, and the web application.
 
-Your PostgreSQL data remains in the `lakegen_pg_data` Docker volume.
+> [!IMPORTANT]
+> LakeGen is ready at [http://localhost:8080](http://localhost:8080) once the
+> services are healthy.
+
+To stop LakeGen, run `docker compose down`. PostgreSQL data remains in the
+`lakegen_pg_data` Docker volume.
 
 ## Development
 
-Run the API and web application on the host when you need hot reload or local
-debugging.
+<details>
+<summary><strong>Run LakeGen locally with hot reload</strong></summary>
+
+<br />
 
 **Requirements:** Python 3.13+, [uv](https://docs.astral.sh/uv/), Node.js,
 npm, PostgreSQL, and an inference API key.
@@ -114,11 +143,14 @@ Open [http://localhost:5173](http://localhost:5173). The API runs at
 at [`/health`](http://localhost:8000/health). Vite proxies `/v1` and `/health`
 to the API during development.
 
+</details>
+
 ## Project status
 
-The current release supports read-only lakehouse investigation, persistent
-conversational context, streamed agent execution, and PostgreSQL-backed
-catalog and turn persistence.
+> [!NOTE]
+> The current release supports read-only lakehouse investigation, persistent
+> conversational context, streamed agent execution, and PostgreSQL-backed
+> catalog and turn persistence.
 
 ## Contributing
 
