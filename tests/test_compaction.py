@@ -101,6 +101,7 @@ def test_failed_compaction_write_restores_messages(monkeypatch) -> None:
     compaction_repository = MagicMock()
     agent_turn_repository = MagicMock()
     session_repository = MagicMock()
+    catalog_service = MagicMock()
     router = MagicMock()
 
     def fake_stream(provider, request, *, cancel_event):
@@ -111,7 +112,7 @@ def test_failed_compaction_write_restores_messages(monkeypatch) -> None:
     env = Environment.default()
     env = Environment(
         tool_registry=env.tool_registry,
-        catalog_service=env.catalog_service,
+        catalog_service=catalog_service,
         inference_registry=env.inference_registry,
         inference_router=router,
         persistence=env.persistence,
