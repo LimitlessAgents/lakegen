@@ -128,6 +128,9 @@ class Session:
                     system_prompt=base.system_prompt,
                     provider=provider if provider is not None else base.provider,
                     max_turns=base.max_turns,
+                    # Endpoint is session-level like the system prompt: a turn may
+                    # change model/provider but not which API the session talks to.
+                    base_url=base.base_url,
                 )
                 try:
                     loop_result = self._loop.invoke(
@@ -164,6 +167,9 @@ class Session:
                             provider=provider if provider is not None else base.provider,
                             model=compaction_model,
                             conversation=self.state.messages,
+                            # Summarise through the endpoint the session talks to, so an
+                            # OPENAI_BASE_URL override covers compaction too.
+                            base_url=base.base_url,
                             cancel_event=(
                                 cancel_event
                                 if cancel_event is not None

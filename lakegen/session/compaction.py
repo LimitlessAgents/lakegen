@@ -12,6 +12,7 @@ def compact(
     model: str,
     conversation: Conversation,
     cancel_event: threading.Event,
+    base_url: str | None = None,
 ) -> Message:
     compact_instruction="Now write the compacted summary of the conversation above."
     request = ChatRequest(
@@ -22,6 +23,7 @@ def compact(
             Message(role=Role.USER,content=compact_instruction)
         ],
         tools=[],
+        base_url=base_url,
     )
         
     # stream() wires into OpenAI's waiter thread and

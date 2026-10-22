@@ -1987,7 +1987,7 @@
           "model": {
             "type": "string",
             "title": "Model",
-            "default": "openrouter/free"
+            "default": "gpt-4o-mini"
           },
           "provider": {
             "type": "string",

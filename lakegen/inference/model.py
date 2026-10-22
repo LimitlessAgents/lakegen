@@ -38,6 +38,9 @@ class ChatRequest:
     messages: list[Message]
     tools: list[ToolDefinition]
     temperature: float = 0.2
+    # OpenAI-compatible endpoint override. ``None`` means "use the SDK default",
+    # so existing callers and the resolved ``OPENAI_BASE_URL`` stay unchanged.
+    base_url: str | None = None
 
 
 @dataclass

@@ -168,3 +168,46 @@ def test_failed_compaction_write_restores_messages(monkeypatch) -> None:
     compaction_repository.create.assert_called_once()
     # Messages were restored to state_copy rather than left empty or overwritten
     assert session.state.messages.messages == turn_messages.messages
+
+
+def test_compaction_forwards_the_session_endpoint() -> None:
+    captured = []
+    router = MagicMock()
+
+    def fake_stream(provider, request, *, cancel_event):
+        captured.append(request)
+        yield StreamChunk(text="Compacted conversation summary")
+
+    router.stream.side_effect = fake_stream
+
+    compact(
+        inference_router=router,
+        provider="openai",
+        model="gpt-4o",
+        conversation=Conversation(messages=[Message(role=Role.USER, content="hello")]),
+        cancel_event=threading.Event(),
+        base_url="https://openrouter.ai/api/v1",
+    )
+
+    assert [request.base_url for request in captured] == ["https://openrouter.ai/api/v1"]
+
+
+def test_compaction_without_an_endpoint_uses_the_sdk_default() -> None:
+    captured = []
+    router = MagicMock()
+
+    def fake_stream(provider, request, *, cancel_event):
+        captured.append(request)
+        yield StreamChunk(text="Compacted conversation summary")
+
+    router.stream.side_effect = fake_stream
+
+    compact(
+        inference_router=router,
+        provider="openai",
+        model="gpt-4o",
+        conversation=Conversation(messages=[Message(role=Role.USER, content="hello")]),
+        cancel_event=threading.Event(),
+    )
+
+    assert [request.base_url for request in captured] == [None]

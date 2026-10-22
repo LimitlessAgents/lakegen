@@ -36,3 +36,5 @@ class AgentConfig:
     system_prompt: str
     provider: str
     max_turns: int
+    # Endpoint for OpenAI-compatible providers; ``None`` keeps the SDK default.
+    base_url: str | None = None

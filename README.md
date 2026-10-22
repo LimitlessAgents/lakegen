@@ -88,13 +88,22 @@ From the repository root:
 cp .env.example .env
 ```
 
-Set your key in `.env`:
+Set your key and configuration in `.env`:
 
 ```dotenv
 OPENAI_API_KEY=your-api-key
+# OPENAI_BASE_URL=https://your-openai-compatible-endpoint/v1
+OPENAI_MODEL=gpt-4o-mini
 ```
 
-For another OpenAI-compatible provider, also set `OPENAI_BASE_URL`.
+| Variable | Required | Description |
+|---|---|---|
+| `OPENAI_API_KEY` | Yes | API key used for inference. |
+| `OPENAI_BASE_URL` | No | Custom OpenAI-compatible API endpoint, including OpenRouter or a proxy. |
+| `OPENAI_MODEL` | No | Default model used when no model is explicitly specified. Defaults to `gpt-4o-mini`. |
+
+> [!NOTE]
+> Users routing through OpenRouter should configure both `OPENAI_BASE_URL` and an appropriate `OPENAI_MODEL` for their chosen endpoint.
 
 ### 3. Start LakeGen
 

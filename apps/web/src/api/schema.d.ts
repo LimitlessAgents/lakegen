@@ -447,7 +447,7 @@ export interface components {
             catalog_name?: string | null;
             /**
              * Model
-             * @default openrouter/free
+             * @default gpt-4o-mini
              */
             model?: string;
             /**

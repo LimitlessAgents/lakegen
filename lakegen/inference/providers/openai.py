@@ -29,6 +29,8 @@ class _OpenAI:
 
     def __init__(self) -> None:
         self.client = None
+        # One cached client per endpoint override, keyed by ``base_url``.
+        self._clients_by_base_url: dict[str, Any] = {}
 
     @property
     def name(self) -> str:
@@ -43,14 +45,29 @@ class _OpenAI:
             json_schema=True,
         )
 
-    def _get_client(self):
-        """Lazily build a shared OpenAI client with SDK retries disabled."""
-        if self.client is None:
+    def _get_client(self, base_url: str | None = None):
+        """Lazily build a shared OpenAI client with SDK retries disabled.
+
+        ``base_url=None`` reuses the default client (and ``self.client``, which
+        tests and callers may already hold). An endpoint override gets its own
+        cached client so switching ``OPENAI_BASE_URL`` mid-process does not leak
+        one endpoint's configuration into another's requests.
+        """
+        if base_url is None:
+            if self.client is None:
+                from openai import OpenAI
+
+                # max_retries=0 avoids nested retries under the Router's policy.
+                self.client = OpenAI(max_retries=0)
+            return self.client
+
+        client = self._clients_by_base_url.get(base_url)
+        if client is None:
             from openai import OpenAI
 
-            # max_retries=0 avoids nested retries under the Router's policy.
-            self.client = OpenAI(max_retries=0)
-        return self.client
+            client = OpenAI(base_url=base_url, max_retries=0)
+            self._clients_by_base_url[base_url] = client
+        return client
 
     def _parse_retry_after(self, error: Exception) -> float | None:
         """Read numeric ``Retry-After`` seconds from an API status error, if present."""
@@ -224,7 +241,7 @@ class _OpenAI:
             native_tools = self._tools_to_native(request.tools)
             if native_tools:
                 kwargs["tools"] = native_tools
-            response = self._get_client().responses.create(**kwargs)
+            response = self._get_client(request.base_url).responses.create(**kwargs)
 
             # Responses API returns a list of output items (text, tool calls, …).
             tool_calls: list[ToolCall] = []
@@ -288,7 +305,7 @@ class _OpenAI:
             native_tools = self._tools_to_native(request.tools)
             if native_tools:
                 kwargs["tools"] = native_tools
-            stream = self._get_client().responses.create(**kwargs)
+            stream = self._get_client(request.base_url).responses.create(**kwargs)
 
             # The worker blocks in ``next(stream)``. Close from this waiter so
             # cancel does not wait for the next model token or inactivity timeout.

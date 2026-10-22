@@ -289,3 +289,88 @@ def test_stream_close_unblocks_blocked_next(provider):
     worker.join(timeout=2)
     assert worker.is_alive() is False
     assert stream.closed is True
+
+
+def test_endpoint_base_url_gets_its_own_client(mocker):
+    built: list[SimpleNamespace] = []
+
+    def build(**kwargs):
+        client = SimpleNamespace(kwargs=kwargs)
+        built.append(client)
+        return client
+
+    openai_cls = mocker.patch("openai.OpenAI", side_effect=build)
+    provider = _OpenAI()
+
+    first = provider._get_client("https://openrouter.ai/api/v1")
+    again = provider._get_client("https://openrouter.ai/api/v1")
+    second = provider._get_client("https://proxy.example/v1")
+
+    assert first is again
+    assert first is not second
+    assert [client.kwargs for client in built] == [
+        {"base_url": "https://openrouter.ai/api/v1", "max_retries": 0},
+        {"base_url": "https://proxy.example/v1", "max_retries": 0},
+    ]
+
+
+def test_default_client_is_not_rebuilt_by_endpoint_overrides(mocker):
+    built: list[SimpleNamespace] = []
+
+    def build(**kwargs):
+        client = SimpleNamespace(kwargs=kwargs)
+        built.append(client)
+        return client
+
+    openai_cls = mocker.patch("openai.OpenAI", side_effect=build)
+    provider = _OpenAI()
+
+    endpoint = provider._get_client("https://openrouter.ai/api/v1")
+    default = provider._get_client()
+    default_again = provider._get_client()
+
+    assert default is default_again is provider.client
+    assert default is not endpoint
+    assert [client.kwargs for client in built] == [
+        {"base_url": "https://openrouter.ai/api/v1", "max_retries": 0},
+        {"max_retries": 0},
+    ]
+    assert openai_cls.call_count == 2
+
+
+def _endpoint_request() -> ChatRequest:
+    return ChatRequest(
+        model="gpt-test",
+        system_prompt="system",
+        messages=[Message(role=Role.USER, content="hello")],
+        tools=[],
+        base_url="https://openrouter.ai/api/v1",
+    )
+
+
+def test_stream_asks_for_the_request_endpoint(provider, mocker):
+    client = mocker.Mock()
+    client.responses.create.return_value = iter(())
+    get_client = mocker.patch.object(provider, "_get_client", return_value=client)
+
+    list(
+        provider.stream(
+            _endpoint_request(), inactivity_timeout=5.0, cancel_event=threading.Event()
+        )
+    )
+
+    get_client.assert_called_once_with("https://openrouter.ai/api/v1")
+
+
+def test_complete_asks_for_the_request_endpoint(provider, mocker):
+    client = mocker.Mock()
+    client.responses.create.return_value = SimpleNamespace(
+        output=[],
+        output_text="hello",
+        usage=None,
+    )
+    get_client = mocker.patch.object(provider, "_get_client", return_value=client)
+
+    provider.complete(_endpoint_request(), inactivity_timeout=5.0)
+
+    get_client.assert_called_once_with("https://openrouter.ai/api/v1")

@@ -14,6 +14,7 @@ from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
 
 from lakegen.agent import StopReason
 from lakegen.api.run.runner import AgentEventType
+from lakegen.core.config import EnvConfig
 from lakegen.core.error.code import ErrorCode
 
 
@@ -52,8 +53,11 @@ class SessionResponse(APIModel):
 class TurnRequest(APIModel):
     text: str = Field(min_length=1)
     catalog_name: str | None = None
-    model: str = Field(default="openrouter/free")
-    provider: str = Field(default="openai")
+    model: str = Field(
+        default_factory=lambda: EnvConfig.from_env().model,
+        json_schema_extra={"default": EnvConfig.default().model},
+    )
+    provider: str = Field(default=EnvConfig.default().provider)
 
 
 class TextDeltaData(APIModel):

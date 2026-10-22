@@ -228,3 +228,56 @@ def test_crash_preserves_visible_output_and_terminal_marker():
     ]
     assert failure.result.turn_messages.messages[1].content == "partial"
     assert "crashed" in failure.result.turn_messages.messages[-1].content
+
+
+class _CapturingRouter(_FakeRouter):
+    """Fake router that keeps every request the loop builds."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.requests: list[ChatRequest] = []
+
+    def stream(
+        self,
+        provider: str,
+        request: ChatRequest,
+        *,
+        cancel_event: threading.Event,
+    ) -> Iterator[StreamChunk]:
+        self.requests.append(request)
+        self.stream_calls += 1
+        yield from self.chunks
+
+
+def _invoke_with(router: _CapturingRouter, config: AgentConfig):
+    loop = AgentLoop(router=router, tool_runtime=_FakeTools())
+    loop.invoke(
+        config,
+        Conversation(),
+        "hi",
+        catalog_name="prod",
+        stream=True,
+        cancel_event=threading.Event(),
+    )
+    return router.requests
+
+
+def test_agent_config_base_url_reaches_chat_request():
+    requests = _invoke_with(
+        _CapturingRouter(),
+        AgentConfig(
+            model="test-model",
+            system_prompt="test",
+            provider="fake",
+            max_turns=1,
+            base_url="https://openrouter.ai/api/v1",
+        ),
+    )
+
+    assert [request.base_url for request in requests] == ["https://openrouter.ai/api/v1"]
+
+
+def test_chat_request_base_url_defaults_to_none():
+    requests = _invoke_with(_CapturingRouter(), _config())
+
+    assert [request.base_url for request in requests] == [None]

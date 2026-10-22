@@ -8,7 +8,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from lakegen.agent import AgentConfig
+from lakegen.agent import AgentConfig, AgentLoopResult, Conversation, StopReason
+from lakegen.core.config import EnvConfig
 from lakegen.core.error.base import BaseError
 from lakegen.core.error.code import ErrorCode
 from lakegen.core.persistence import PostgresPersistence
@@ -674,3 +675,73 @@ def test_delete_blocks_spawn_and_send_before_deleting_rows(registered_catalog):
     release_delete.set()
     deleter.join(timeout=2)
     assert not deleter.is_alive()
+
+
+def test_create_uses_injected_env_config() -> None:
+    config = EnvConfig(
+        base_url="https://openrouter.ai/api/v1",
+        model="injected-model",
+        provider="openai",
+    )
+    mgr = SessionManager(env=_env(), config=config)
+
+    session = mgr.get(mgr.create(owner_id=_OWNER))
+
+    assert session.state.config.model == "injected-model"
+    assert session.state.config.provider == "openai"
+    assert session.state.config.base_url == "https://openrouter.ai/api/v1"
+
+
+def test_env_config_base_url_reaches_the_turn(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The endpoint resolved by ``EnvConfig`` is what the agent loop is asked to use."""
+    mgr = SessionManager(
+        env=_env(),
+        config=EnvConfig(base_url="https://proxy.example/v1", model="m", provider="openai"),
+    )
+    session = mgr.get(mgr.create(owner_id=_OWNER, catalog_name="prod"))
+
+    seen: list[AgentConfig] = []
+
+    def fake_invoke(**kwargs):
+        seen.append(kwargs["agent_config"])
+        return AgentLoopResult(
+            final_message="ok",
+            turn_messages=Conversation(messages=[]),
+            stop_reason=StopReason.COMPLETED,
+        )
+
+    monkeypatch.setattr(session._loop, "invoke", fake_invoke)
+    session.send("hello", model="other-model")
+
+    assert len(seen) == 1
+    # The turn overrides the model but keeps the session's endpoint.
+    assert seen[0].model == "other-model"
+    assert seen[0].base_url == "https://proxy.example/v1"
+
+
+def test_base_url_defaults_to_none_without_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("OPENAI_BASE_URL", raising=False)
+    mgr = SessionManager(env=_env())
+
+    session = mgr.get(mgr.create(owner_id=_OWNER))
+
+    assert session.state.config.base_url is None
+
+
+def test_create_falls_back_to_default_model(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("OPENAI_MODEL", raising=False)
+    mgr = SessionManager(env=_env())
+
+    session = mgr.get(mgr.create(owner_id=_OWNER))
+
+    assert session.state.config.model == "gpt-4o-mini"
+    assert session.state.config.provider == "openai"
+
+
+def test_session_creation_uses_default_model(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("OPENAI_MODEL", "custom-openai-model")
+    mgr = SessionManager(env=_env())
+    session_id = mgr.create(owner_id=_OWNER)
+    session = mgr.get(session_id)
+    assert session.state.config.model == "custom-openai-model"
+    assert session.state.config.provider == "openai"

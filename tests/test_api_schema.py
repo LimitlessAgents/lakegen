@@ -67,3 +67,22 @@ def test_error_body_is_client_facing() -> None:
         "code": "NOT_FOUND",
         "message": "Catalog not found.",
     }
+
+
+def test_turn_request_default_model_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("OPENAI_MODEL", raising=False)
+    request = TurnRequest.model_validate({"text": "hello"})
+    assert request.model == "gpt-4o-mini"
+    assert request.provider == "openai"
+
+
+def test_turn_request_default_model_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("OPENAI_MODEL", "gpt-4o")
+    request = TurnRequest.model_validate({"text": "hello"})
+    assert request.model == "gpt-4o"
+
+
+def test_turn_request_explicit_model_overrides_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("OPENAI_MODEL", "gpt-4o")
+    request = TurnRequest.model_validate({"text": "hello", "model": "custom-override"})
+    assert request.model == "custom-override"

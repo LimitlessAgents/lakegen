@@ -153,6 +153,7 @@ class AgentLoop:
                     system_prompt=self._build_prompt(agent_config, catalog_name),
                     tools=self._tools.list_definitions(),
                     messages=current_messages(),
+                    base_url=agent_config.base_url,
                 )
 
                 chat_response = self._complete(
