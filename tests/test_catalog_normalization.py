@@ -4,7 +4,7 @@ PyIceberg returns identifiers as tuples; the catalog layer must convert them
 to dotted strings so tool outputs are JSON-serializable.
 """
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -128,6 +128,46 @@ def test_get_table_metadata_error_wrapped():
     assert exc_info.value.code == ErrorCode.INTERNAL
 
 
+def test_get_table_metadata_includes_full_metadata_when_available():
+    cat = _make_catalog()
+    mock_table = MagicMock()
+    mock_table.name.return_value = "sales.orders"
+    mock_table.location.return_value = "s3://bucket/sales/orders"
+    mock_table.metadata_location = "s3://bucket/sales/orders/metadata/v1.metadata.json"
+    mock_table.schema.return_value.fields = [_mock_field("id", "long")]
+
+    mock_meta = MagicMock()
+    mock_meta.model_dump.return_value = {
+        "format-version": 2,
+        "table-uuid": "uuid-123",
+        "current-snapshot-id": 1001,
+        "properties": {"write.target-file-size-bytes": "134217728"},
+        "snapshots": [{"snapshot-id": 1001}],
+    }
+    mock_table.metadata = mock_meta
+    cat.catalog.load_table.return_value = mock_table
+
+    result = cat.get_table_metadata("sales.orders")
+
+    # Backward compatibility
+    assert result["name"] == "sales.orders"
+    assert result["location"] == "s3://bucket/sales/orders"
+    assert result["schema"] == {"id": "long"}
+
+    # Full metadata file contents and aliases
+    assert result["format-version"] == 2
+    assert result["format_version"] == 2
+    assert result["table-uuid"] == "uuid-123"
+    assert result["table_uuid"] == "uuid-123"
+    assert result["current-snapshot-id"] == 1001
+    assert result["current_snapshot_id"] == 1001
+    assert result["properties"] == {"write.target-file-size-bytes": "134217728"}
+    assert result["snapshots"] == [{"snapshot-id": 1001}]
+    assert result["metadata_location"] == "s3://bucket/sales/orders/metadata/v1.metadata.json"
+    assert "metadata" in result
+
+
+
 # ---------------------------------------------------------------------------
 # inspect_snapshots / inspect_partitions
 # ---------------------------------------------------------------------------
@@ -168,7 +208,7 @@ def test_inspect_snapshots_returns_json_rows():
     cat.catalog.load_table.assert_called_once_with("sales.orders")
 
 
-def test_inspect_partitions_returns_json_rows():
+def test_inspect_partitions_returns_raw_json_rows():
     import pyarrow as pa
     from datetime import date
 
@@ -185,18 +225,15 @@ def test_inspect_partitions_returns_json_rows():
     cat.catalog.load_table.return_value = mock_table
 
     result = cat.inspect_partitions("sales.orders")
-    assert result == {
-        "rows": [
-            {
-                "partition": {"dt_day": "2021-02-01"},
-                "record_count": 10,
-                "file_count": 2,
-                "total_data_file_size_in_bytes": 1024,
-            }
-        ],
-        "truncated": False,
-        "total": 1,
-    }
+
+    assert result == [
+        {
+            "partition": {"dt_day": "2021-02-01"},
+            "record_count": 10,
+            "file_count": 2,
+            "total_data_file_size_in_bytes": 1024,
+        }
+    ]
     mock_table.inspect.partitions.assert_called_once_with(snapshot_id=None)
 
 
@@ -230,17 +267,20 @@ def test_inspect_history_returns_limited_rows():
     assert len(result["rows"]) == 2
 
 
-def test_inspect_files_passes_snapshot_id():
+def test_inspect_files_returns_all_raw_rows():
     import pyarrow as pa
 
     cat = _make_catalog()
     mock_table = MagicMock()
-    mock_table.inspect.files.return_value = pa.table({"file_path": ["s3://x"]})
+    mock_table.inspect.files.return_value = pa.table(
+        {"file_path": [f"s3://x/{index}" for index in range(150)]}
+    )
     cat.catalog.load_table.return_value = mock_table
 
-    cat.inspect_files("sales.orders", snapshot_id=999)
+    result = cat.inspect_files("sales.orders", snapshot_id=999)
 
     mock_table.inspect.files.assert_called_once_with(snapshot_id=999)
+    assert len(result) == 150
 
 
 def test_inspect_metadata_log_delegates_to_pyiceberg():

@@ -10,7 +10,6 @@ from lakegen.tool.iceberg.inspect_files_tool import inspect_files
 from lakegen.tool.iceberg.inspect_history_tool import inspect_history
 from lakegen.tool.iceberg.inspect_manifests_tool import inspect_manifests
 from lakegen.tool.iceberg.inspect_metadata_log_tool import inspect_metadata_log
-from lakegen.tool.iceberg.inspect_partitions_tool import inspect_partitions
 from lakegen.tool.iceberg.inspect_refs_tool import inspect_refs
 from lakegen.tool.iceberg.inspect_snapshots_tool import inspect_snapshots
 from lakegen.tool.iceberg.model import (
@@ -55,29 +54,6 @@ def test_inspect_snapshots_delegates(fake_catalog):
     assert result == [{"snapshot_id": 1}]
 
 
-def test_inspect_partitions_delegates(fake_catalog):
-    catalog = fake_catalog
-    payload = {"rows": [{"record_count": 10}], "truncated": False, "total": 1}
-    catalog.inspect_partitions.return_value = payload
-
-    result = inspect_partitions(
-        TimeTravelInspectArguments(
-            name="prod",
-            table="sales.orders",
-            snapshot_id=42,
-            limit=25,
-        ),
-        catalog,
-    )
-
-    catalog.inspect_partitions.assert_called_once_with(
-        "sales.orders",
-        snapshot_id=42,
-        limit=25,
-    )
-    assert result == payload
-
-
 @pytest.mark.parametrize(
     ("tool", "catalog_method"),
     [
@@ -104,19 +80,40 @@ def test_advanced_inspect_tools_delegate(fake_catalog, tool, catalog_method):
     assert result == payload
 
 
-@pytest.mark.parametrize(
-    ("tool", "catalog_method"),
-    [
-        (inspect_files, "inspect_files"),
-        (inspect_entries, "inspect_entries"),
-    ],
-)
-def test_time_travel_inspect_tools_delegate(fake_catalog, tool, catalog_method):
+def test_inspect_files_fetches_all_rows_and_limits_in_tool(fake_catalog):
+    catalog = fake_catalog
+    catalog.inspect_files.return_value = [
+        {"file_path": "s3://a"},
+        {"file_path": "s3://b"},
+    ]
+
+    result = inspect_files(
+        TimeTravelInspectArguments(
+            name="prod",
+            table="sales.orders",
+            snapshot_id=999,
+            limit=1,
+        ),
+        catalog,
+    )
+
+    catalog.inspect_files.assert_called_once_with(
+        "sales.orders",
+        snapshot_id=999,
+    )
+    assert result == {
+        "rows": [{"file_path": "s3://a"}],
+        "truncated": True,
+        "total": 2,
+    }
+
+
+def test_inspect_entries_delegates(fake_catalog):
     catalog = fake_catalog
     payload = {"rows": [{"file_path": "s3://x"}], "truncated": False, "total": 1}
-    getattr(catalog, catalog_method).return_value = payload
+    catalog.inspect_entries.return_value = payload
 
-    result = tool(
+    result = inspect_entries(
         TimeTravelInspectArguments(
             name="prod",
             table="sales.orders",
@@ -126,7 +123,7 @@ def test_time_travel_inspect_tools_delegate(fake_catalog, tool, catalog_method):
         catalog,
     )
 
-    getattr(catalog, catalog_method).assert_called_once_with(
+    catalog.inspect_entries.assert_called_once_with(
         "sales.orders",
         snapshot_id=999,
         limit=10,

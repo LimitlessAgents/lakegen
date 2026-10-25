@@ -4,6 +4,7 @@ Importing this module registers the tool as a side effect. ``_DESCRIPTION`` is
 shown to the agent, so it is written as guidance for when/how to call the tool.
 """
 
+from lakegen.core.catalog.serialize import limit_inspect_rows
 from lakegen.tool.iceberg.model import TimeTravelInspectArguments
 from lakegen.tool.registry import registry
 
@@ -16,11 +17,11 @@ _DESCRIPTION = (
 
 
 def inspect_files(arguments: TimeTravelInspectArguments, catalog):
-    return catalog.inspect_files(
+    rows = catalog.inspect_files(
         arguments.table,
         snapshot_id=arguments.snapshot_id,
-        limit=arguments.limit,
     )
+    return limit_inspect_rows(rows, arguments.limit)
 
 
 registry.register(

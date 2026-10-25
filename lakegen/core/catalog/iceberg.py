@@ -1,13 +1,14 @@
-import logging
 from typing import Any, Self
 
 from lakegen.core.catalog.base import BaseCatalog
 from lakegen.core.catalog.model import ResolvedCatalogSpec
-from lakegen.core.catalog.serialize import arrow_table_to_rows, limit_inspect_rows
+from lakegen.core.catalog.serialize import (
+    _json_safe,
+    arrow_table_to_rows,
+    limit_inspect_rows,
+)
 from lakegen.core.error.base import BaseError
 from lakegen.core.error.code import ErrorCode
-
-logger = logging.getLogger(__name__)
 
 
 class IcebergCatalog(BaseCatalog):
@@ -28,9 +29,7 @@ class IcebergCatalog(BaseCatalog):
 
         try:
             name, properties = self.spec.iceberg_kwargs()
-            logger.debug("Connecting to catalog %r (type=%s)", name, self.spec.catalog_type)
             self.catalog = load_catalog(name, **properties)
-            logger.debug("Connected to catalog %r", name)
             return self
         except Exception as e:
             raise BaseError(
@@ -73,14 +72,58 @@ class IcebergCatalog(BaseCatalog):
         """Return table metadata as a plain dict safe for JSON serialization."""
         try:
             table = self.catalog.load_table(table_name)
-            return {
-                "name": str(table.name()),
-                "location": table.location(),
-                "schema": {
-                    field.name: str(field.field_type)
-                    for field in table.schema().fields
-                },
+            result: dict[str, Any] = {}
+
+            # If table.metadata is available (PyIceberg TableMetadata or dict),
+            # include the full metadata file contents.
+            metadata_obj = getattr(table, "metadata", None)
+            meta_dict = None
+            if metadata_obj is not None:
+                if hasattr(metadata_obj, "model_dump") and callable(metadata_obj.model_dump):
+                    try:
+                        dumped = metadata_obj.model_dump(mode="json")
+                        if isinstance(dumped, dict):
+                            meta_dict = dumped
+                    except Exception:
+                        pass
+                elif hasattr(metadata_obj, "dict") and callable(metadata_obj.dict):
+                    try:
+                        dumped = metadata_obj.dict()
+                        if isinstance(dumped, dict):
+                            meta_dict = dumped
+                    except Exception:
+                        pass
+                elif isinstance(metadata_obj, dict):
+                    meta_dict = metadata_obj
+
+            if meta_dict:
+                safe_meta = _json_safe(meta_dict)
+                result.update(safe_meta)
+                # Ensure snake_case aliases are also present for any kebab-case keys
+                for k, v in list(meta_dict.items()):
+                    if "-" in k:
+                        result.setdefault(k.replace("-", "_"), _json_safe(v))
+                result["metadata"] = safe_meta
+
+            # Metadata location if available on table
+            metadata_location = getattr(table, "metadata_location", None)
+            if metadata_location is not None and isinstance(metadata_location, str):
+                result["metadata_location"] = metadata_location
+
+            # Properties if available directly on table
+            table_properties = getattr(table, "properties", None)
+            if table_properties is not None and isinstance(table_properties, dict):
+                result["properties"] = _json_safe(table_properties)
+
+            # Standard fields guaranteed for backward compatibility
+            result["name"] = str(table.name())
+            result["location"] = table.location()
+            result["schema"] = {
+                field.name: str(field.field_type)
+                for field in table.schema().fields
             }
+
+            return result
         except Exception as e:
             raise BaseError(
                 ErrorCode.INTERNAL,
@@ -103,17 +146,38 @@ class IcebergCatalog(BaseCatalog):
         table_name: str,
         *,
         snapshot_id: int | None = None,
-        limit: int | None = None,
+    ) -> list[dict[str, Any]]:
+        """Return raw PyIceberg partition rows for a table snapshot."""
+        try:
+            table = self.catalog.load_table(table_name)
+            return arrow_table_to_rows(
+                table.inspect.partitions(snapshot_id=snapshot_id)
+            )
+        except Exception as e:
+            raise BaseError(
+                ErrorCode.INTERNAL,
+                "Failed to inspect partitions.",
+            ) from e
+
+    def read_metadata_file(
+        self,
+        table_name: str,
+        metadata_file: str,
     ) -> dict[str, Any]:
-        """Return partition summaries as JSON-native rows."""
-        return self._inspect_table(
-            table_name,
-            "partitions",
-            snapshot_id=snapshot_id,
-            limit=limit,
-            time_travel=True,
-            error_message="Failed to inspect partitions.",
-        )
+        """Return one Iceberg metadata file as a JSON-native dict."""
+        try:
+            from pyiceberg.serializers import FromInputFile
+
+            table = self.catalog.load_table(table_name)
+            metadata = FromInputFile.table_metadata(
+                table.io.new_input(metadata_file)
+            )
+            return _json_safe(metadata.model_dump(mode="json"))
+        except Exception as e:
+            raise BaseError(
+                ErrorCode.INTERNAL,
+                "Failed to read metadata file.",
+            ) from e
 
     def inspect_history(
         self,
@@ -148,17 +212,18 @@ class IcebergCatalog(BaseCatalog):
         table_name: str,
         *,
         snapshot_id: int | None = None,
-        limit: int | None = None,
-    ) -> dict[str, Any]:
-        """Return data file rows for a table snapshot."""
-        return self._inspect_table(
-            table_name,
-            "files",
-            snapshot_id=snapshot_id,
-            limit=limit,
-            time_travel=True,
-            error_message="Failed to inspect files.",
-        )
+    ) -> list[dict[str, Any]]:
+        """Return all raw PyIceberg data file rows for a table snapshot."""
+        try:
+            table = self.catalog.load_table(table_name)
+            return arrow_table_to_rows(
+                table.inspect.files(snapshot_id=snapshot_id)
+            )
+        except Exception as e:
+            raise BaseError(
+                ErrorCode.INTERNAL,
+                "Failed to inspect files.",
+            ) from e
 
     def inspect_entries(
         self,
