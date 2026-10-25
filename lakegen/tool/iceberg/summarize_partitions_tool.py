@@ -7,6 +7,7 @@ fetches raw PyIceberg data.
 """
 
 from datetime import datetime, timezone
+from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from pydantic import Field
@@ -105,7 +106,6 @@ def _specs_by_id(metadata: dict[str, Any]) -> dict[int, dict[str, Any]]:
 def _version(
     metadata: dict[str, Any],
     timestamp_ms: int,
-    metadata_file: str | None,
 ) -> dict[str, Any]:
     return {
         "timestamp": timestamp_ms,
@@ -114,7 +114,6 @@ def _version(
         ),
         "default_spec_id": _pick(metadata, "default-spec-id", "default_spec_id"),
         "specs": _specs_by_id(metadata),
-        "metadata_file": metadata_file,
     }
 
 
@@ -134,18 +133,15 @@ def _metadata_versions(
 
     log = _pick(metadata, "metadata-log", "metadata_log", default=[]) or []
     for entry in reversed(log):
-        metadata_file = _pick(entry, "metadata-file", "metadata_file")
         try:
-            previous = catalog.read_metadata_file(table_name, metadata_file)
+            previous = catalog.read_metadata_file(
+                table_name, _pick(entry, "metadata-file", "metadata_file")
+            )
         except BaseError:
             truncated = True
             break
         versions.append(
-            _version(
-                previous,
-                _pick(entry, "timestamp-ms", "timestamp_ms"),
-                metadata_file,
-            )
+            _version(previous, _pick(entry, "timestamp-ms", "timestamp_ms"))
         )
 
     versions.reverse()
@@ -153,7 +149,6 @@ def _metadata_versions(
         _version(
             metadata,
             _pick(metadata, "last-updated-ms", "last_updated_ms"),
-            _pick(metadata, "metadata-location", "metadata_location"),
         )
     )
     return versions, truncated
@@ -209,8 +204,8 @@ def _spec_changes(versions: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return changes
 
 
-def _current_field_names(metadata: dict[str, Any]) -> dict[int, str]:
-    """Map current-schema field IDs to dotted names for spec source columns."""
+def _current_fields(metadata: dict[str, Any]) -> dict[int, dict[str, Any]]:
+    """Map current-schema field IDs to dotted names and types."""
     current_id = _pick(metadata, "current-schema-id", "current_schema_id")
     schemas = _pick(metadata, "schemas", default=[]) or []
     schema = next(
@@ -221,30 +216,39 @@ def _current_field_names(metadata: dict[str, Any]) -> dict[int, str]:
         ),
         None,
     )
-    names: dict[int, str] = {}
+    fields: dict[int, dict[str, Any]] = {}
 
-    def walk(fields: list[dict[str, Any]], prefix: str = "") -> None:
-        for field in fields:
-            name = f"{prefix}{_pick(field, 'name')}"
-            names[_pick(field, "id", "field-id", "field_id")] = name
-            field_type = _pick(field, "type")
+    def walk(items: list[dict[str, Any]], prefix: str = "") -> None:
+        for item in items:
+            name = f"{prefix}{_pick(item, 'name')}"
+            field_type = _pick(item, "type")
+            fields[_pick(item, "id", "field-id", "field_id")] = {
+                "name": name,
+                "type": (
+                    field_type
+                    if isinstance(field_type, str)
+                    else str(field_type)
+                ),
+            }
             if isinstance(field_type, dict) and field_type.get("fields"):
                 walk(field_type["fields"], f"{name}.")
 
     if schema:
         walk(_pick(schema, "fields", default=[]) or [])
-    return names
+    return fields
 
 
 def _serialize_specs(
     metadata: dict[str, Any],
     active_spec_id: int,
 ) -> list[dict[str, Any]]:
-    field_names = _current_field_names(metadata)
+    source_fields = _current_fields(metadata)
     specs: list[dict[str, Any]] = []
     for spec_id, spec in sorted(_specs_by_id(metadata).items()):
         for field in spec["fields"]:
-            field["source_column"] = field_names.get(field["source_field_id"])
+            source = source_fields.get(field["source_field_id"], {})
+            field["source_column"] = source.get("name")
+            field["source_type"] = source.get("type")
         spec["is_active"] = spec_id == active_spec_id
         spec["observed"] = []
         specs.append(spec)
@@ -306,6 +310,13 @@ def _partition_totals(rows: list[dict[str, Any]]) -> dict[str, int]:
     }
 
 
+def _bound_sort_key(field: dict[str, Any], value: Any) -> Any:
+    """Compare decimal strings numerically; other types compare natively."""
+    if str(field.get("source_type", "")).startswith("decimal("):
+        return Decimal(str(value))
+    return value
+
+
 def _observed_fields(
     spec: dict[str, Any],
     rows: list[dict[str, Any]],
@@ -330,9 +341,15 @@ def _observed_fields(
         # value; bucket/truncate values are not data ranges.
         if field["transform"] == "identity" and non_null:
             try:
-                entry["min"] = min(non_null)
-                entry["max"] = max(non_null)
-            except TypeError:
+                # Decimals arrive as strings after JSON conversion, so compare
+                # them numerically using the source column type.
+                entry["min"] = min(
+                    non_null, key=lambda value: _bound_sort_key(field, value)
+                )
+                entry["max"] = max(
+                    non_null, key=lambda value: _bound_sort_key(field, value)
+                )
+            except (TypeError, ValueError, InvalidOperation):
                 pass
         observed.append(entry)
     return observed
@@ -372,6 +389,9 @@ def summarize_partitions(
     snapshot = _resolve_snapshot(metadata, arguments.snapshot_id)
     snapshot_id = (
         _pick(snapshot, "snapshot-id", "snapshot_id") if snapshot else None
+    )
+    current_snapshot_id = _pick(
+        metadata, "current-snapshot-id", "current_snapshot_id"
     )
     rows: list[dict[str, Any]] = []
     if snapshot is not None:
@@ -460,8 +480,11 @@ def summarize_partitions(
             "snapshot_id": snapshot_id,
             "timestamp": _timestamp_iso(
                 _pick(snapshot, "timestamp-ms", "timestamp_ms")
+                if snapshot is not None
+                else None
             ),
-            "is_current": arguments.snapshot_id is None,
+            "is_current": snapshot_id is not None
+            and snapshot_id == current_snapshot_id,
         },
         "partitioning": {
             "is_partitioned": is_partitioned,

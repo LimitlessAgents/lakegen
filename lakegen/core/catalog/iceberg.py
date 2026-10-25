@@ -212,17 +212,18 @@ class IcebergCatalog(BaseCatalog):
         table_name: str,
         *,
         snapshot_id: int | None = None,
-        limit: int | None = None,
-    ) -> dict[str, Any]:
-        """Return data file rows for a table snapshot."""
-        return self._inspect_table(
-            table_name,
-            "files",
-            snapshot_id=snapshot_id,
-            limit=limit,
-            time_travel=True,
-            error_message="Failed to inspect files.",
-        )
+    ) -> list[dict[str, Any]]:
+        """Return all raw PyIceberg data file rows for a table snapshot."""
+        try:
+            table = self.catalog.load_table(table_name)
+            return arrow_table_to_rows(
+                table.inspect.files(snapshot_id=snapshot_id)
+            )
+        except Exception as e:
+            raise BaseError(
+                ErrorCode.INTERNAL,
+                "Failed to inspect files.",
+            ) from e
 
     def inspect_entries(
         self,

@@ -116,6 +116,7 @@ def test_summarize_partitions_aggregates_rows_and_specs():
     )
 
     assert result["snapshot"]["snapshot_id"] == 7
+    assert result["snapshot"]["is_current"] is True
     assert result["partitioning"]["is_partitioned"] is True
     assert result["partitioning"]["active_spec_id"] == 1
     assert result["partitioning"]["specs"][0]["fields"][0]["source_column"] == "ts"
@@ -144,6 +145,39 @@ def test_summarize_partitions_aggregates_rows_and_specs():
         "changes": [],
         "truncated": False,
     }
+
+
+def test_summarize_partitions_compares_decimal_bounds_numerically():
+    metadata = _metadata(specs=[_spec(1, [_field(1000, "price")])])
+    metadata["schemas"][0]["fields"][0]["type"] = "decimal(10, 2)"
+    catalog = FakeCatalog(
+        metadata,
+        [
+            {
+                "partition": {"price": "2.00"},
+                "spec_id": 1,
+                "record_count": 10,
+                "file_count": 1,
+                "total_data_file_size_in_bytes": 100,
+            },
+            {
+                "partition": {"price": "10.00"},
+                "spec_id": 1,
+                "record_count": 10,
+                "file_count": 1,
+                "total_data_file_size_in_bytes": 100,
+            },
+        ],
+    )
+
+    result = summarize_partitions(
+        _arguments(include_spec_history=False),
+        catalog,
+    )
+
+    observed = result["partitioning"]["specs"][0]["observed"][0]
+    assert observed["min"] == "2.00"
+    assert observed["max"] == "10.00"
 
 
 def test_summarize_partitions_filters_spec_and_pages_rows():
@@ -260,5 +294,5 @@ def test_summarize_partitions_handles_unpartitioned_tables():
     )
 
     assert result["partitioning"]["is_partitioned"] is False
-    assert result["partitions"]["rows"][0]["partition_key"] == "__unpartitioned__"
+    assert result["partitions"]["rows"][0]["partition_key"] == "unpartitioned"
     assert result["data_by_spec"][0]["partition_count"] == 1

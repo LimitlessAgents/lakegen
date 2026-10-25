@@ -1,6 +1,9 @@
 """Tests for inspect_column_lineage's metadata-log processing."""
 
-from lakegen.tool.iceberg.column_lineage_tool import inspect_column_lineage
+from lakegen.tool.iceberg.column_lineage_tool import (
+    _flatten_schema,
+    inspect_column_lineage,
+)
 from lakegen.tool.iceberg.model import ColumnLineageArguments
 
 
@@ -14,6 +17,63 @@ class FakeCatalog:
 
     def read_metadata_file(self, table_name, metadata_file):
         return self.files[metadata_file]
+
+
+def test_flatten_schema_walks_list_elements_and_map_keys_values():
+    schema = {
+        "fields": [
+            {
+                "id": 1,
+                "name": "items",
+                "type": {
+                    "type": "list",
+                    "element-id": 3,
+                    "element": {
+                        "type": "struct",
+                        "fields": [
+                            {
+                                "id": 4,
+                                "name": "price",
+                                "type": "decimal(10, 2)",
+                                "required": False,
+                            }
+                        ],
+                    },
+                    "element-required": True,
+                },
+                "required": False,
+            },
+            {
+                "id": 2,
+                "name": "attrs",
+                "type": {
+                    "type": "map",
+                    "key-id": 5,
+                    "key": "string",
+                    "value-id": 6,
+                    "value": {
+                        "type": "struct",
+                        "fields": [
+                            {
+                                "id": 7,
+                                "name": "score",
+                                "type": "long",
+                                "required": False,
+                            }
+                        ],
+                    },
+                    "value-required": False,
+                },
+                "required": False,
+            },
+        ]
+    }
+
+    flat = _flatten_schema(schema)
+
+    assert flat[4]["name"] == "items.element.price"
+    assert flat[5]["name"] == "attrs.key"
+    assert flat[7]["name"] == "attrs.value.score"
 
 
 def test_inspect_column_lineage_detects_added_column():

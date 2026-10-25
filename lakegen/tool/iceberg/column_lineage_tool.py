@@ -38,23 +38,68 @@ def _flatten_schema(schema: dict[str, Any]) -> dict[int, dict[str, Any]]:
     """Flatten a metadata-dump schema into ``field_id -> state``.
 
     Field-ids are stable across renames, so keying by them lets callers tell a
-    rename (same id, new name) from a drop+add (different ids).
+    rename (same id, new name) from a drop+add (different ids). List elements
+    and map keys/values get their own IDs and dotted paths (for example
+    ``items.element.price``).
     """
     flat: dict[int, dict[str, Any]] = {}
 
-    def walk(fields: list[dict[str, Any]], prefix: str = "") -> None:
+    def add(
+        field_id: int,
+        name: str,
+        field_type: Any,
+        required: bool,
+    ) -> None:
+        flat[field_id] = {
+            "name": name,
+            "type": field_type if isinstance(field_type, str) else str(field_type),
+            "required": required,
+        }
+
+    def walk_type(field_type: Any, path: str) -> None:
+        if not isinstance(field_type, dict):
+            return
+        kind = field_type.get("type")
+        if kind == "struct":
+            walk_fields(field_type.get("fields", []), f"{path}.")
+        elif kind == "list":
+            element_id = field_type.get("element-id")
+            if element_id is not None:
+                add(
+                    element_id,
+                    f"{path}.element",
+                    field_type.get("element"),
+                    _pick(field_type, "element-required", default=False),
+                )
+                walk_type(field_type.get("element"), f"{path}.element")
+        elif kind == "map":
+            key_id = field_type.get("key-id")
+            if key_id is not None:
+                add(key_id, f"{path}.key", field_type.get("key"), True)
+                walk_type(field_type.get("key"), f"{path}.key")
+            value_id = field_type.get("value-id")
+            if value_id is not None:
+                add(
+                    value_id,
+                    f"{path}.value",
+                    field_type.get("value"),
+                    _pick(field_type, "value-required", default=False),
+                )
+                walk_type(field_type.get("value"), f"{path}.value")
+
+    def walk_fields(fields: list[dict[str, Any]], prefix: str = "") -> None:
         for field in fields:
             name = f"{prefix}{_pick(field, 'name')}"
             field_type = _pick(field, "type")
-            flat[_pick(field, "id", "field-id", "field_id")] = {
-                "name": name,
-                "type": field_type if isinstance(field_type, str) else str(field_type),
-                "required": _pick(field, "required", default=False),
-            }
-            if isinstance(field_type, dict) and field_type.get("type") == "struct":
-                walk(field_type.get("fields", []), f"{name}.")
+            add(
+                _pick(field, "id", "field-id", "field_id"),
+                name,
+                field_type,
+                _pick(field, "required", default=False),
+            )
+            walk_type(field_type, name)
 
-    walk(_pick(schema, "fields", default=[]) or [])
+    walk_fields(_pick(schema, "fields", default=[]) or [])
     return flat
 
 
@@ -70,55 +115,50 @@ def _schema_history(table_name: str, catalog) -> dict[str, Any]:
         for schema in _pick(metadata, "schemas", default=[]) or []
     }
 
+    def version(source: dict[str, Any], timestamp: int | None) -> dict[str, Any]:
+        return {
+            "timestamp": timestamp,
+            "schema_id": _pick(source, "current-schema-id", "current_schema_id"),
+            "snapshot_id": _pick(
+                source, "current-snapshot-id", "current_snapshot_id"
+            ),
+        }
+
     versions: list[dict[str, Any]] = []
     truncated = False
     log = _pick(metadata, "metadata-log", "metadata_log", default=[]) or []
     for entry in reversed(log):
-        metadata_file = _pick(entry, "metadata-file", "metadata_file")
         try:
-            previous = catalog.read_metadata_file(table_name, metadata_file)
+            previous = catalog.read_metadata_file(
+                table_name, _pick(entry, "metadata-file", "metadata_file")
+            )
         except Exception:
             truncated = True
             break
         versions.append(
-            {
-                "timestamp": _pick(entry, "timestamp-ms", "timestamp_ms"),
-                "schema_id": _pick(
-                    previous, "current-schema-id", "current_schema_id"
-                ),
-                "snapshot_id": _pick(
-                    previous, "current-snapshot-id", "current_snapshot_id"
-                ),
-                "metadata_file": metadata_file,
-            }
+            version(previous, _pick(entry, "timestamp-ms", "timestamp_ms"))
         )
     versions.reverse()
 
     # The current metadata is not part of its own metadata-log.
     versions.append(
-        {
-            "timestamp": _pick(metadata, "last-updated-ms", "last_updated_ms"),
-            "schema_id": _pick(metadata, "current-schema-id", "current_schema_id"),
-            "snapshot_id": _pick(
-                metadata, "current-snapshot-id", "current_snapshot_id"
-            ),
-            "metadata_file": _pick(
-                metadata, "metadata-location", "metadata_location"
-            ),
-        }
+        version(metadata, _pick(metadata, "last-updated-ms", "last_updated_ms"))
     )
     return {"schemas": schemas, "versions": versions, "truncated": truncated}
 
 
 def _parse_decimal(type_name: str) -> tuple[int, int] | None:
     """Parse ``decimal(precision, scale)``; return None for other types."""
-    if not type_name.startswith("decimal("):
+    if not type_name.startswith("decimal(") or not type_name.endswith(")"):
         return None
-    precision, scale = (
-        part.strip()
-        for part in type_name[len("decimal(") : -1].split(",")
-    )
-    return int(precision), int(scale)
+    try:
+        precision, scale = (
+            int(part)
+            for part in type_name[len("decimal(") : -1].split(",")
+        )
+    except ValueError:
+        return None
+    return precision, scale
 
 
 def _is_type_promotion(old: str, new: str) -> bool:
@@ -216,7 +256,7 @@ def inspect_column_lineage(
             "limit": arguments.limit,
             "transitions_examined": len(window),
             "transitions_total": len(transitions),
-            "history_truncated": history.get("truncated", False),
+            "history_truncated": history["truncated"],
         },
     }
 
@@ -233,20 +273,23 @@ def inspect_column_lineage(
         )
         return result
 
+    found = None
     for index, (older, newer) in enumerate(window):
         changes = _diff_field(
             field_id,
             schemas.get(older["schema_id"], {}),
             schemas.get(newer["schema_id"], {}),
         )
-        if not changes:
-            continue
+        if changes:
+            found = (index, changes)
+            break
 
-        consumed = arguments.offset + index + 1
-        has_more = consumed < len(transitions)
-        snapshot_attribution = (
-            "exact" if older["snapshot_id"] != newer["snapshot_id"] else "metadata_only"
-        )
+    consumed = arguments.offset + (found[0] + 1 if found else len(window))
+    has_more = consumed < len(transitions)
+
+    if found:
+        index, changes = found
+        older, newer = window[index]
         result.update(
             change_detected=True,
             changes=[
@@ -256,37 +299,32 @@ def inspect_column_lineage(
                     "schema_id_from": older["schema_id"],
                     "schema_id_to": newer["schema_id"],
                     "snapshot_id": newer["snapshot_id"],
-                    "snapshot_attribution": snapshot_attribution,
+                    "snapshot_attribution": (
+                        "exact"
+                        if older["snapshot_id"] != newer["snapshot_id"]
+                        else "metadata_only"
+                    ),
                 }
                 for change in changes
             ],
-            next_offset=consumed if has_more else None,
-            has_more=has_more,
-            exhausted=not has_more,
-            origin_reached=(
-                any(change["change_type"] == "added" for change in changes)
-                or not has_more
-            ),
-            next_step=(
-                f"Call again with offset={consumed} to continue older history."
-                if has_more
-                else "Reached the oldest retained metadata version."
-            ),
         )
-        return result
 
-    # No change in this window.
-    consumed = arguments.offset + len(window)
-    has_more = consumed < len(transitions)
+    field_added = bool(
+        found and any(change["change_type"] == "added" for change in found[1])
+    )
     result.update(
         next_offset=consumed if has_more else None,
         has_more=has_more,
         exhausted=not has_more,
-        origin_reached=not has_more,
+        origin_reached=field_added or not has_more,
         next_step=(
             f"Call again with offset={consumed} to continue older history."
             if has_more
-            else "Reached the oldest retained metadata version; no change found."
+            else (
+                "Reached the oldest retained metadata version."
+                if found
+                else "Reached the oldest retained metadata version; no change found."
+            )
         ),
     )
     return result

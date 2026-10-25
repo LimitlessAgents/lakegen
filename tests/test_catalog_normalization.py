@@ -267,17 +267,20 @@ def test_inspect_history_returns_limited_rows():
     assert len(result["rows"]) == 2
 
 
-def test_inspect_files_passes_snapshot_id():
+def test_inspect_files_returns_all_raw_rows():
     import pyarrow as pa
 
     cat = _make_catalog()
     mock_table = MagicMock()
-    mock_table.inspect.files.return_value = pa.table({"file_path": ["s3://x"]})
+    mock_table.inspect.files.return_value = pa.table(
+        {"file_path": [f"s3://x/{index}" for index in range(150)]}
+    )
     cat.catalog.load_table.return_value = mock_table
 
-    cat.inspect_files("sales.orders", snapshot_id=999)
+    result = cat.inspect_files("sales.orders", snapshot_id=999)
 
     mock_table.inspect.files.assert_called_once_with(snapshot_id=999)
+    assert len(result) == 150
 
 
 def test_inspect_metadata_log_delegates_to_pyiceberg():

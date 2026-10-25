@@ -98,9 +98,8 @@ class BaseCatalog(ABC):
         table_name: str,
         *,
         snapshot_id: int | None = None,
-        limit: int | None = None,
-    ) -> dict[str, Any]:
-        """Return data file rows for a table snapshot."""
+    ) -> list[dict[str, Any]]:
+        """Return all raw data file rows for a table snapshot."""
         ...
 
     @abstractmethod
