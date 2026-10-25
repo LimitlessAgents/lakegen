@@ -120,7 +120,7 @@ def test_discovery_registers_catalog_tools():
     assert "list_tables" in names
     assert "describe_table" in names
     assert "inspect_snapshots" in names
-    assert "inspect_partitions" in names
+    assert "summarize_partitions" in names
     assert "inspect_history" in names
     assert "inspect_refs" in names
     assert "inspect_files" in names

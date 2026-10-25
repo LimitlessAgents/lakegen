@@ -56,3 +56,22 @@ class TimeTravelInspectArguments(InspectTableArguments):
             "Optional snapshot ID to inspect table state at a point in time."
         ),
     )
+
+
+class ColumnLineageArguments(CatalogTableArguments):
+    column: str = Field(
+        description="Column name to trace. Use a dotted path for nested fields.",
+    )
+    offset: int = Field(
+        default=0,
+        ge=0,
+        description=(
+            "Number of schema-change transitions to skip, newest first. Pass "
+            "the previous result's next_offset to continue older history."
+        ),
+    )
+    limit: int = Field(
+        default=100,
+        ge=1,
+        description="Maximum schema-change transitions to examine.",
+    )

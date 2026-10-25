@@ -10,7 +10,6 @@ from lakegen.tool.iceberg.inspect_files_tool import inspect_files
 from lakegen.tool.iceberg.inspect_history_tool import inspect_history
 from lakegen.tool.iceberg.inspect_manifests_tool import inspect_manifests
 from lakegen.tool.iceberg.inspect_metadata_log_tool import inspect_metadata_log
-from lakegen.tool.iceberg.inspect_partitions_tool import inspect_partitions
 from lakegen.tool.iceberg.inspect_refs_tool import inspect_refs
 from lakegen.tool.iceberg.inspect_snapshots_tool import inspect_snapshots
 from lakegen.tool.iceberg.model import (
@@ -53,29 +52,6 @@ def test_inspect_snapshots_delegates(fake_catalog):
 
     catalog.inspect_snapshots.assert_called_once_with("sales.orders")
     assert result == [{"snapshot_id": 1}]
-
-
-def test_inspect_partitions_delegates(fake_catalog):
-    catalog = fake_catalog
-    payload = {"rows": [{"record_count": 10}], "truncated": False, "total": 1}
-    catalog.inspect_partitions.return_value = payload
-
-    result = inspect_partitions(
-        TimeTravelInspectArguments(
-            name="prod",
-            table="sales.orders",
-            snapshot_id=42,
-            limit=25,
-        ),
-        catalog,
-    )
-
-    catalog.inspect_partitions.assert_called_once_with(
-        "sales.orders",
-        snapshot_id=42,
-        limit=25,
-    )
-    assert result == payload
 
 
 @pytest.mark.parametrize(

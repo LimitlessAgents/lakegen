@@ -59,9 +59,17 @@ class BaseCatalog(ABC):
         table_name: str,
         *,
         snapshot_id: int | None = None,
-        limit: int | None = None,
+    ) -> list[dict[str, Any]]:
+        """Return raw partition rows for a table snapshot."""
+        ...
+
+    @abstractmethod
+    def read_metadata_file(
+        self,
+        table_name: str,
+        metadata_file: str,
     ) -> dict[str, Any]:
-        """Return partition summary rows for a table."""
+        """Return one Iceberg metadata file as a JSON-native dict."""
         ...
 
     @abstractmethod
