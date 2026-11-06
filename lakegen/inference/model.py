@@ -1,5 +1,4 @@
 from dataclasses import dataclass
-from typing import Any
 from enum import StrEnum
 
 from lakegen.tool.model import ToolDefinition, ToolCall
@@ -28,6 +27,9 @@ class Message:
     tool_calls: list[ToolCall] | None = None  # assistant asked to run tools
     tool_call_id: str | None = None  # tool result → which call this answers
     tool_name: str | None = None  # tool result → tool name
+    is_summary: bool = False  # compressed summary
+    is_tail: bool = False  # kept verbatim after a summary, never persisted
+    tokens: TokenUsage | None = None
 
 
 @dataclass
@@ -41,14 +43,6 @@ class ChatRequest:
     # OpenAI-compatible endpoint override. ``None`` means "use the SDK default",
     # so existing callers and the resolved ``OPENAI_BASE_URL`` stay unchanged.
     base_url: str | None = None
-
-
-@dataclass
-class ChatResponse:
-    """What we get back from a provider."""
-
-    message: Message
-    tokens: TokenUsage | None = None
 
 
 @dataclass

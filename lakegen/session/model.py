@@ -23,11 +23,12 @@ class SessionState:
     children: list[str] = field(default_factory=list)
     created_at: datetime = field(default_factory=datetime.now)
     messages: Conversation = field(default_factory=Conversation)
+    context_tokens: int | None = None  # last known context size
 
 
 @dataclass(frozen=True)
 class SessionTurnResult:
-    id: str
+    id: int
     result: AgentLoopResult
 
 

@@ -8,7 +8,6 @@ from lakegen.core.error.base import BaseError
 from lakegen.core.error.code import ErrorCode
 from lakegen.inference.model import (
     ChatRequest,
-    ChatResponse,
     Message,
     Role,
     StreamChunk,
@@ -226,7 +225,7 @@ class _OpenAI:
         request: ChatRequest,
         *,
         inactivity_timeout: float,
-    ) -> ChatResponse:
+    ) -> Message:
         """Run a non-streaming Responses API call and normalize the result."""
         try:
             kwargs: dict[str, Any] = dict(
@@ -262,12 +261,10 @@ class _OpenAI:
                 else None
             )
 
-            return ChatResponse(
-                message=Message(
-                    role=Role.ASSISTANT,
-                    content=response.output_text or None,
-                    tool_calls=tool_calls or None,
-                ),
+            return Message(
+                role=Role.ASSISTANT,
+                content=response.output_text or None,
+                tool_calls=tool_calls or None,
                 tokens=tokens,
             )
         except BaseError:

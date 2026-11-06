@@ -14,7 +14,6 @@ from lakegen.agent.model import (
 )
 from lakegen.inference.model import (
     ChatRequest,
-    ChatResponse,
     Message,
     Role,
     StreamChunk,
@@ -40,7 +39,7 @@ class _FakeRouter:
         ]
         self.stream_calls = 0
 
-    def complete(self, provider: str, request: ChatRequest) -> ChatResponse:
+    def complete(self, provider: str, request: ChatRequest) -> Message:
         raise AssertionError("complete should not be used")
 
     def stream(
@@ -281,3 +280,59 @@ def test_chat_request_base_url_defaults_to_none():
     requests = _invoke_with(_CapturingRouter(), _config())
 
     assert [request.base_url for request in requests] == [None]
+
+
+class _CompressingContext:
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def needs_compression(self, *_args, **_kwargs) -> bool:
+        self.calls += 1
+        return self.calls == 1
+
+    def compress(self, conversation, **_kwargs) -> Conversation:
+        assert conversation.messages
+        return Conversation(
+            messages=[
+                Message(role=Role.USER, content="summary", is_summary=True),
+                Message(role=Role.ASSISTANT, content="recent"),
+            ]
+        )
+
+
+class _ToolThenTextRouter(_CapturingRouter):
+    def stream(self, provider, request, *, cancel_event):
+        self.requests.append(request)
+        self.stream_calls += 1
+        if self.stream_calls == 1:
+            yield StreamChunk(
+                done=True,
+                tool_calls=[ToolCall(id="c1", name="list_tables", arguments={})],
+            )
+            return
+        yield StreamChunk(text="final")
+        yield StreamChunk(done=True)
+
+
+def test_loop_compresses_after_tools_and_returns_both_states():
+    router = _ToolThenTextRouter()
+    loop = AgentLoop(
+        router=router,
+        tool_runtime=_FakeTools(),
+        context_engine=_CompressingContext(),
+    )
+
+    result = loop.invoke(
+        _config(),
+        Conversation(messages=[Message(role=Role.USER, content="old")]),
+        "hi",
+        catalog_name="prod",
+        stream=True,
+        cancel_event=threading.Event(),
+        context_budget=1_000,
+    )
+
+    assert result.compressed is not None
+    assert result.compressed.messages[0].is_summary is True
+    assert router.requests[1].messages[0].is_summary is True
+    assert result.turn_messages.messages[0].content == "hi"

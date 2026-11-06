@@ -21,7 +21,6 @@ from lakegen.core.config import EnvConfig
 _DEFAULT_MAX_TURNS = 10
 _SESSION_PAGE_SIZE = 10
 _DEFAULT_CACHE_SIZE = 32
-_DEFAULT_HYDRATE_TURN_LIMIT = 20
 
 
 def _int_env(name: str, default: int) -> int:
@@ -43,7 +42,6 @@ class SessionManager:
         *,
         config: EnvConfig | None = None,
         cache_size: int | None = None,
-        hydrate_turn_limit: int | None = None,
     ) -> None:
         self.env = env if env is not None else Environment.default()
         self.config = config if config is not None else EnvConfig.from_env()
@@ -51,14 +49,6 @@ class SessionManager:
             cache_size if cache_size is not None else _int_env(
                 "LAKEGEN_SESSION_CACHE_SIZE",
                 _DEFAULT_CACHE_SIZE,
-            )
-        )
-        self._hydrate_turn_limit = (
-            hydrate_turn_limit
-            if hydrate_turn_limit is not None
-            else _int_env(
-                "LAKEGEN_SESSION_HYDRATE_TURN_LIMIT",
-                _DEFAULT_HYDRATE_TURN_LIMIT,
             )
         )
         self._deleting: set[str] = set()
@@ -281,32 +271,40 @@ class SessionManager:
 
     def _hydrate(self, session_id: str) -> Session:
         row = self.env.session_repository.get(session_id)
-        compactions = self.env.compaction_repository.list(session_id, 0, 1)
-        if isinstance(compactions, list) and len(compactions) > 0:
-            latest_compaction = compactions[0]
-
-            # TODO: Currently `created_at` is being used as the replay
-            ## cutoff because `last_compacted_turn_id` is UUID which
-            ## has no chronology. Fine temporarily but this needs to
-            ## be fixed.
-            last_turn_created_at = latest_compaction.get("created_at")
+        compressions = self.env.compression_repository.list(session_id, 0, 1)
+        if isinstance(compressions, list) and len(compressions) > 0:
+            latest_compression = compressions[0]
+            last_turn_id = latest_compression.get("last_compressed_turn_id")
             turn_rows = self.env.agent_turn_repository.list_where(
                 session_id,
-                "created_at > %s",
-                (last_turn_created_at,),
+                "id > %s",
+                (last_turn_id,),
             )
-            summary_content = latest_compaction.get("data")
+            summary_content = latest_compression.get("data")
             summary_messages: list[Message] = []
             if isinstance(summary_content, str) and summary_content.strip():
-                summary_messages.append(Message(role=Role.USER, content=summary_content))
-            messages = Conversation(
-                messages=[*summary_messages, *conversation_from_turn_rows(turn_rows).messages]
-            )
+                summary_messages.append(
+                    Message(
+                        role=Role.USER,
+                        content=summary_content,
+                        is_summary=True,
+                    )
+                )
+            messages_after = conversation_from_turn_rows(turn_rows).messages
+            if messages_after:
+                messages = Conversation(messages=[*summary_messages, *messages_after])
+            else:
+                messages = Conversation(
+                    messages=[
+                        *summary_messages,
+                        *self._hydrate_tail(session_id, last_turn_id),
+                    ]
+                )
         else:
             turn_rows = self.env.agent_turn_repository.list(
                 session_id,
                 0,
-                self._hydrate_turn_limit,
+                None,
             )
             messages = conversation_from_turn_rows(turn_rows)
 
@@ -319,6 +317,23 @@ class SessionManager:
             messages=messages,
         )
         return Session(state=state, env=self.env, manager=self)
+
+    def _hydrate_tail(self, session_id: str, last_turn_id: object) -> list[Message]:
+        """Rebuild the verbatim tail when no turn landed after the summary.
+
+        The tail is never persisted; it is derived from the raw turns the
+        summary covers, using the same window compression uses.
+        """
+        covered_rows = self.env.agent_turn_repository.list_where(
+            session_id,
+            "id <= %s",
+            (last_turn_id,),
+        )
+        covered = conversation_from_turn_rows(covered_rows).messages
+        return self.env.context_engine.tail(
+            covered,
+            budget_tokens=self.env.token_budget.conversation,
+        )
 
     def _catalog_name_for_parent(self, parent_id: str) -> str | None:
         parent = self._cache.get(parent_id)

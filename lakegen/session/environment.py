@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from dataclasses import dataclass
 
 from lakegen.core.catalog.service import CatalogService, catalog_service
@@ -9,9 +11,9 @@ from lakegen.core.persistence.repository.agent_turn_repository import (
     AgentTurnRepository,
     agent_turn_repository,
 )
-from lakegen.core.persistence.repository.compaction_repository import (
-    CompactionRepository,
-    compaction_repository,
+from lakegen.core.persistence.repository.compression_repository import (
+    CompressionRepository,
+    compression_repository,
 )
 from lakegen.core.persistence.repository.session_repository import (
     SessionRepository,
@@ -27,16 +29,18 @@ from lakegen.tool import (
     ToolRegistry,
     registry as tool_reg,
 )
+from lakegen.session.context import ContextEngine
 from lakegen.session.model import TokenBudget
 
 
-def calculate_token_budget(total_budget: int = 128_000) -> TokenBudget:
+def calculate_token_budget(total_budget: int = 200_000) -> TokenBudget:
     return TokenBudget(
         total=total_budget,
         system_prompt=int(total_budget * 0.1),
         tool_definitions=int(total_budget * 0.1),
         conversation=int(total_budget * 0.8),
     )
+
 
 @dataclass(frozen=True)
 class Environment:
@@ -45,21 +49,23 @@ class Environment:
     inference_registry: InferenceRegistry
     inference_router: Router
     persistence: PostgresPersistence
+    context_engine: ContextEngine
     session_repository: SessionRepository
     agent_turn_repository: AgentTurnRepository
-    compaction_repository: CompactionRepository
+    compression_repository: CompressionRepository
     token_budget: TokenBudget
 
     @classmethod
-    def default(cls) -> "Environment":
+    def default(cls) -> Environment:
         return cls(
             tool_reg,
             catalog_service,
             inference_reg,
             inference_rout,
             persistence_def,
+            ContextEngine(),
             session_repository,
             agent_turn_repository,
-            compaction_repository,
+            compression_repository,
             calculate_token_budget(),
         )

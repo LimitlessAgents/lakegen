@@ -38,3 +38,13 @@ class Repository(ABC):
         if not isinstance(value, str) or not value:
             raise ValueError(f"{field} must be a non-empty string.")
         return value
+
+    @staticmethod
+    def _required_int(
+        payload: Mapping[str, object],
+        field: str,
+    ) -> int:
+        value = payload.get(field)
+        if not isinstance(value, int) or isinstance(value, bool):
+            raise ValueError(f"{field} must be an integer.")
+        return value

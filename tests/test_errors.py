@@ -1,6 +1,5 @@
 """Tests for lakegen.core.error.base and code."""
 
-import pytest
 
 from lakegen.core.error.base import BaseError
 from lakegen.core.error.code import ErrorCode

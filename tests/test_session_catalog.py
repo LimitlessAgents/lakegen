@@ -2,7 +2,6 @@
 
 from dataclasses import replace
 from unittest.mock import MagicMock
-from uuid import UUID
 
 import pytest
 
@@ -46,8 +45,8 @@ def _env(agent_turn_repository=None):
     catalogs.require.side_effect = require
     persistence = MagicMock(spec=PostgresPersistence)
     persistence.configured = False
-    compaction_repository = MagicMock()
-    compaction_repository.list.return_value = []
+    compression_repository = MagicMock()
+    compression_repository.list.return_value = []
     return replace(
         Environment.default(),
         catalog_service=catalogs,
@@ -58,7 +57,7 @@ def _env(agent_turn_repository=None):
             if agent_turn_repository is not None
             else MagicMock()
         ),
-        compaction_repository=compaction_repository,
+        compression_repository=compression_repository,
     )
 
 
@@ -85,6 +84,7 @@ def test_send_uses_per_turn_model(registered_catalogs, monkeypatch):
 
 def test_send_assigns_and_persists_turn_id(registered_catalogs, monkeypatch):
     agent_turn_repository = MagicMock()
+    agent_turn_repository.create.return_value = 42
     mgr = SessionManager(env=_env(agent_turn_repository))
     session = open_session(
         mgr,
@@ -107,11 +107,10 @@ def test_send_assigns_and_persists_turn_id(registered_catalogs, monkeypatch):
 
     turn = session.send("hello")
 
-    UUID(turn.id)
+    assert turn.id == 42
     assert turn.result is loop_result
     agent_turn_repository.create.assert_called_once_with(
         {
-            "id": turn.id,
             "session_id": session.id,
             "result": {
                 "final_message": "ok",
@@ -123,6 +122,9 @@ def test_send_assigns_and_persists_turn_id(registered_catalogs, monkeypatch):
                             "tool_calls": None,
                             "tool_call_id": None,
                             "tool_name": None,
+                            "is_summary": False,
+                            "is_tail": False,
+                            "tokens": None,
                         },
                         {
                             "role": "assistant",
@@ -130,12 +132,17 @@ def test_send_assigns_and_persists_turn_id(registered_catalogs, monkeypatch):
                             "tool_calls": None,
                             "tool_call_id": None,
                             "tool_name": None,
+                            "is_summary": False,
+                            "is_tail": False,
+                            "tokens": None,
                         },
                     ]
                 },
                 "stop_reason": "completed",
+                "compressed": None,
             },
-        }
+        },
+        connection=None,
     )
     assert session.state.messages.messages == turn_messages.messages
 

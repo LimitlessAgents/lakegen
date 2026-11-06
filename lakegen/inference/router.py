@@ -6,7 +6,7 @@ import threading
 
 from lakegen.core.error.base import BaseError
 from lakegen.core.error.code import ErrorCode
-from lakegen.inference.model import ChatRequest, ChatResponse, StreamChunk
+from lakegen.inference.model import ChatRequest, Message, StreamChunk
 from lakegen.inference.policy import InferencePolicy
 from lakegen.inference.registry import (
     InferenceRegistry,
@@ -43,7 +43,7 @@ class Router:
         self,
         provider: str,
         request: ChatRequest,
-    ) -> ChatResponse:
+    ) -> Message:
         """Complete a chat request with bounded retry on transient failures.
 
         Retries only when the error is retryable and not user-fixable.

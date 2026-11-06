@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import os
 import threading
-import uuid
 from collections.abc import Callable
+from dataclasses import replace
 from typing import TYPE_CHECKING
 
 from lakegen.agent import (
@@ -11,17 +11,19 @@ from lakegen.agent import (
     AgentLoop,
     AgentLoopFailure,
     AgentLoopResult,
+    Conversation,
 )
 from lakegen.agent.serialization import serialize_agent_loop_result
 from lakegen.core.error.base import BaseError
 from lakegen.core.error.code import ErrorCode
 from lakegen.inference import StreamChunk
-from lakegen.session.compaction import compact
 from lakegen.session.environment import Environment
 from lakegen.session.model import SessionState, SessionTurnResult
 from lakegen.tool import ToolRuntime
 
 if TYPE_CHECKING:
+    import psycopg
+
     from lakegen.session.manager import SessionManager
 
 
@@ -45,6 +47,7 @@ class Session:
         self._loop = AgentLoop(
             router=self.env.inference_router,
             tool_runtime=self._tools,
+            context_engine=self.env.context_engine,
         )
 
     @property
@@ -119,7 +122,6 @@ class Session:
         try:
             with self._lock:
                 self._ensure_open()
-                turn_id = str(uuid.uuid4())
                 effective_catalog = self._resolve_catalog(catalog_name)
 
                 base = self.state.config
@@ -132,6 +134,20 @@ class Session:
                     # change model/provider but not which API the session talks to.
                     base_url=base.base_url,
                 )
+                cancel = cancel_event if cancel_event is not None else threading.Event()
+                system_prompt = self._loop._build_prompt(
+                    agent_config,
+                    effective_catalog,
+                )
+                tools = self._tools.list_definitions()
+
+                self._compress_if_needed(
+                    agent_config,
+                    system_prompt,
+                    tools,
+                    cancel,
+                )
+
                 try:
                     loop_result = self._loop.invoke(
                         agent_config=agent_config,
@@ -141,95 +157,150 @@ class Session:
                         catalog_switched_from=None,
                         stream=stream,
                         on_chunk=on_chunk,
-                        cancel_event=(
-                            cancel_event
-                            if cancel_event is not None
-                            else threading.Event()
-                        ),
+                        cancel_event=cancel,
+                        context_budget=self.env.token_budget.conversation,
                     )
                 except AgentLoopFailure as failure:
-                    self._persist_and_commit_turn(turn_id, failure.result)
+                    self._persist_result(
+                        failure.result,
+                        agent_config,
+                        system_prompt,
+                        tools,
+                        cancel,
+                    )
                     raise failure.error.with_traceback(
                         failure.error.__traceback__
                     ) from None
 
-                self._persist_and_commit_turn(turn_id, loop_result)
-
-                try:
-                    state_copy = list(self.state.messages.messages)
-
-                    # Run compaction if required
-                    if self._check_if_compaction_needed():
-                        # Run compaction with the compaction model, defaulting to the base model if not set
-                        compaction_model = os.getenv("COMPACTION_MODEL", None) or base.model
-                        compaction_result = compact(
-                            inference_router=self.env.inference_router,
-                            provider=provider if provider is not None else base.provider,
-                            model=compaction_model,
-                            conversation=self.state.messages,
-                            # Summarise through the endpoint the session talks to, so an
-                            # OPENAI_BASE_URL override covers compaction too.
-                            base_url=base.base_url,
-                            cancel_event=(
-                                cancel_event
-                                if cancel_event is not None
-                                else threading.Event()
-                            ),
-                        )
-
-                        if compaction_result.content.strip():
-                            # Replace context with compacted summary
-                            self.state.messages.messages = [compaction_result]
-
-                            # Persist in database
-                            self._persist_and_commit_compaction(
-                                compaction_id=str(uuid.uuid4()),
-                                compacted_data=compaction_result.content,
-                                last_compacted_turn_id=turn_id,
-                            )
-
-                except Exception:
-                    # TODO(compaction observability): this swallows every
-                    # compaction failure so it can't break an otherwise-successful
-                    # turn, which also hides the cause — e.g. the OpenAI provider
-                    # 400s when `tools` is sent as null, silently disabling
-                    # compaction, and an empty summary is dropped by the guard
-                    # above. Log the exception and emit a metric in a follow-up PR.
-                    self.state.messages.messages = state_copy
-
+                turn_id = self._persist_result(
+                    loop_result,
+                    agent_config,
+                    system_prompt,
+                    tools,
+                    cancel,
+                )
+                self.state.context_tokens = (
+                    self.env.context_engine.estimate_context_tokens(
+                        self.state.messages,
+                        system_prompt=system_prompt,
+                        tools=tools,
+                    )
+                )
                 return SessionTurnResult(id=turn_id, result=loop_result)
         finally:
             if self._manager is not None:
                 self._manager.unpin_session(self.id)
 
-    def _persist_and_commit_turn(
+    def _persist_result(
         self,
-        turn_id: str,
         loop_result: AgentLoopResult,
-    ) -> None:
-        self.env.agent_turn_repository.create(
-            {
-                "id": turn_id,
-                "session_id": self.id,
-                "result": serialize_agent_loop_result(loop_result),
-            }
-        )
-        self.state.messages.messages.extend(loop_result.turn_messages.messages)
+        agent_config: AgentConfig,
+        system_prompt: str,
+        tools: list,
+        cancel_event: threading.Event,
+    ) -> int:
+        turn_id = self._persist_turn(loop_result)
 
-    def _persist_and_commit_compaction(
+        if loop_result.compressed is not None:
+            try:
+                self._commit_compression(
+                    loop_result.compressed,
+                    last_turn_id=turn_id,
+                )
+                self.state.messages = loop_result.compressed
+            except Exception:
+                self.state.messages.messages.extend(loop_result.turn_messages.messages)
+            return turn_id
+
+        self.state.messages.messages.extend(loop_result.turn_messages.messages)
+        self._compress_if_needed(
+            agent_config,
+            system_prompt,
+            tools,
+            cancel_event,
+            last_turn_id=turn_id,
+        )
+        return turn_id
+
+    def _persist_turn(
         self,
-        compaction_id: str,
-        compacted_data: str,
-        last_compacted_turn_id: str,
-    ) -> None:
-        self.env.compaction_repository.create(
+        result: AgentLoopResult,
+        *,
+        connection: psycopg.Connection | None = None,
+    ) -> int:
+        # ``compressed`` is an in-memory handoff; agent_turns only ever stores
+        # the raw turn for history and evals.
+        persisted = (
+            replace(result, compressed=None)
+            if result.compressed is not None
+            else result
+        )
+        return self.env.agent_turn_repository.create(
             {
-                "id": compaction_id,
-                "data": compacted_data,
                 "session_id": self.id,
-                "last_compacted_turn_id": last_compacted_turn_id,
+                "result": serialize_agent_loop_result(persisted),
+            },
+            connection=connection,
+        )
+
+    def _commit_compression(
+        self,
+        conversation: Conversation,
+        *,
+        last_turn_id: int,
+    ) -> None:
+        messages = conversation.messages
+        if not messages or not messages[0].is_summary:
+            return
+
+        # Only the summary and its marker are stored. The tail lives in memory
+        # (and is rebuilt on hydration); raw turns are already in agent_turns.
+        self.env.compression_repository.create(
+            {
+                "data": messages[0].content or "",
+                "session_id": self.id,
+                "last_compressed_turn_id": last_turn_id,
             }
         )
+
+    def _compress_if_needed(
+        self,
+        agent_config: AgentConfig,
+        system_prompt: str,
+        tools: list,
+        cancel_event: threading.Event,
+        *,
+        last_turn_id: int | None = None,
+    ) -> None:
+        if last_turn_id is None:
+            last_turn_id = self.env.agent_turn_repository.latest_id(self.id)
+        if last_turn_id is None:
+            return
+
+        try:
+            if not self.env.context_engine.needs_compression(
+                self.state.messages,
+                budget_tokens=self.env.token_budget.conversation,
+                system_prompt=system_prompt,
+                tools=tools,
+            ):
+                return
+            compressed = self.env.context_engine.compress(
+                self.state.messages,
+                budget_tokens=self.env.token_budget.conversation,
+                router=self.env.inference_router,
+                provider=agent_config.provider,
+                model=os.getenv("COMPRESSION_MODEL") or agent_config.model,
+                cancel_event=cancel_event,
+                base_url=agent_config.base_url,
+            )
+            if compressed is self.state.messages:
+                return
+            self._commit_compression(compressed, last_turn_id=last_turn_id)
+            self.state.messages = compressed
+        except Exception:
+            # Compression must never break an otherwise-successful turn.
+            return
 
     def spawn(self, config: AgentConfig) -> str:
         """Create a child session that shares this session's Environment.
@@ -248,14 +319,6 @@ class Session:
             owner_id=self.state.owner_id,
             parent_id=self.id,
         )
-
-    def _check_if_compaction_needed(self) -> bool:
-        # Count all message text (including tool output) as ~4 chars/token.
-        char_count = sum(
-            len(msg.content or "") for msg in self.state.messages.messages
-        )
-        token_count = char_count // 4  # Assuming ~4 chars as one token
-        return token_count > self.env.token_budget.conversation * 0.7
 
     def close(self) -> bool:
         """Close the session and return whether it was already closed."""

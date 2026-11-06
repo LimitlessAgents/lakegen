@@ -3,7 +3,7 @@ from typing import Iterator, Protocol, runtime_checkable
 
 import threading
 
-from lakegen.inference.model import ChatRequest, ChatResponse, StreamChunk
+from lakegen.inference.model import ChatRequest, Message, StreamChunk
 
 
 @dataclass(frozen=True, slots=True)
@@ -40,7 +40,7 @@ class InferenceProvider(Protocol):
         request: ChatRequest,
         *,
         inactivity_timeout: float,
-    ) -> ChatResponse:
+    ) -> Message:
         """Run a non-streaming completion.
 
         ``inactivity_timeout`` is keyword-only so callers pass it by name.

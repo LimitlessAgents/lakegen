@@ -47,15 +47,15 @@ def _env():
     catalogs.require.side_effect = require
     persistence = MagicMock(spec=PostgresPersistence)
     persistence.configured = False
-    compaction_repository = MagicMock()
-    compaction_repository.list.return_value = []
+    compression_repository = MagicMock()
+    compression_repository.list.return_value = []
     return replace(
         Environment.default(),
         catalog_service=catalogs,
         persistence=persistence,
         session_repository=MagicMock(),
         agent_turn_repository=MagicMock(),
-        compaction_repository=compaction_repository,
+        compression_repository=compression_repository,
     )
 
 
@@ -475,7 +475,7 @@ def test_get_concurrent_hydrate_returns_same_session(registered_catalog):
 
 def test_get_hydrates_persisted_session(registered_catalog):
     env = _env()
-    mgr = SessionManager(env=env, cache_size=8, hydrate_turn_limit=20)
+    mgr = SessionManager(env=env, cache_size=8)
     created_at = datetime.now()
     session_id = "00000000-0000-0000-0000-000000000001"
     env.session_repository.get.return_value = {
@@ -511,14 +511,13 @@ def test_get_hydrates_persisted_session(registered_catalog):
     assert session.state.owner_id == _OWNER
     assert session.state.catalog_name == registered_catalog
     assert [message.content for message in session.state.messages.messages] == ["hello"]
-    env.agent_turn_repository.list.assert_called_once_with(session_id, 0, 20)
+    env.agent_turn_repository.list.assert_called_once_with(session_id, 0, None)
 
 
-def test_get_hydrates_persisted_session_with_compaction(registered_catalog):
+def test_get_hydrates_persisted_session_with_compression(registered_catalog):
     env = _env()
-    mgr = SessionManager(env=env, cache_size=8, hydrate_turn_limit=20)
+    mgr = SessionManager(env=env, cache_size=8)
     created_at = datetime.now()
-    compaction_time = datetime.now()
     session_id = "00000000-0000-0000-0000-000000000001"
     env.session_repository.get.return_value = {
         "id": session_id,
@@ -526,18 +525,18 @@ def test_get_hydrates_persisted_session_with_compaction(registered_catalog):
         "catalog_name": registered_catalog,
         "created_at": created_at,
     }
-    env.compaction_repository.list.return_value = [
+    env.compression_repository.list.return_value = [
         {
-            "id": "compaction-1",
+            "id": 1,
             "session_id": session_id,
-            "data": "Compacted summary of previous conversation",
-            "last_compacted_turn_id": "turn-1",
-            "created_at": compaction_time,
+            "data": "Compressed summary of previous conversation",
+            "last_compressed_turn_id": 10,
+            "created_at": created_at,
         }
     ]
     env.agent_turn_repository.list_where.return_value = [
         {
-            "id": "turn-2",
+            "id": 11,
             "created_at": datetime.now(),
             "result": {
                 "final_message": "table info",
@@ -566,19 +565,97 @@ def test_get_hydrates_persisted_session_with_compaction(registered_catalog):
 
     session = mgr.get(session_id)
 
-    env.compaction_repository.list.assert_called_once_with(session_id, 0, 1)
+    env.compression_repository.list.assert_called_once_with(session_id, 0, 1)
     env.agent_turn_repository.list_where.assert_called_once_with(
         session_id,
-        "created_at > %s",
-        (compaction_time,),
+        "id > %s",
+        (10,),
     )
     env.agent_turn_repository.list.assert_not_called()
 
     messages = session.state.messages.messages
     assert len(messages) == 3
-    assert messages[0].content == "Compacted summary of previous conversation"
+    assert messages[0].content == "Compressed summary of previous conversation"
+    assert messages[0].is_summary is True
     assert messages[1].content == "show table schema"
     assert messages[2].content == "schema is ..."
+
+
+def test_hydrate_rebuilds_tail_when_no_turn_follows_the_summary(registered_catalog):
+    env = _env()
+    mgr = SessionManager(env=env, cache_size=8)
+    created_at = datetime.now()
+    session_id = "00000000-0000-0000-0000-000000000001"
+    env.session_repository.get.return_value = {
+        "id": session_id,
+        "owner_id": _OWNER,
+        "catalog_name": registered_catalog,
+        "created_at": created_at,
+    }
+    env.compression_repository.list.return_value = [
+        {
+            "id": 1,
+            "session_id": session_id,
+            "data": "Compressed summary of previous conversation",
+            "last_compressed_turn_id": 10,
+            "created_at": created_at,
+        }
+    ]
+
+    def _row(turn_id, question, answer):
+        return {
+            "id": turn_id,
+            "created_at": created_at,
+            "result": {
+                "final_message": answer,
+                "stop_reason": "completed",
+                "turn_messages": {
+                    "messages": [
+                        {
+                            "role": "user",
+                            "content": question,
+                            "tool_calls": None,
+                            "tool_call_id": None,
+                            "tool_name": None,
+                        },
+                        {
+                            "role": "assistant",
+                            "content": answer,
+                            "tool_calls": None,
+                            "tool_call_id": None,
+                            "tool_name": None,
+                        },
+                    ]
+                },
+            },
+        }
+
+    # Newest first, as the repository returns them.
+    env.agent_turn_repository.list_where.side_effect = [
+        [],
+        [_row(10, "second question", "second answer"), _row(9, "first", "first answer")],
+    ]
+
+    session = mgr.get(session_id)
+
+    assert env.agent_turn_repository.list_where.call_args_list[1].args == (
+        session_id,
+        "id <= %s",
+        (10,),
+    )
+    assert env.agent_turn_repository.list_where.call_args_list[1].kwargs == {}
+    messages = session.state.messages.messages
+    assert [message.content for message in messages] == [
+        "Compressed summary of previous conversation",
+        "first",
+        "first answer",
+        "second question",
+        "second answer",
+    ]
+    assert messages[0].is_summary is True
+    assert all(message.is_tail for message in messages[1:])
+    # The tail is derived on hydration, never written as a turn.
+    env.agent_turn_repository.create.assert_not_called()
 
 
 def test_pin_session_does_not_replace_fresher_cached_session(registered_catalog):

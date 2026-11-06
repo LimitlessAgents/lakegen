@@ -299,7 +299,7 @@ def test_endpoint_base_url_gets_its_own_client(mocker):
         built.append(client)
         return client
 
-    openai_cls = mocker.patch("openai.OpenAI", side_effect=build)
+    mocker.patch("openai.OpenAI", side_effect=build)
     provider = _OpenAI()
 
     first = provider._get_client("https://openrouter.ai/api/v1")

@@ -6,46 +6,48 @@ import pytest
 from lakegen.core.error.base import BaseError
 from lakegen.core.error.code import ErrorCode
 from lakegen.core.persistence import PostgresPersistence
-from lakegen.core.persistence.repository.compaction_repository import (
-    CompactionRepository,
+from lakegen.core.persistence.repository.compression_repository import (
+    CompressionRepository,
 )
 
 
-def test_create_inserts_compaction() -> None:
+def test_create_inserts_compression() -> None:
     database = MagicMock(spec=PostgresPersistence)
+    database.insert.return_value = {"id": 3}
 
-    CompactionRepository(database).create(
+    compression_id = CompressionRepository(database).create(
         {
-            "id": "compaction-1",
             "session_id": "session-1",
-            "data": "Compacted context:\nsummary",
-            "last_compacted_turn_id": "turn-5",
+            "data": "Compressed context:\nsummary",
+            "last_compressed_turn_id": 5,
         }
     )
 
+    assert compression_id == 3
     database.insert.assert_called_once_with(
-        "compactions",
+        "compressions",
         {
-            "id": "compaction-1",
-            "data": "Compacted context:\nsummary",
+            "data": "Compressed context:\nsummary",
             "session_id": "session-1",
-            "last_compacted_turn_id": "turn-5",
+            "last_compressed_turn_id": 5,
         },
+        returning="id",
+        connection=None,
     )
 
 
-def test_get_returns_compaction() -> None:
+def test_get_returns_compression() -> None:
     database = MagicMock(spec=PostgresPersistence)
     row = {
-        "id": "compaction-1",
+        "id": 3,
         "session_id": "session-1",
-        "data": "Compacted context:\nsummary",
-        "last_compacted_turn_id": "turn-5",
+        "data": "Compressed context:\nsummary",
+        "last_compressed_turn_id": 5,
         "created_at": datetime.now(),
     }
     database.fetch_one.return_value = row
 
-    assert CompactionRepository(database).get("compaction-1") == row
+    assert CompressionRepository(database).get(3) == row
 
 
 def test_get_missing_raises_not_found() -> None:
@@ -53,7 +55,7 @@ def test_get_missing_raises_not_found() -> None:
     database.fetch_one.return_value = None
 
     with pytest.raises(BaseError) as exc_info:
-        CompactionRepository(database).get("missing")
+        CompressionRepository(database).get("missing")
 
     assert exc_info.value.code == ErrorCode.NOT_FOUND
 
@@ -62,7 +64,8 @@ def test_list_is_session_scoped_and_paginated() -> None:
     database = MagicMock(spec=PostgresPersistence)
     database.fetch_all.return_value = []
 
-    assert CompactionRepository(database).list("session-1", 10, 20) == []
+    assert CompressionRepository(database).list("session-1", 10, 20) == []
     statement, parameters = database.fetch_all.call_args.args
     assert "WHERE session_id = %s" in statement
+    assert "ORDER BY id DESC" in statement
     assert parameters == ("session-1", 10, 20)

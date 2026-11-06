@@ -19,6 +19,8 @@ class AgentLoopResult:
     final_message: str
     turn_messages: Conversation
     stop_reason: StopReason
+    # New conversation created by an in-loop compression, if any.
+    compressed: Conversation | None = None
 
 
 class AgentLoopFailure(Exception):

@@ -1,6 +1,10 @@
+from __future__ import annotations
+
 import json
+import os
 import threading
 from collections.abc import Callable, Iterator
+from typing import TYPE_CHECKING
 
 from lakegen.agent.model import (
     AgentConfig,
@@ -11,7 +15,6 @@ from lakegen.agent.model import (
 )
 from lakegen.inference import (
     ChatRequest,
-    ChatResponse,
     Message,
     Role,
     StreamChunk,
@@ -21,15 +24,20 @@ from lakegen.inference import (
 from lakegen.tool.model import ToolOutput
 from lakegen.tool.runtime import ToolRuntime, runtime as default_tool_runtime
 
+if TYPE_CHECKING:
+    from lakegen.session.context import ContextEngine
+
 
 class AgentLoop:
     def __init__(
         self,
         router: Router | None = None,
         tool_runtime: ToolRuntime | None = None,
+        context_engine: ContextEngine | None = None,
     ) -> None:
         self._router = router if router is not None else default_router
         self._tools = tool_runtime if tool_runtime is not None else default_tool_runtime
+        self._context = context_engine
 
     def invoke(
         self,
@@ -42,8 +50,11 @@ class AgentLoop:
         stream: bool = False,
         on_chunk: Callable[[StreamChunk], None] | None = None,
         cancel_event: threading.Event,
+        context_budget: int = 0,
     ) -> AgentLoopResult:
         turn_messages = Conversation()
+        active_messages = list(conversation.messages)
+        compressed = False
         turns = 0
         response_text = ""
         streamed_text_parts: list[str] = []
@@ -52,9 +63,15 @@ class AgentLoop:
 
         def append_message(message: Message) -> None:
             turn_messages.messages.append(message)
+            active_messages.append(message)
 
         def current_messages() -> list[Message]:
-            return conversation.messages + turn_messages.messages
+            return active_messages
+
+        def new_state() -> Conversation | None:
+            if not compressed:
+                return None
+            return Conversation(messages=list(active_messages))
 
         def finish(stop_reason: StopReason) -> AgentLoopResult:
             resolved_call_ids = {
@@ -114,6 +131,7 @@ class AgentLoop:
                 final_message=response_text,
                 turn_messages=turn_messages,
                 stop_reason=stop_reason,
+                compressed=new_state(),
             )
 
         if catalog_switched_from is not None:
@@ -148,10 +166,12 @@ class AgentLoop:
                     if on_chunk is not None:
                         on_chunk(chunk)
 
+                system_prompt = self._build_prompt(agent_config, catalog_name)
+                tools = self._tools.list_definitions()
                 chat_request = ChatRequest(
                     model=agent_config.model,
-                    system_prompt=self._build_prompt(agent_config, catalog_name),
-                    tools=self._tools.list_definitions(),
+                    system_prompt=system_prompt,
+                    tools=tools,
                     messages=current_messages(),
                     base_url=agent_config.base_url,
                 )
@@ -164,9 +184,9 @@ class AgentLoop:
                     cancel_event=cancel_event,
                 )
 
-                response_text = chat_response.message.content or ""
-                tool_calls = chat_response.message.tool_calls
-                append_message(chat_response.message)
+                response_text = chat_response.content or ""
+                tool_calls = chat_response.tool_calls
+                append_message(chat_response)
                 assistant_appended = True
 
                 if cancel_event.is_set():
@@ -177,6 +197,7 @@ class AgentLoop:
                         final_message=response_text,
                         turn_messages=turn_messages,
                         stop_reason=StopReason.COMPLETED,
+                        compressed=new_state(),
                     )
 
                 tools_output: list[ToolOutput] = self._tools.dispatch(
@@ -185,6 +206,8 @@ class AgentLoop:
                     cancel_event=cancel_event,
                 )
 
+                # Compress once all tool results are in, before asking the model
+                # to continue. This keeps partial tool results out of the summary.
                 for output in tools_output:
                     append_message(
                         Message(
@@ -200,9 +223,38 @@ class AgentLoop:
                             tool_name=output.tool_name,
                         )
                     )
+                try:
+                    if self._context is not None and context_budget > 0:
+                        active = Conversation(messages=list(active_messages))
+                        if self._context.needs_compression(
+                            active,
+                            budget_tokens=context_budget,
+                            system_prompt=system_prompt,
+                            tools=tools,
+                        ):
+                            compressed_conversation = self._context.compress(
+                                active,
+                                budget_tokens=context_budget,
+                                router=self._router,
+                                provider=agent_config.provider,
+                                model=os.getenv("COMPRESSION_MODEL") or agent_config.model,
+                                cancel_event=cancel_event,
+                                base_url=agent_config.base_url,
+                            )
+                            if compressed_conversation is not active:
+                                active_messages = list(compressed_conversation.messages)
+                                compressed = True
+                except Exception:
+                    # Compression failure falls back to running uncompressed
+                    # since a compression failure should never break an
+                    # otherwise successful turn.
+                    # Compression can be retried at the next gate.
+                    pass
         except Exception as error:
-            if stream and not assistant_appended and (
-                streamed_text_parts or streamed_tool_calls
+            if (
+                stream
+                and not assistant_appended
+                and (streamed_text_parts or streamed_tool_calls)
             ):
                 response_text = "".join(streamed_text_parts)
                 append_message(
@@ -227,7 +279,7 @@ class AgentLoop:
         stream: bool,
         on_chunk: Callable[[StreamChunk], None] | None,
         cancel_event: threading.Event,
-    ) -> ChatResponse:
+    ) -> Message:
         if not stream:
             return self._router.complete(provider, request)
 
@@ -242,7 +294,7 @@ class AgentLoop:
         chunks: Iterator[StreamChunk],
         on_chunk: Callable[[StreamChunk], None] | None,
         cancel_event: threading.Event,
-    ) -> ChatResponse:
+    ) -> Message:
         text_parts: list[str] = []
         tool_calls = None
         tokens = None
@@ -260,21 +312,14 @@ class AgentLoop:
                 tool_calls = chunk.tool_calls
                 tokens = chunk.tokens
 
-        return ChatResponse(
-            message=Message(
-                role=Role.ASSISTANT,
-                content="".join(text_parts) or None,
-                tool_calls=tool_calls,
-            ),
+        return Message(
+            role=Role.ASSISTANT,
+            content="".join(text_parts) or None,
+            tool_calls=tool_calls,
             tokens=tokens,
         )
-    
 
-    def _build_prompt(
-        self,
-        agent_config: AgentConfig,
-        catalog_name: str
-    ) -> str:
+    def _build_prompt(self, agent_config: AgentConfig, catalog_name: str) -> str:
         return (
             f"{agent_config.system_prompt}\n\n"
             f"Active catalog: {catalog_name!r}. "
