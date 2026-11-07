@@ -23,7 +23,6 @@ class SessionState:
     children: list[str] = field(default_factory=list)
     created_at: datetime = field(default_factory=datetime.now)
     messages: Conversation = field(default_factory=Conversation)
-    context_tokens: int | None = None  # last known context size
 
 
 @dataclass(frozen=True)
@@ -37,11 +36,7 @@ class AgentTurnInfo:
     id: str
     created_at: datetime
     result: dict[str, object]
-
-
-@dataclass(frozen=True)
-class TokenBudget:
-    total: int
-    system_prompt: int
-    tool_definitions: int
-    conversation: int
+    summary: str | None = None
+    summary_kind: str | None = None
+    context_tokens: int | None = None
+    context_source: str | None = None

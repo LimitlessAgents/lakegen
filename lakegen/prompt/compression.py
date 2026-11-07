@@ -12,6 +12,8 @@ Preserve:
 - Exact identifiers: names, paths, table and column names, commands, and
   numeric values.
 - Open questions, blockers, and next steps.
+- Give extra weight to the final turn: it is the most likely context for the
+  next request.
 
 Remove:
 - Greetings, acknowledgements, and other pleasantries.

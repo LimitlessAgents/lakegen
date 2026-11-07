@@ -3,7 +3,6 @@ from __future__ import annotations
 import os
 import threading
 from collections.abc import Callable
-from dataclasses import replace
 from typing import TYPE_CHECKING
 
 from lakegen.agent import (
@@ -13,13 +12,14 @@ from lakegen.agent import (
     AgentLoopResult,
     Conversation,
 )
+from lakegen.agent.model import CompressionScope
 from lakegen.agent.serialization import serialize_agent_loop_result
 from lakegen.core.error.base import BaseError
 from lakegen.core.error.code import ErrorCode
 from lakegen.inference import StreamChunk
 from lakegen.session.environment import Environment
 from lakegen.session.model import SessionState, SessionTurnResult
-from lakegen.tool import ToolRuntime
+from lakegen.tool import ToolDefinition, ToolRuntime
 
 if TYPE_CHECKING:
     import psycopg
@@ -141,7 +141,7 @@ class Session:
                 )
                 tools = self._tools.list_definitions()
 
-                self._compress_if_needed(
+                self._compress_history(
                     agent_config,
                     system_prompt,
                     tools,
@@ -158,7 +158,7 @@ class Session:
                         stream=stream,
                         on_chunk=on_chunk,
                         cancel_event=cancel,
-                        context_budget=self.env.token_budget.conversation,
+                        context_policy=self.env.context_policy,
                     )
                 except AgentLoopFailure as failure:
                     self._persist_result(
@@ -179,13 +179,6 @@ class Session:
                     tools,
                     cancel,
                 )
-                self.state.context_tokens = (
-                    self.env.context_engine.estimate_context_tokens(
-                        self.state.messages,
-                        system_prompt=system_prompt,
-                        tools=tools,
-                    )
-                )
                 return SessionTurnResult(id=turn_id, result=loop_result)
         finally:
             if self._manager is not None:
@@ -196,24 +189,28 @@ class Session:
         loop_result: AgentLoopResult,
         agent_config: AgentConfig,
         system_prompt: str,
-        tools: list,
+        tools: list[ToolDefinition],
         cancel_event: threading.Event,
     ) -> int:
-        turn_id = self._persist_turn(loop_result)
-
-        if loop_result.compressed is not None:
-            try:
-                self._commit_compression(
-                    loop_result.compressed,
-                    last_turn_id=turn_id,
-                )
-                self.state.messages = loop_result.compressed
-            except Exception:
-                self.state.messages.messages.extend(loop_result.turn_messages.messages)
-            return turn_id
+        completed = Conversation(
+            messages=[
+                *self.state.messages.messages,
+                *loop_result.turn_messages.messages,
+            ]
+        )
+        measurement = self.env.context_engine.measure(
+            history=completed,
+            system_prompt=system_prompt,
+            tools=tools,
+        )
+        turn_id = self._persist_turn(
+            loop_result,
+            context_tokens=measurement.total,
+            context_source=measurement.source,
+        )
 
         self.state.messages.messages.extend(loop_result.turn_messages.messages)
-        self._compress_if_needed(
+        self._compress_history(
             agent_config,
             system_prompt,
             tools,
@@ -226,48 +223,28 @@ class Session:
         self,
         result: AgentLoopResult,
         *,
+        context_tokens: int | None = None,
+        context_source: str | None = None,
         connection: psycopg.Connection | None = None,
     ) -> int:
-        # ``compressed`` is an in-memory handoff; agent_turns only ever stores
-        # the raw turn for history and evals.
-        persisted = (
-            replace(result, compressed=None)
-            if result.compressed is not None
-            else result
-        )
+        # Raw turn messages are canonical history and the eval record. Turn
+        # compressions live alongside them as events, never as replacement
+        # history.
         return self.env.agent_turn_repository.create(
             {
                 "session_id": self.id,
-                "result": serialize_agent_loop_result(persisted),
+                "result": serialize_agent_loop_result(result),
+                "context_tokens": context_tokens,
+                "context_source": context_source,
             },
             connection=connection,
         )
 
-    def _commit_compression(
-        self,
-        conversation: Conversation,
-        *,
-        last_turn_id: int,
-    ) -> None:
-        messages = conversation.messages
-        if not messages or not messages[0].is_summary:
-            return
-
-        # Only the summary and its marker are stored. The tail lives in memory
-        # (and is rebuilt on hydration); raw turns are already in agent_turns.
-        self.env.compression_repository.create(
-            {
-                "data": messages[0].content or "",
-                "session_id": self.id,
-                "last_compressed_turn_id": last_turn_id,
-            }
-        )
-
-    def _compress_if_needed(
+    def _compress_history(
         self,
         agent_config: AgentConfig,
         system_prompt: str,
-        tools: list,
+        tools: list[ToolDefinition],
         cancel_event: threading.Event,
         *,
         last_turn_id: int | None = None,
@@ -278,28 +255,46 @@ class Session:
             return
 
         try:
-            if not self.env.context_engine.needs_compression(
-                self.state.messages,
-                budget_tokens=self.env.token_budget.conversation,
+            policy = self.env.context_policy
+            measurement = self.env.context_engine.measure(
+                history=self.state.messages,
                 system_prompt=system_prompt,
                 tools=tools,
-            ):
+            )
+            if measurement.total < policy.history_limit:
                 return
-            compressed = self.env.context_engine.compress(
+
+            compression = self.env.context_engine.compress(
+                CompressionScope.HISTORY,
                 self.state.messages,
-                budget_tokens=self.env.token_budget.conversation,
                 router=self.env.inference_router,
                 provider=agent_config.provider,
                 model=os.getenv("COMPRESSION_MODEL") or agent_config.model,
                 cancel_event=cancel_event,
                 base_url=agent_config.base_url,
             )
-            if compressed is self.state.messages:
+            if compression is None:
                 return
-            self._commit_compression(compressed, last_turn_id=last_turn_id)
-            self.state.messages = compressed
+
+            after = self.env.context_engine.measure(
+                history=compression.messages,
+                system_prompt=system_prompt,
+                tools=tools,
+            )
+            if after.total >= measurement.total:
+                return  # no progress; retry at the next turn boundary
+
+            self.env.agent_turn_repository.update_summary(
+                last_turn_id,
+                summary=compression.summary.content or "",
+                summary_kind=CompressionScope.HISTORY.value,
+                context_tokens=after.total,
+                context_source=after.source,
+            )
+            self.state.messages = compression.messages
         except Exception:
-            # Compression must never break an otherwise-successful turn.
+            # Compression must never break an otherwise-successful turn. The
+            # raw history stays intact and the next gate retries.
             return
 
     def spawn(self, config: AgentConfig) -> str:

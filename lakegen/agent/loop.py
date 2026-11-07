@@ -9,10 +9,13 @@ from typing import TYPE_CHECKING
 from lakegen.agent.model import (
     AgentConfig,
     AgentLoopFailure,
-    Conversation,
     AgentLoopResult,
+    CompressionEvent,
+    CompressionScope,
+    Conversation,
     StopReason,
 )
+from lakegen.agent.policy import ContextPolicy, TurnCompressionState
 from lakegen.inference import (
     ChatRequest,
     Message,
@@ -21,11 +24,11 @@ from lakegen.inference import (
     Router,
     router as default_router,
 )
-from lakegen.tool.model import ToolOutput
+from lakegen.tool.model import ToolDefinition, ToolOutput
 from lakegen.tool.runtime import ToolRuntime, runtime as default_tool_runtime
 
 if TYPE_CHECKING:
-    from lakegen.session.context import ContextEngine
+    from lakegen.session.context import ContextEngine, ContextMeasurement
 
 
 class AgentLoop:
@@ -50,11 +53,13 @@ class AgentLoop:
         stream: bool = False,
         on_chunk: Callable[[StreamChunk], None] | None = None,
         cancel_event: threading.Event,
-        context_budget: int = 0,
+        context_policy: ContextPolicy | None = None,
     ) -> AgentLoopResult:
-        turn_messages = Conversation()
-        active_messages = list(conversation.messages)
-        compressed = False
+        policy = context_policy if context_policy is not None else ContextPolicy()
+        raw_turn = Conversation()  # persisted history, never compressed
+        active_turn: list[Message] = []  # what the model sees this turn
+        turn_compression = TurnCompressionState()
+        events: list[CompressionEvent] = []
         turns = 0
         response_text = ""
         streamed_text_parts: list[str] = []
@@ -62,24 +67,74 @@ class AgentLoop:
         assistant_appended = True
 
         def append_message(message: Message) -> None:
-            turn_messages.messages.append(message)
-            active_messages.append(message)
+            raw_turn.messages.append(message)
+            active_turn.append(message)
 
         def current_messages() -> list[Message]:
-            return active_messages
+            return [*conversation.messages, *active_turn]
 
-        def new_state() -> Conversation | None:
-            if not compressed:
+        def measure(
+            system_prompt: str,
+            tools: list[ToolDefinition],
+        ) -> ContextMeasurement | None:
+            if self._context is None:
                 return None
-            return Conversation(messages=list(active_messages))
+            return self._context.measure(
+                history=conversation,
+                turn=Conversation(messages=list(active_turn)),
+                system_prompt=system_prompt,
+                tools=tools,
+            )
+
+        def prepare_turn(system_prompt: str, tools: list[ToolDefinition]) -> None:
+            """Compress or trim the current turn until the request fits."""
+            nonlocal active_turn
+            measurement = measure(system_prompt, tools)
+            if measurement is None:
+                return
+
+            if turn_compression.needs(measurement.turn, policy):
+                try:
+                    compression = self._context.compress(
+                        CompressionScope.TURN,
+                        Conversation(messages=list(active_turn)),
+                        router=self._router,
+                        provider=agent_config.provider,
+                        model=os.getenv("COMPRESSION_MODEL") or agent_config.model,
+                        cancel_event=cancel_event,
+                        base_url=agent_config.base_url,
+                    )
+                except Exception:
+                    # Summarization is best-effort: a provider failure must not
+                    # end an otherwise healthy turn. Emergency fitting below
+                    # still bounds the request.
+                    compression = None
+                if compression is not None:
+                    active_turn = list(compression.messages.messages)
+                    events.append(compression.event)
+
+                    # Hysteresis measures growth from the new, smaller turn.
+                    measurement = measure(system_prompt, tools) or measurement
+                    turn_compression.record(measurement.turn)
+
+            if measurement.total > policy.input_budget:
+                # History already passed its gate at the turn boundary. If it
+                # still does not fit, trim the turn as far as possible rather
+                # than knowingly sending an oversized request.
+                active_turn = list(
+                    self._context.fit(
+                        active_turn,
+                        budget=policy.input_budget - measurement.history,
+                    ).messages
+                )
 
         def finish(stop_reason: StopReason) -> AgentLoopResult:
             resolved_call_ids = {
                 message.tool_call_id
-                for message in turn_messages.messages
+                for message in raw_turn.messages
                 if message.role is Role.TOOL and message.tool_call_id is not None
             }
-            for message in tuple(turn_messages.messages):
+            for message in tuple(raw_turn.messages):
                 if message.role is not Role.ASSISTANT:
                     continue
                 for tool_call in message.tool_calls or []:
@@ -127,11 +182,18 @@ class AgentLoop:
                     ),
                 )
             )
+
+            measurement = measure(
+                self._build_prompt(agent_config, catalog_name),
+                self._tools.list_definitions(),
+            )
             return AgentLoopResult(
                 final_message=response_text,
-                turn_messages=turn_messages,
+                turn_messages=raw_turn,
                 stop_reason=stop_reason,
-                compressed=new_state(),
+                compression_events=tuple(events),
+                context_tokens=measurement.total if measurement else None,
+                context_source=measurement.source if measurement else None,
             )
 
         if catalog_switched_from is not None:
@@ -168,6 +230,8 @@ class AgentLoop:
 
                 system_prompt = self._build_prompt(agent_config, catalog_name)
                 tools = self._tools.list_definitions()
+                prepare_turn(system_prompt, tools)
+
                 chat_request = ChatRequest(
                     model=agent_config.model,
                     system_prompt=system_prompt,
@@ -193,11 +257,14 @@ class AgentLoop:
                     break
 
                 if not tool_calls:
+                    measurement = measure(system_prompt, tools)
                     return AgentLoopResult(
                         final_message=response_text,
-                        turn_messages=turn_messages,
+                        turn_messages=raw_turn,
                         stop_reason=StopReason.COMPLETED,
-                        compressed=new_state(),
+                        compression_events=tuple(events),
+                        context_tokens=measurement.total if measurement else None,
+                        context_source=measurement.source if measurement else None,
                     )
 
                 tools_output: list[ToolOutput] = self._tools.dispatch(
@@ -206,8 +273,8 @@ class AgentLoop:
                     cancel_event=cancel_event,
                 )
 
-                # Compress once all tool results are in, before asking the model
-                # to continue. This keeps partial tool results out of the summary.
+                # Compress only after every tool result is in, so a summary
+                # never contains a half-finished iteration.
                 for output in tools_output:
                     append_message(
                         Message(
@@ -223,33 +290,6 @@ class AgentLoop:
                             tool_name=output.tool_name,
                         )
                     )
-                try:
-                    if self._context is not None and context_budget > 0:
-                        active = Conversation(messages=list(active_messages))
-                        if self._context.needs_compression(
-                            active,
-                            budget_tokens=context_budget,
-                            system_prompt=system_prompt,
-                            tools=tools,
-                        ):
-                            compressed_conversation = self._context.compress(
-                                active,
-                                budget_tokens=context_budget,
-                                router=self._router,
-                                provider=agent_config.provider,
-                                model=os.getenv("COMPRESSION_MODEL") or agent_config.model,
-                                cancel_event=cancel_event,
-                                base_url=agent_config.base_url,
-                            )
-                            if compressed_conversation is not active:
-                                active_messages = list(compressed_conversation.messages)
-                                compressed = True
-                except Exception:
-                    # Compression failure falls back to running uncompressed
-                    # since a compression failure should never break an
-                    # otherwise successful turn.
-                    # Compression can be retried at the next gate.
-                    pass
         except Exception as error:
             if (
                 stream

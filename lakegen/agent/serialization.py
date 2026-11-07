@@ -74,7 +74,6 @@ def _message_from_mapping(data: Mapping[str, object]) -> Message | None:
         tool_call_id=tool_call_id,
         tool_name=tool_name if isinstance(tool_name, str) else None,
         is_summary=bool(data.get("is_summary", False)),
-        is_tail=bool(data.get("is_tail", False)),
         tokens=tokens,
     )
 

@@ -1,3 +1,4 @@
+from lakegen.agent.policy import ContextPolicy
 from lakegen.session.environment import Environment
 from lakegen.session.manager import SessionManager
 from lakegen.session.model import (
@@ -5,17 +6,16 @@ from lakegen.session.model import (
     SessionInfo,
     SessionState,
     SessionTurnResult,
-    TokenBudget,
 )
 from lakegen.session.session import Session
 
 __all__ = [
     "AgentTurnInfo",
+    "ContextPolicy",
     "Environment",
     "Session",
     "SessionInfo",
     "SessionManager",
     "SessionState",
     "SessionTurnResult",
-    "TokenBudget",
 ]

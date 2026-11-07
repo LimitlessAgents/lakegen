@@ -28,7 +28,6 @@ class Message:
     tool_call_id: str | None = None  # tool result → which call this answers
     tool_name: str | None = None  # tool result → tool name
     is_summary: bool = False  # compressed summary
-    is_tail: bool = False  # kept verbatim after a summary, never persisted
     tokens: TokenUsage | None = None
 
 

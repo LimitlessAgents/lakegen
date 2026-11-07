@@ -17,6 +17,7 @@ from lakegen.core.error.code import ErrorCode
 from lakegen.inference import Message, Role
 from lakegen.core.persistence import PostgresPersistence
 from lakegen.session import Environment, SessionManager
+from lakegen.session.context import ContextMeasurement
 
 from tests.conftest import open_session
 
@@ -45,19 +46,24 @@ def _env(agent_turn_repository=None):
     catalogs.require.side_effect = require
     persistence = MagicMock(spec=PostgresPersistence)
     persistence.configured = False
-    compression_repository = MagicMock()
-    compression_repository.list.return_value = []
+    context_engine = MagicMock()
+    context_engine.measure.return_value = ContextMeasurement(
+        total=123,
+        history=123,
+        turn=0,
+        source="estimated",
+    )
     return replace(
         Environment.default(),
         catalog_service=catalogs,
         persistence=persistence,
+        context_engine=context_engine,
         session_repository=MagicMock(),
         agent_turn_repository=(
             agent_turn_repository
             if agent_turn_repository is not None
             else MagicMock()
         ),
-        compression_repository=compression_repository,
     )
 
 
@@ -123,7 +129,6 @@ def test_send_assigns_and_persists_turn_id(registered_catalogs, monkeypatch):
                             "tool_call_id": None,
                             "tool_name": None,
                             "is_summary": False,
-                            "is_tail": False,
                             "tokens": None,
                         },
                         {
@@ -133,14 +138,17 @@ def test_send_assigns_and_persists_turn_id(registered_catalogs, monkeypatch):
                             "tool_call_id": None,
                             "tool_name": None,
                             "is_summary": False,
-                            "is_tail": False,
                             "tokens": None,
                         },
                     ]
                 },
                 "stop_reason": "completed",
-                "compressed": None,
+                "compression_events": [],
+                "context_tokens": None,
+                "context_source": None,
             },
+            "context_tokens": 123,
+            "context_source": "estimated",
         },
         connection=None,
     )

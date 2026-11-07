@@ -18,6 +18,8 @@ from lakegen.inference.model import (
     Role,
     StreamChunk,
 )
+from lakegen.session.context import Compression, ContextMeasurement
+from lakegen.agent.policy import ContextPolicy
 from lakegen.tool.model import ToolCall, ToolOutput
 from lakegen.tool.runtime import ToolRuntime
 
@@ -283,21 +285,33 @@ def test_chat_request_base_url_defaults_to_none():
 
 
 class _CompressingContext:
-    def __init__(self) -> None:
-        self.calls = 0
-
-    def needs_compression(self, *_args, **_kwargs) -> bool:
-        self.calls += 1
-        return self.calls == 1
-
-    def compress(self, conversation, **_kwargs) -> Conversation:
-        assert conversation.messages
-        return Conversation(
-            messages=[
-                Message(role=Role.USER, content="summary", is_summary=True),
-                Message(role=Role.ASSISTANT, content="recent"),
-            ]
+    def measure(self, *, history, turn, system_prompt, tools) -> ContextMeasurement:
+        # Trigger only once the tool result makes the turn non-trivial.
+        turn_tokens = 100 if len(turn.messages) > 2 else 0
+        return ContextMeasurement(
+            total=turn_tokens,
+            history=0,
+            turn=turn_tokens,
+            source="estimated",
         )
+
+    def compress(self, scope, conversation, **_kwargs) -> Compression:
+        assert conversation.messages
+        summary = Message(role=Role.USER, content="summary", is_summary=True)
+        return Compression(
+            scope=scope,
+            messages=Conversation(
+                messages=[
+                    summary,
+                    Message(role=Role.ASSISTANT, content="recent"),
+                ]
+            ),
+            summary=summary,
+            replaced_messages=1,
+        )
+
+    def fit(self, messages, *, budget) -> Conversation:
+        return Conversation(messages=messages)
 
 
 class _ToolThenTextRouter(_CapturingRouter):
@@ -329,10 +343,42 @@ def test_loop_compresses_after_tools_and_returns_both_states():
         catalog_name="prod",
         stream=True,
         cancel_event=threading.Event(),
-        context_budget=1_000,
+        context_policy=ContextPolicy(window=200, reserve_ratio=0),
     )
 
-    assert result.compressed is not None
-    assert result.compressed.messages[0].is_summary is True
-    assert router.requests[1].messages[0].is_summary is True
+    # The model sees the compressed turn; the persisted turn stays raw.
+    assert router.requests[1].messages[1].is_summary is True
     assert result.turn_messages.messages[0].content == "hi"
+    assert len(result.compression_events) == 1
+    assert result.compression_events[0].scope == "turn"
+    assert result.compression_events[0].summary == "summary"
+
+
+class _FailingContext(_CompressingContext):
+    def compress(self, *_args, **_kwargs):
+        raise RuntimeError("summarizer down")
+
+
+def test_turn_compression_failure_does_not_break_the_turn():
+    router = _ToolThenTextRouter()
+    loop = AgentLoop(
+        router=router,
+        tool_runtime=_FakeTools(),
+        context_engine=_FailingContext(),
+    )
+
+    result = loop.invoke(
+        _config(),
+        Conversation(),
+        "hi",
+        catalog_name="prod",
+        stream=True,
+        cancel_event=threading.Event(),
+        context_policy=ContextPolicy(window=200, reserve_ratio=0),
+    )
+
+    # The turn still completes on the uncompressed context.
+    assert result.stop_reason is StopReason.COMPLETED
+    assert result.final_message == "final"
+    assert result.compression_events == ()
+    assert router.requests[1].messages[-1].role is Role.TOOL

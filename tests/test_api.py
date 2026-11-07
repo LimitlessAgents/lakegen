@@ -295,6 +295,10 @@ def test_list_turns(client: TestClient, agent_runner: MagicMock) -> None:
                 "stop_reason": "completed",
                 "turn_messages": {"messages": [{"role": "user", "content": "hi"}]},
             },
+            "summary": None,
+            "summary_kind": None,
+            "context_tokens": None,
+            "context_source": None,
         }
     ]
     agent_runner.list_turns.assert_called_once_with(

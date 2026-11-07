@@ -271,42 +271,25 @@ class SessionManager:
 
     def _hydrate(self, session_id: str) -> Session:
         row = self.env.session_repository.get(session_id)
-        compressions = self.env.compression_repository.list(session_id, 0, 1)
-        if isinstance(compressions, list) and len(compressions) > 0:
-            latest_compression = compressions[0]
-            last_turn_id = latest_compression.get("last_compressed_turn_id")
+        summary_row = self.env.agent_turn_repository.latest_with_summary(session_id)
+        summary = summary_row.get("summary") if summary_row else None
+
+        if isinstance(summary, str) and summary.strip():
+            # A summary replaces all history up to its turn. Everything after
+            # is replayed verbatim, so the context is deterministic.
             turn_rows = self.env.agent_turn_repository.list_where(
                 session_id,
                 "id > %s",
-                (last_turn_id,),
+                (summary_row["id"],),
             )
-            summary_content = latest_compression.get("data")
-            summary_messages: list[Message] = []
-            if isinstance(summary_content, str) and summary_content.strip():
-                summary_messages.append(
-                    Message(
-                        role=Role.USER,
-                        content=summary_content,
-                        is_summary=True,
-                    )
-                )
-            messages_after = conversation_from_turn_rows(turn_rows).messages
-            if messages_after:
-                messages = Conversation(messages=[*summary_messages, *messages_after])
-            else:
-                messages = Conversation(
-                    messages=[
-                        *summary_messages,
-                        *self._hydrate_tail(session_id, last_turn_id),
-                    ]
-                )
+            messages = [
+                Message(role=Role.USER, content=summary, is_summary=True),
+                *conversation_from_turn_rows(turn_rows).messages,
+            ]
         else:
-            turn_rows = self.env.agent_turn_repository.list(
-                session_id,
-                0,
-                None,
-            )
-            messages = conversation_from_turn_rows(turn_rows)
+            messages = conversation_from_turn_rows(
+                self.env.agent_turn_repository.list(session_id, 0, None)
+            ).messages
 
         state = SessionState(
             id=session_id,
@@ -314,26 +297,9 @@ class SessionManager:
             owner_id=str(row["owner_id"]),
             catalog_name=self._optional_catalog_name(row),
             created_at=self._created_at(row),
-            messages=messages,
+            messages=Conversation(messages=messages),
         )
         return Session(state=state, env=self.env, manager=self)
-
-    def _hydrate_tail(self, session_id: str, last_turn_id: object) -> list[Message]:
-        """Rebuild the verbatim tail when no turn landed after the summary.
-
-        The tail is never persisted; it is derived from the raw turns the
-        summary covers, using the same window compression uses.
-        """
-        covered_rows = self.env.agent_turn_repository.list_where(
-            session_id,
-            "id <= %s",
-            (last_turn_id,),
-        )
-        covered = conversation_from_turn_rows(covered_rows).messages
-        return self.env.context_engine.tail(
-            covered,
-            budget_tokens=self.env.token_budget.conversation,
-        )
 
     def _catalog_name_for_parent(self, parent_id: str) -> str | None:
         parent = self._cache.get(parent_id)
@@ -363,4 +329,18 @@ class SessionManager:
             id=str(row["id"]),
             created_at=SessionManager._created_at(row),
             result=result,
+            summary=SessionManager._optional_string(row, "summary"),
+            summary_kind=SessionManager._optional_string(row, "summary_kind"),
+            context_tokens=SessionManager._optional_int(row, "context_tokens"),
+            context_source=SessionManager._optional_string(row, "context_source"),
         )
+
+    @staticmethod
+    def _optional_string(row: dict[str, object], field: str) -> str | None:
+        value = row.get(field)
+        return value if isinstance(value, str) else None
+
+    @staticmethod
+    def _optional_int(row: dict[str, object], field: str) -> int | None:
+        value = row.get(field)
+        return value if isinstance(value, int) and not isinstance(value, bool) else None

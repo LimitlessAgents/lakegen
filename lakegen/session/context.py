@@ -1,113 +1,233 @@
+from __future__ import annotations
+
 import json
 import threading
-from dataclasses import asdict, replace
+from dataclasses import asdict, dataclass, replace
+from typing import Literal
 
-from lakegen.agent.model import Conversation
+from lakegen.agent.model import CompressionEvent, CompressionScope, Conversation
 from lakegen.inference import ChatRequest, Message, Role, Router
 from lakegen.prompt import COMPRESSION_PROMPT
 from lakegen.tool.model import ToolDefinition
 
-# Keep the most recent user turns verbatim, bounded by this share of the
-# conversation budget. Everything older is replaced by the summary. Both
-# compression and hydration use :meth:`ContextEngine.tail` so the window is
-# defined in exactly one place.
-TAIL_TURNS = 3
-TAIL_TOKEN_RATIO = 0.15
-
-# TODO(tool-output-cap): cap tool output before it enters the model context.
-# Deferred: Not implemented because the roadmap includes visualisations,
-# deterministic algorithms designed to take the load off the llm
-# which might need the results verbatim.
-# Truncating at retrieval time would break that.
-# This needs more thought and design decisions.
-
-COMPRESSION_THRESHOLD = 0.6
 _COMPRESS_INSTRUCTION = "Now write the compressed summary of the conversation above."
+_TURN_SUMMARY_PREFIX = "Summary of earlier activity in this turn:\n\n"
+_MIN_TRUNCATED_TOKENS = 512
 
-# TODO(compression-input-budget): compression sends the whole conversation in
-# one request. A single oversized user message or tool output can leave too
-# little room in the compression model's context window for a summary. If the
-# compression request itself does not fit, compression fails and the turn
-# proceeds uncompressed. Needs a strategy (chunked/rolling summary, explicit
-# input truncation, or a pre-invoke guard) that uses the compression model's
-# context limit, which may be smaller than the session model's.
 
-# TODO(current-turn-over-budget): the newest user turn is kept verbatim even
-# when it alone exceeds the tail budget. If summary + that turn stays at or
-# above the compression threshold, every following gate compresses again; a
-# single-turn conversation skips compression entirely because tail_start == 0.
-# Needs an in-memory-only strategy (tail/tool-output truncation, pruning, or
-# chunked compression) instead of repeated summarization.
+@dataclass(frozen=True)
+class ContextMeasurement:
+    """Size of the request we are about to send."""
+
+    total: int
+    history: int  # everything except the current turn
+    turn: int
+    source: Literal["estimated", "anchored"]
+
+
+@dataclass(frozen=True)
+class Compression:
+    """Result of one LLM compaction."""
+
+    scope: CompressionScope
+    messages: Conversation
+    summary: Message
+    replaced_messages: int
+
+    @property
+    def event(self) -> CompressionEvent:
+        return CompressionEvent(
+            scope=self.scope,
+            summary=self.summary.content or "",
+            replaced_messages=self.replaced_messages,
+        )
 
 
 class ContextEngine:
-    """Stateless context sizing and compression."""
+    """Measure, compress and fit the context sent to the model."""
 
-    def estimate_context_tokens(
+    def measure(
         self,
-        conversation: Conversation,
         *,
+        history: Conversation,
         system_prompt: str,
         tools: list[ToolDefinition],
-    ) -> int:
-        messages = conversation.messages
-        overhead = self._estimate_text(system_prompt) + self._estimate_tools(tools)
-
-        for index in range(len(messages) - 1, -1, -1):
-            message = messages[index]
-            if message.is_summary:
-                base = (
-                    message.tokens.completion_tokens
-                    if message.tokens is not None
-                    else self._estimate_message(message)
-                )
-                return base + self._estimate_messages(messages[index + 1 :]) + overhead
-            if message.role is Role.ASSISTANT and message.tokens is not None:
-                # total_tokens already includes system prompt and tool definitions.
-                return message.tokens.total_tokens + self._estimate_messages(
-                    messages[index + 1 :]
-                )
-
-        return self._estimate_messages(messages) + overhead
-
-    def needs_compression(
-        self,
-        conversation: Conversation,
-        *,
-        budget_tokens: int,
-        system_prompt: str,
-        tools: list[ToolDefinition],
-    ) -> bool:
-        if budget_tokens <= 0:
-            return False
-        size = self.estimate_context_tokens(
-            conversation,
-            system_prompt=system_prompt,
-            tools=tools,
+        turn: Conversation | None = None,
+    ) -> ContextMeasurement:
+        """Estimate the next request size, using the provider's last usage
+        report as an anchor when the prefix since then is unchanged."""
+        turn = turn if turn is not None else Conversation()
+        history_tokens, _ = self._estimate_context(
+            history.messages,
+            system_prompt,
+            tools,
         )
-        return size >= budget_tokens * COMPRESSION_THRESHOLD
+        total, anchored = self._estimate_context(
+            [*history.messages, *turn.messages],
+            system_prompt,
+            tools,
+        )
+        return ContextMeasurement(
+            total=total,
+            history=history_tokens,
+            turn=self._estimate_messages(turn.messages),
+            source="anchored" if anchored else "estimated",
+        )
+
+    def _estimate_context(
+        self,
+        messages: list[Message],
+        system_prompt: str,
+        tools: list[ToolDefinition],
+    ) -> tuple[int, bool]:
+        """Estimate one request, anchoring on the newest provider usage report."""
+        for index in range(len(messages) - 1, -1, -1):
+            usage = messages[index].tokens
+            if messages[index].role is Role.ASSISTANT and usage is not None:
+                # Usage already includes the system prompt and tool schemas, so
+                # only messages added after that response need estimating.
+                after = self._estimate_messages(messages[index + 1 :])
+                return usage.total_tokens + after, True
+
+        estimated = (
+            self._estimate_messages(messages)
+            + self._estimate_text(system_prompt)
+            + self._estimate_tools(tools)
+        )
+        return estimated, False
 
     def compress(
         self,
+        scope: CompressionScope,
         conversation: Conversation,
         *,
-        budget_tokens: int,
         router: Router,
         provider: str,
         model: str,
         cancel_event: threading.Event,
         base_url: str | None = None,
-    ) -> Conversation:
-        messages = conversation.messages
-        tail_start = self._tail_start(messages, budget_tokens)
-        if tail_start == 0:
-            return conversation
+    ) -> Compression | None:
+        """Replace old messages with one summary, or return ``None`` when
+        there is nothing safe to compress."""
+        parts = self._parts(scope, conversation.messages)
+        if parts is None:
+            return None
 
+        leading, target, trailing = parts
+        summary = self._summarize(
+            target,
+            router=router,
+            provider=provider,
+            model=model,
+            cancel_event=cancel_event,
+            base_url=base_url,
+        )
+        if summary is None:
+            return None
+
+        if scope is CompressionScope.TURN:
+            summary = replace(
+                summary,
+                content=f"{_TURN_SUMMARY_PREFIX}{summary.content or ''}",
+            )
+
+        # Retained messages were built against the uncompressed prefix, so
+        # their usage reports are no longer valid anchors.
+        leading = [replace(message, tokens=None) for message in leading]
+        trailing = [replace(message, tokens=None) for message in trailing]
+        messages = [*leading, summary, *trailing]
+        return Compression(
+            scope=scope,
+            messages=Conversation(messages=messages),
+            summary=summary,
+            replaced_messages=len(target),
+        )
+
+    def fit(self, messages: list[Message], *, budget: int) -> Conversation:
+        """Deterministically shrink messages until they fit ``budget``.
+
+        Content is truncated (head + tail) before whole completed iterations are
+        dropped, so tool-call pairing is never broken. The opening request and
+        the newest iteration are never dropped: if they alone exceed the budget,
+        the request stays oversized rather than losing the request or breaking
+        a pair.
+        """
+        fitted = list(messages)
+
+        while self._estimate_messages(fitted) > budget:
+            index = self._largest_trimmable(fitted)
+            if index is None:
+                break
+            # Halve the largest payload. Targeting the exact excess can stall
+            # because the truncation marker adds a little text back.
+            keep = max(
+                _MIN_TRUNCATED_TOKENS,
+                self._estimate_message(fitted[index]) // 2,
+            )
+            trimmed = self._truncate(fitted[index], keep)
+            if trimmed.content == fitted[index].content:
+                break
+            fitted[index] = trimmed
+
+        while self._estimate_messages(fitted) > budget:
+            shortened = self._drop_oldest_iteration(fitted)
+            if shortened is None:
+                break
+            fitted = shortened
+
+        return Conversation(messages=fitted)
+
+    @staticmethod
+    def _parts(
+        scope: CompressionScope,
+        messages: list[Message],
+    ) -> tuple[list[Message], list[Message], list[Message]] | None:
+        """Split into (leading, summarizable, trailing) without breaking a
+        tool-call pair."""
+        if scope is CompressionScope.HISTORY:
+            return ([], messages, []) if messages else None
+
+        request = next(
+            (
+                index
+                for index, message in enumerate(messages)
+                if message.role is Role.USER and not message.is_summary
+            ),
+            None,
+        )
+        latest = next(
+            (
+                index
+                for index in range(len(messages) - 1, -1, -1)
+                if messages[index].role is Role.ASSISTANT
+                and messages[index].tool_calls
+            ),
+            None,
+        )
+        if request is None or latest is None or latest <= request + 1:
+            # No completed iteration sits between the request and the latest
+            # tool call, so there is nothing safe to summarize.
+            return None
+
+        # The user request and the in-flight iteration are not summarizable:
+        # without them the model cannot continue the turn.
+        return messages[: request + 1], messages[request + 1 : latest], messages[latest:]
+
+    def _summarize(
+        self,
+        messages: list[Message],
+        *,
+        router: Router,
+        provider: str,
+        model: str,
+        cancel_event: threading.Event,
+        base_url: str | None,
+    ) -> Message | None:
         request = ChatRequest(
             model=model,
             system_prompt=COMPRESSION_PROMPT,
             messages=[
-                *conversation.messages,
+                *messages,
                 Message(role=Role.USER, content=_COMPRESS_INSTRUCTION),
             ],
             tools=[],
@@ -115,70 +235,82 @@ class ContextEngine:
         )
 
         text_parts: list[str] = []
-        last_chunk = None
         for chunk in router.stream(provider, request, cancel_event=cancel_event):
-            last_chunk = chunk
             if cancel_event.is_set():
-                return conversation
+                return None
             if chunk.text:
                 text_parts.append(chunk.text)
         if cancel_event.is_set():
-            return conversation
+            return None
 
-        content = "".join(text_parts)
-        if not content.strip():
-            return conversation
+        content = "".join(text_parts).strip()
+        if not content:
+            return None
 
-        summary = Message(
-            role=Role.USER,
-            content=content,
-            tokens=last_chunk.tokens if last_chunk is not None else None,
-            is_summary=True,
-        )
+        return Message(role=Role.USER, content=content, is_summary=True)
 
-        tail = self.tail(messages, budget_tokens=budget_tokens)
-        return Conversation(messages=[summary, *tail])
-
-    def tail(
-        self,
-        messages: list[Message],
-        *,
-        budget_tokens: int,
-    ) -> list[Message]:
-        """Return the newest turns that are kept verbatim after a summary.
-
-        The window always starts at the most recent user turn, so an
-        in-flight turn survives compression.
-
-        Used both right after compression and when hydration has no turns
-        stored after the summary marker, so a tail is rebuilt instead of
-        persisted.
-        """
-        start = self._tail_start(messages, budget_tokens)
-        return [
-            replace(message, is_tail=True) for message in messages[start:]
-        ]
-
-    def _tail_start(self, messages: list[Message], budget_tokens: int) -> int:
-        user_starts = [
-            index
+    def _largest_trimmable(self, messages: list[Message]) -> int | None:
+        candidates = [
+            (index, message)
             for index, message in enumerate(messages)
-            if message.role is Role.USER and not message.is_summary
+            if not message.is_summary
+            and message.content
+            and (
+                message.role in (Role.USER, Role.TOOL)
+                or (message.role is Role.ASSISTANT and not message.tool_calls)
+            )
         ]
-        if not user_starts:
-            return len(messages)
+        if not candidates:
+            return None
 
-        cap = budget_tokens * TAIL_TOKEN_RATIO
-        # Always keep the most recent user turn: dropping it would leave the
-        # model without the request it is answering. Older turns are included
-        # again only while the window stays inside the token cap.
-        tail_start = user_starts[-1]
-        for index in reversed(user_starts[-TAIL_TURNS:-1]):
-            if self._estimate_messages(messages[index:]) <= cap:
-                tail_start = index
-            else:
-                break
-        return tail_start
+        index, message = max(candidates, key=lambda item: len(item[1].content or ""))
+        if self._estimate_message(message) <= _MIN_TRUNCATED_TOKENS * 2:
+            return None
+        return index
+
+    @staticmethod
+    def _truncate(message: Message, keep_tokens: int) -> Message:
+        text = message.content or ""
+        keep_chars = max(0, keep_tokens * 4)
+        if len(text) <= keep_chars:
+            return message
+
+        side = keep_chars // 2
+        omitted = (len(text) - keep_chars + 3) // 4
+        content = (
+            f"{text[:side]}\n\n"
+            f"[truncated {omitted:,} tokens; full content is stored in turn history]\n\n"
+            f"{text[-side:]}"
+        )
+        # The old usage report describes the untruncated request.
+        return replace(message, content=content, tokens=None)
+
+    @staticmethod
+    def _drop_oldest_iteration(messages: list[Message]) -> list[Message] | None:
+        latest = next(
+            (
+                index
+                for index in range(len(messages) - 1, -1, -1)
+                if messages[index].role is Role.ASSISTANT
+                and messages[index].tool_calls
+            ),
+            None,
+        )
+        first = next(
+            (
+                index
+                for index, message in enumerate(messages)
+                if message.role is Role.ASSISTANT and message.tool_calls
+            ),
+            None,
+        )
+        if latest is None or first is None or first >= latest:
+            return None
+
+        end = first + 1
+        while end < latest and messages[end].role is Role.TOOL:
+            end += 1
+        return [*messages[:first], *messages[end:]]
 
     def _estimate_messages(self, messages: list[Message]) -> int:
         return sum(self._estimate_message(message) for message in messages)

@@ -3,6 +3,7 @@ from enum import StrEnum
 
 from lakegen.inference import Message
 
+
 class StopReason(StrEnum):
     COMPLETED = "completed"
     MAX_ITERATIONS_EXCEEDED = "max_iterations_exceeded"
@@ -10,17 +11,35 @@ class StopReason(StrEnum):
     INTERNAL_ERROR = "internal_error"
 
 
+class CompressionScope(StrEnum):
+    """Which part of the context a compression replaced."""
+
+    HISTORY = "history"  # everything before the current turn
+    TURN = "turn"        # completed iterations of the current turn
+
+
+@dataclass(frozen=True)
+class CompressionEvent:
+    """Audit record of one compaction, stored with the raw turn."""
+
+    scope: CompressionScope
+    summary: str
+    replaced_messages: int
+
+
 @dataclass
 class Conversation:
     messages: list[Message] = field(default_factory=list)
 
+
 @dataclass(frozen=True)
 class AgentLoopResult:
     final_message: str
-    turn_messages: Conversation
+    turn_messages: Conversation  # raw turn messages; canonical history
     stop_reason: StopReason
-    # New conversation created by an in-loop compression, if any.
-    compressed: Conversation | None = None
+    compression_events: tuple[CompressionEvent, ...] = ()
+    context_tokens: int | None = None
+    context_source: str | None = None
 
 
 class AgentLoopFailure(Exception):
