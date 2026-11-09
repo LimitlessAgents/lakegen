@@ -1,45 +1,53 @@
 from unittest.mock import MagicMock
 
-from lakegen.core.persistence.migrations import compression_bigint_ids as migration
+from lakegen.core.persistence.migrations import (
+    compression_bigint_ids as bigint_migration,
+)
+from lakegen.core.persistence.migrations import retire_compressions as retire_migration
 
 
-def _connection(marker_present: bool) -> MagicMock:
+def _markers(applied: bool) -> MagicMock:
+    markers = MagicMock()
+    markers.applied.return_value = applied
+    return markers
+
+
+def test_bigint_migration_is_skipped_after_first_run(monkeypatch) -> None:
     connection = MagicMock()
-    connection.execute.return_value.fetchone.return_value = (
-        (1,) if marker_present else None
-    )
-    return connection
-
-
-def test_migration_is_skipped_after_first_run(monkeypatch) -> None:
-    connection = _connection(marker_present=True)
-    ensure_marker = MagicMock()
+    markers = _markers(applied=True)
     column_type = MagicMock()
     table_exists = MagicMock()
     migrate_uuid_ids = MagicMock()
     rename_compressions = MagicMock()
-    monkeypatch.setattr(migration, "_ensure_marker_table", ensure_marker)
-    monkeypatch.setattr(migration, "_column_type", column_type)
-    monkeypatch.setattr(migration, "_table_exists", table_exists)
-    monkeypatch.setattr(migration, "_migrate_uuid_ids", migrate_uuid_ids)
-    monkeypatch.setattr(migration, "_rename_compressions", rename_compressions)
+    monkeypatch.setattr(bigint_migration, "_markers", markers)
+    monkeypatch.setattr(bigint_migration, "_column_type", column_type)
+    monkeypatch.setattr(bigint_migration, "_table_exists", table_exists)
+    monkeypatch.setattr(bigint_migration, "_migrate_uuid_ids", migrate_uuid_ids)
+    monkeypatch.setattr(bigint_migration, "_rename_compressions", rename_compressions)
 
-    migration.migrate(connection)
+    bigint_migration.migrate(connection)
 
-    ensure_marker.assert_called_once_with(connection)
+    markers.ensure_table.assert_called_once_with(connection)
+    markers.applied.assert_called_once_with(
+        connection,
+        bigint_migration._MIGRATION_KEY,
+    )
+    markers.mark.assert_not_called()
     column_type.assert_not_called()
     table_exists.assert_not_called()
     migrate_uuid_ids.assert_not_called()
     rename_compressions.assert_not_called()
-    assert connection.execute.call_count == 1
 
 
-def test_migration_rewrites_uuid_ids_and_does_not_rename_twice(monkeypatch) -> None:
-    connection = _connection(marker_present=False)
+def test_bigint_migration_rewrites_uuid_ids_and_does_not_rename_twice(
+    monkeypatch,
+) -> None:
+    connection = MagicMock()
+    markers = _markers(applied=False)
     tables = {"compactions"}
-    monkeypatch.setattr(migration, "_ensure_marker_table", MagicMock())
+    monkeypatch.setattr(bigint_migration, "_markers", markers)
     monkeypatch.setattr(
-        migration,
+        bigint_migration,
         "_column_type",
         MagicMock(
             side_effect=lambda conn, table, column: (
@@ -48,7 +56,7 @@ def test_migration_rewrites_uuid_ids_and_does_not_rename_twice(monkeypatch) -> N
         ),
     )
     monkeypatch.setattr(
-        migration,
+        bigint_migration,
         "_table_exists",
         MagicMock(side_effect=lambda conn, table: table in tables),
     )
@@ -56,21 +64,27 @@ def test_migration_rewrites_uuid_ids_and_does_not_rename_twice(monkeypatch) -> N
         side_effect=lambda *args, **kwargs: tables.remove("compactions")
     )
     rename_compressions = MagicMock()
-    monkeypatch.setattr(migration, "_migrate_uuid_ids", migrate_uuid_ids)
-    monkeypatch.setattr(migration, "_rename_compressions", rename_compressions)
+    monkeypatch.setattr(bigint_migration, "_migrate_uuid_ids", migrate_uuid_ids)
+    monkeypatch.setattr(bigint_migration, "_rename_compressions", rename_compressions)
 
-    migration.migrate(connection)
+    bigint_migration.migrate(connection)
 
     migrate_uuid_ids.assert_called_once_with(connection, compressions_exist=True)
     rename_compressions.assert_not_called()
-    assert "INSERT INTO schema_migrations" in connection.execute.call_args.args[0]
+    markers.mark.assert_called_once_with(
+        connection,
+        bigint_migration._MIGRATION_KEY,
+    )
 
 
-def test_migration_renames_intermediate_compactions_table(monkeypatch) -> None:
-    connection = _connection(marker_present=False)
-    monkeypatch.setattr(migration, "_ensure_marker_table", MagicMock())
+def test_bigint_migration_renames_intermediate_compactions_table(
+    monkeypatch,
+) -> None:
+    connection = MagicMock()
+    markers = _markers(applied=False)
+    monkeypatch.setattr(bigint_migration, "_markers", markers)
     monkeypatch.setattr(
-        migration,
+        bigint_migration,
         "_column_type",
         MagicMock(
             side_effect=lambda conn, table, column: (
@@ -79,17 +93,71 @@ def test_migration_renames_intermediate_compactions_table(monkeypatch) -> None:
         ),
     )
     monkeypatch.setattr(
-        migration,
+        bigint_migration,
         "_table_exists",
         MagicMock(side_effect=lambda conn, table: table == "compactions"),
     )
     migrate_uuid_ids = MagicMock()
     rename_compressions = MagicMock()
-    monkeypatch.setattr(migration, "_migrate_uuid_ids", migrate_uuid_ids)
-    monkeypatch.setattr(migration, "_rename_compressions", rename_compressions)
+    monkeypatch.setattr(bigint_migration, "_migrate_uuid_ids", migrate_uuid_ids)
+    monkeypatch.setattr(bigint_migration, "_rename_compressions", rename_compressions)
 
-    migration.migrate(connection)
+    bigint_migration.migrate(connection)
 
     migrate_uuid_ids.assert_not_called()
     rename_compressions.assert_called_once_with(connection)
-    assert "INSERT INTO schema_migrations" in connection.execute.call_args.args[0]
+    markers.mark.assert_called_once_with(
+        connection,
+        bigint_migration._MIGRATION_KEY,
+    )
+
+
+def test_retire_compressions_is_skipped_after_first_run(monkeypatch) -> None:
+    connection = MagicMock()
+    markers = _markers(applied=True)
+    monkeypatch.setattr(retire_migration, "_markers", markers)
+
+    retire_migration.migrate(connection)
+
+    markers.ensure_table.assert_called_once_with(connection)
+    markers.applied.assert_called_once_with(
+        connection,
+        retire_migration._MIGRATION_KEY,
+    )
+    markers.mark.assert_not_called()
+    connection.execute.assert_not_called()
+
+
+def test_retire_compressions_backfills_and_drops_the_legacy_table(
+    monkeypatch,
+) -> None:
+    connection = MagicMock()
+    markers = _markers(applied=False)
+    monkeypatch.setattr(retire_migration, "_markers", markers)
+    monkeypatch.setattr(retire_migration, "_table_exists", MagicMock(return_value=True))
+
+    retire_migration.migrate(connection)
+
+    statements = [call.args[0] for call in connection.execute.call_args_list]
+    assert any("ALTER TABLE agent_turns" in statement for statement in statements)
+    assert any("UPDATE agent_turns" in statement for statement in statements)
+    assert "DROP TABLE compressions" in statements
+    markers.mark.assert_called_once_with(
+        connection,
+        retire_migration._MIGRATION_KEY,
+    )
+
+
+def test_retire_compressions_marks_without_a_legacy_table(monkeypatch) -> None:
+    connection = MagicMock()
+    markers = _markers(applied=False)
+    monkeypatch.setattr(retire_migration, "_markers", markers)
+    monkeypatch.setattr(retire_migration, "_table_exists", MagicMock(return_value=False))
+
+    retire_migration.migrate(connection)
+
+    connection.execute.assert_not_called()
+    markers.mark.assert_called_once_with(
+        connection,
+        retire_migration._MIGRATION_KEY,
+    )

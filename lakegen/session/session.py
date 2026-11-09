@@ -227,9 +227,9 @@ class Session:
         context_source: str | None = None,
         connection: psycopg.Connection | None = None,
     ) -> int:
-        # Raw turn messages are canonical history and the eval record. Turn
-        # compressions live alongside them as events, never as replacement
-        # history.
+        # Store the turn exactly as the model saw it. A compressed or trimmed
+        # turn is therefore still a self-consistent prefix: its token anchors
+        # describe the messages restored next time.
         return self.env.agent_turn_repository.create(
             {
                 "session_id": self.id,

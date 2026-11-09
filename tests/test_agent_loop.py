@@ -286,8 +286,9 @@ def test_chat_request_base_url_defaults_to_none():
 
 class _CompressingContext:
     def measure(self, *, history, turn, system_prompt, tools) -> ContextMeasurement:
-        # Trigger only once the tool result makes the turn non-trivial.
-        turn_tokens = 100 if len(turn.messages) > 2 else 0
+        # Trigger only once a completed iteration can be summarized while the
+        # latest one is preserved.
+        turn_tokens = 100 if len(turn.messages) > 4 else 0
         return ContextMeasurement(
             total=turn_tokens,
             history=0,
@@ -296,40 +297,58 @@ class _CompressingContext:
         )
 
     def compress(self, scope, conversation, **_kwargs) -> Compression:
-        assert conversation.messages
+        # Mirror ContextEngine.compress: keep the opening request and the
+        # in-flight iteration, replace the completed middle with a summary.
+        messages = conversation.messages
+        request = next(
+            index
+            for index, message in enumerate(messages)
+            if message.role is Role.USER and not message.is_summary
+        )
+        latest = next(
+            index
+            for index in range(len(messages) - 1, -1, -1)
+            if messages[index].role is Role.ASSISTANT and messages[index].tool_calls
+        )
+        assert latest > request + 1
         summary = Message(role=Role.USER, content="summary", is_summary=True)
         return Compression(
             scope=scope,
             messages=Conversation(
-                messages=[
-                    summary,
-                    Message(role=Role.ASSISTANT, content="recent"),
-                ]
+                messages=[*messages[: request + 1], summary, *messages[latest:]]
             ),
             summary=summary,
-            replaced_messages=1,
+            replaced_messages=latest - request - 1,
         )
 
     def fit(self, messages, *, budget) -> Conversation:
         return Conversation(messages=messages)
 
 
-class _ToolThenTextRouter(_CapturingRouter):
+class _TwoToolThenTextRouter(_CapturingRouter):
+    """Two tool iterations, so the first one is safe to summarize."""
+
     def stream(self, provider, request, *, cancel_event):
         self.requests.append(request)
         self.stream_calls += 1
-        if self.stream_calls == 1:
+        if self.stream_calls <= 2:
             yield StreamChunk(
                 done=True,
-                tool_calls=[ToolCall(id="c1", name="list_tables", arguments={})],
+                tool_calls=[
+                    ToolCall(
+                        id=f"c{self.stream_calls}",
+                        name="list_tables",
+                        arguments={},
+                    )
+                ],
             )
             return
         yield StreamChunk(text="final")
         yield StreamChunk(done=True)
 
 
-def test_loop_compresses_after_tools_and_returns_both_states():
-    router = _ToolThenTextRouter()
+def test_loop_compresses_after_tools_and_returns_the_visible_turn():
+    router = _TwoToolThenTextRouter()
     loop = AgentLoop(
         router=router,
         tool_runtime=_FakeTools(),
@@ -337,7 +356,7 @@ def test_loop_compresses_after_tools_and_returns_both_states():
     )
 
     result = loop.invoke(
-        _config(),
+        _config(max_turns=4),
         Conversation(messages=[Message(role=Role.USER, content="old")]),
         "hi",
         catalog_name="prod",
@@ -346,9 +365,24 @@ def test_loop_compresses_after_tools_and_returns_both_states():
         context_policy=ContextPolicy(window=200, reserve_ratio=0),
     )
 
-    # The model sees the compressed turn; the persisted turn stays raw.
-    assert router.requests[1].messages[1].is_summary is True
-    assert result.turn_messages.messages[0].content == "hi"
+    # The model saw a summary of the first iteration instead of its messages,
+    # and the persisted turn is that same view.
+    assert router.requests[2].messages[2].is_summary is True
+    assert [message.role for message in result.turn_messages.messages] == [
+        Role.USER,
+        Role.USER,
+        Role.ASSISTANT,
+        Role.TOOL,
+        Role.ASSISTANT,
+    ]
+    assert result.turn_messages.messages[1].is_summary is True
+    preserved_call = result.turn_messages.messages[2].tool_calls[0]
+    assert preserved_call.id == "c2"
+    assert all(
+        call.id != "c1"
+        for message in result.turn_messages.messages
+        for call in message.tool_calls or []
+    )
     assert len(result.compression_events) == 1
     assert result.compression_events[0].scope == "turn"
     assert result.compression_events[0].summary == "summary"
@@ -360,7 +394,7 @@ class _FailingContext(_CompressingContext):
 
 
 def test_turn_compression_failure_does_not_break_the_turn():
-    router = _ToolThenTextRouter()
+    router = _TwoToolThenTextRouter()
     loop = AgentLoop(
         router=router,
         tool_runtime=_FakeTools(),
@@ -368,7 +402,7 @@ def test_turn_compression_failure_does_not_break_the_turn():
     )
 
     result = loop.invoke(
-        _config(),
+        _config(max_turns=4),
         Conversation(),
         "hi",
         catalog_name="prod",
@@ -381,4 +415,4 @@ def test_turn_compression_failure_does_not_break_the_turn():
     assert result.stop_reason is StopReason.COMPLETED
     assert result.final_message == "final"
     assert result.compression_events == ()
-    assert router.requests[1].messages[-1].role is Role.TOOL
+    assert router.requests[2].messages[-1].role is Role.TOOL

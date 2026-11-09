@@ -8,17 +8,15 @@ from __future__ import annotations
 
 import psycopg
 
+from . import _markers
+
 _MIGRATION_KEY = "001_compression_bigint_ids"
 
 
 def migrate(connection: psycopg.Connection) -> None:
     """Move UUID turn/compression ids to ordered BIGINTs exactly once."""
-    _ensure_marker_table(connection)
-    row = connection.execute(
-        "SELECT 1 FROM schema_migrations WHERE key = %s",
-        (_MIGRATION_KEY,),
-    ).fetchone()
-    if row is not None:
+    _markers.ensure_table(connection)
+    if _markers.applied(connection, _MIGRATION_KEY):
         return
 
     agent_turn_id_type = _column_type(connection, "agent_turns", "id")
@@ -38,21 +36,7 @@ def migrate(connection: psycopg.Connection) -> None:
     if old_compressions and _table_exists(connection, "compactions"):
         _rename_compressions(connection)
 
-    connection.execute(
-        "INSERT INTO schema_migrations (key) VALUES (%s)",
-        (_MIGRATION_KEY,),
-    )
-
-
-def _ensure_marker_table(connection: psycopg.Connection) -> None:
-    connection.execute(
-        """
-        CREATE TABLE IF NOT EXISTS schema_migrations (
-            key TEXT PRIMARY KEY,
-            applied_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
-        )
-        """
-    )
+    _markers.mark(connection, _MIGRATION_KEY)
 
 
 def _table_exists(connection: psycopg.Connection, table: str) -> bool:

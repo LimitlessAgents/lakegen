@@ -1,4 +1,4 @@
-"""Run the one-time compression/agent-turn id migration."""
+"""Run the one-time persistence migrations."""
 
 from lakegen.core.persistence import persistence
 from lakegen.core.persistence.migrations import migrate

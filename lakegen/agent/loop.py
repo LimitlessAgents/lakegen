@@ -56,8 +56,9 @@ class AgentLoop:
         context_policy: ContextPolicy | None = None,
     ) -> AgentLoopResult:
         policy = context_policy if context_policy is not None else ContextPolicy()
-        raw_turn = Conversation()  # persisted history, never compressed
-        active_turn: list[Message] = []  # what the model sees this turn
+        # The only record of this turn. Compression and fitting rewrite it, so
+        # the turn restored later is exactly the one the model saw.
+        active_turn: list[Message] = []
         turn_compression = TurnCompressionState()
         events: list[CompressionEvent] = []
         turns = 0
@@ -67,7 +68,6 @@ class AgentLoop:
         assistant_appended = True
 
         def append_message(message: Message) -> None:
-            raw_turn.messages.append(message)
             active_turn.append(message)
 
         def current_messages() -> list[Message]:
@@ -131,10 +131,10 @@ class AgentLoop:
         def finish(stop_reason: StopReason) -> AgentLoopResult:
             resolved_call_ids = {
                 message.tool_call_id
-                for message in raw_turn.messages
+                for message in active_turn
                 if message.role is Role.TOOL and message.tool_call_id is not None
             }
-            for message in tuple(raw_turn.messages):
+            for message in tuple(active_turn):
                 if message.role is not Role.ASSISTANT:
                     continue
                 for tool_call in message.tool_calls or []:
@@ -189,7 +189,7 @@ class AgentLoop:
             )
             return AgentLoopResult(
                 final_message=response_text,
-                turn_messages=raw_turn,
+                turn_messages=Conversation(messages=list(active_turn)),
                 stop_reason=stop_reason,
                 compression_events=tuple(events),
                 context_tokens=measurement.total if measurement else None,
@@ -260,7 +260,7 @@ class AgentLoop:
                     measurement = measure(system_prompt, tools)
                     return AgentLoopResult(
                         final_message=response_text,
-                        turn_messages=raw_turn,
+                        turn_messages=Conversation(messages=list(active_turn)),
                         stop_reason=StopReason.COMPLETED,
                         compression_events=tuple(events),
                         context_tokens=measurement.total if measurement else None,

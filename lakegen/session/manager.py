@@ -276,7 +276,7 @@ class SessionManager:
 
         if isinstance(summary, str) and summary.strip():
             # A summary replaces all history up to its turn. Everything after
-            # is replayed verbatim, so the context is deterministic.
+            # is replayed exactly as stored, so the context is deterministic.
             turn_rows = self.env.agent_turn_repository.list_where(
                 session_id,
                 "id > %s",

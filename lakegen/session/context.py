@@ -74,6 +74,10 @@ class ContextEngine:
             source="anchored" if anchored else "estimated",
         )
 
+    def estimate_messages(self, conversation: Conversation) -> int:
+        """Deterministic size of a message list, independent of anchors."""
+        return self._estimate_messages(conversation.messages)
+
     def _estimate_context(
         self,
         messages: list[Message],

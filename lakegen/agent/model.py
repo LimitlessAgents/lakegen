@@ -20,7 +20,7 @@ class CompressionScope(StrEnum):
 
 @dataclass(frozen=True)
 class CompressionEvent:
-    """Audit record of one compaction, stored with the raw turn."""
+    """Audit record of one compaction, stored with the turn it changed."""
 
     scope: CompressionScope
     summary: str
@@ -35,7 +35,9 @@ class Conversation:
 @dataclass(frozen=True)
 class AgentLoopResult:
     final_message: str
-    turn_messages: Conversation  # raw turn messages; canonical history
+    # The turn as the model saw it, including any summary or trimming. This is
+    # the canonical history: its token counts describe exactly this prefix.
+    turn_messages: Conversation
     stop_reason: StopReason
     compression_events: tuple[CompressionEvent, ...] = ()
     context_tokens: int | None = None

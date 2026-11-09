@@ -6,7 +6,7 @@ from lakegen.agent import AgentConfig, AgentLoopResult, CompressionEvent, Conver
 from lakegen.agent.model import CompressionScope, StopReason
 from lakegen.core.persistence import PostgresPersistence
 from lakegen.inference import Message, Role
-from lakegen.session import Environment, SessionManager
+from lakegen.session import Environment, Session, SessionManager
 from lakegen.session.context import Compression, ContextMeasurement
 
 from tests.conftest import open_session
@@ -92,6 +92,7 @@ def test_history_compression_replaces_state_and_marks_the_turn() -> None:
         ),
     ]
     env.context_engine.compress.return_value = _compression()
+    env.context_engine.estimate_messages.side_effect = [1_000, 10]
     session = _session(env)
     session.state.messages.messages = [
         Message(role=Role.USER, content="old"),
@@ -151,6 +152,7 @@ def test_history_compression_without_progress_is_discarded() -> None:
         ),
     ]
     env.context_engine.compress.return_value = _compression()
+    env.context_engine.estimate_messages.side_effect = [1_000, 1_000]
     session = _session(env)
     session.state.messages.messages = [
         Message(role=Role.USER, content="old"),
@@ -164,7 +166,7 @@ def test_history_compression_without_progress_is_discarded() -> None:
     ]
 
 
-def test_send_persists_raw_turn_and_compression_events(monkeypatch) -> None:
+def test_send_persists_the_visible_turn_and_compression_events(monkeypatch) -> None:
     env = _env()
     session = _session(env)
     result = AgentLoopResult(
