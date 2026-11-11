@@ -292,7 +292,7 @@ class Session:
                 context_source=after.source,
             )
             self.state.messages = compression.messages
-        except Exception:
+        except Exception:  # noqa: BLE001
             # Compression must never break an otherwise-successful turn. The
             # raw history stays intact and the next gate retries.
             return

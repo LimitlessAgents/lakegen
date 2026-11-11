@@ -46,5 +46,5 @@ class Repository(ABC):
     ) -> int:
         value = payload.get(field)
         if not isinstance(value, int) or isinstance(value, bool):
-            raise ValueError(f"{field} must be an integer.")
+            raise TypeError(f"{field} must be an integer.")
         return value

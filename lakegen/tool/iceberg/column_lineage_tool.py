@@ -132,7 +132,7 @@ def _schema_history(table_name: str, catalog) -> dict[str, Any]:
             previous = catalog.read_metadata_file(
                 table_name, _pick(entry, "metadata-file", "metadata_file")
             )
-        except Exception:
+        except Exception:  # noqa: BLE001
             truncated = True
             break
         versions.append(

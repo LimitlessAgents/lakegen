@@ -371,7 +371,7 @@ def _close_stream(stream: Any) -> None:
         return
     try:
         close()
-    except Exception:
+    except Exception:  # noqa: BLE001, S110
         pass
 
 

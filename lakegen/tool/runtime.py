@@ -138,7 +138,7 @@ class ToolRuntime:
             )
         # Anything unexpected: wrap as INTERNAL so the batch still returns cleanly.
         # Attach the original as the cause so its type/message survive in to_dict.
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             return ToolOutput(
                 tool_name=name,
                 tool_call_id=call_id,

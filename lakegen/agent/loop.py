@@ -107,7 +107,7 @@ class AgentLoop:
                         cancel_event=cancel_event,
                         base_url=agent_config.base_url,
                     )
-                except Exception:
+                except Exception:  # noqa: BLE001
                     # Summarization is best-effort: a provider failure must not
                     # end an otherwise healthy turn. Emergency fitting below
                     # still bounds the request.
@@ -296,7 +296,7 @@ class AgentLoop:
                             tool_name=output.tool_name,
                         )
                     )
-        except Exception as error:
+        except Exception as error:  # noqa: BLE001
             if (
                 stream
                 and not assistant_appended

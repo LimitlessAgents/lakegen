@@ -84,14 +84,14 @@ class IcebergCatalog(BaseCatalog):
                         dumped = metadata_obj.model_dump(mode="json")
                         if isinstance(dumped, dict):
                             meta_dict = dumped
-                    except Exception:
+                    except Exception:  # noqa: BLE001, S110
                         pass
                 elif hasattr(metadata_obj, "dict") and callable(metadata_obj.dict):
                     try:
                         dumped = metadata_obj.dict()
                         if isinstance(dumped, dict):
                             meta_dict = dumped
-                    except Exception:
+                    except Exception:  # noqa: BLE001, S110
                         pass
                 elif isinstance(metadata_obj, dict):
                     meta_dict = metadata_obj
@@ -299,6 +299,6 @@ class IcebergCatalog(BaseCatalog):
         # simply to drop the handle, which the final assignment guarantees.
         try:
             self.catalog.close()
-        except Exception:
+        except Exception:  # noqa: BLE001, S110
             pass
         self.catalog = None
