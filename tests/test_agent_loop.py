@@ -35,10 +35,14 @@ def _config(*, max_turns: int = 3) -> AgentConfig:
 
 class _FakeRouter:
     def __init__(self, chunks: list[StreamChunk] | None = None) -> None:
-        self.chunks = chunks if chunks is not None else [
-            StreamChunk(text="hello"),
-            StreamChunk(done=True),
-        ]
+        self.chunks = (
+            chunks
+            if chunks is not None
+            else [
+                StreamChunk(text="hello"),
+                StreamChunk(done=True),
+            ]
+        )
         self.stream_calls = 0
 
     def complete(self, provider: str, request: ChatRequest) -> Message:
@@ -275,7 +279,9 @@ def test_agent_config_base_url_reaches_chat_request():
         ),
     )
 
-    assert [request.base_url for request in requests] == ["https://openrouter.ai/api/v1"]
+    assert [request.base_url for request in requests] == [
+        "https://openrouter.ai/api/v1"
+    ]
 
 
 def test_chat_request_base_url_defaults_to_none():

@@ -360,4 +360,3 @@ def test_stream_does_not_retry_after_cancel():
     assert chunks == []
     assert attempts["count"] == 1
     assert delays == [0.05]
-

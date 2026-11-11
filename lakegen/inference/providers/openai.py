@@ -91,15 +91,9 @@ class _OpenAI:
         ``retry_after`` seconds when the response provides ``Retry-After``.
         Response bodies and credentials are never attached.
         """
-        status = (
-            error.status_code
-            if isinstance(error, openai.APIStatusError)
-            else None
-        )
+        status = error.status_code if isinstance(error, openai.APIStatusError) else None
         request_id = (
-            error.request_id
-            if isinstance(error, openai.APIStatusError)
-            else None
+            error.request_id if isinstance(error, openai.APIStatusError) else None
         )
         details: dict[str, Any] = {
             "provider": self.name,
@@ -153,9 +147,7 @@ class _OpenAI:
             )
 
         # Deterministic client / config problems (4xx, auth) vs unclassified.
-        is_client_error = (
-            status is not None and 400 <= status < 500
-        ) or (
+        is_client_error = (status is not None and 400 <= status < 500) or (
             isinstance(error, openai.OpenAIError)
             and not isinstance(error, openai.APIError)
         )
@@ -331,9 +323,7 @@ class _OpenAI:
                             if isinstance(item.arguments, str)
                             else item.arguments
                         )
-                        tool_calls.append(
-                            ToolCall(item.call_id, item.name, args)
-                        )
+                        tool_calls.append(ToolCall(item.call_id, item.name, args))
 
                 elif event.type == "response.completed":
                     usage = event.response.usage

@@ -129,9 +129,7 @@ def test_history_compression_failure_keeps_raw_history() -> None:
     session._compress_history(_config(), "system", [], threading.Event())
 
     env.agent_turn_repository.update_summary.assert_not_called()
-    assert [message.content for message in session.state.messages.messages] == [
-        "old"
-    ]
+    assert [message.content for message in session.state.messages.messages] == ["old"]
 
 
 def test_history_compression_without_progress_is_discarded() -> None:
@@ -160,9 +158,7 @@ def test_history_compression_without_progress_is_discarded() -> None:
     session._compress_history(_config(), "system", [], threading.Event())
 
     env.agent_turn_repository.update_summary.assert_not_called()
-    assert [message.content for message in session.state.messages.messages] == [
-        "old"
-    ]
+    assert [message.content for message in session.state.messages.messages] == ["old"]
 
 
 def test_send_persists_the_visible_turn_and_compression_events(monkeypatch) -> None:
@@ -209,9 +205,7 @@ def test_send_compresses_history_against_the_new_turn(monkeypatch) -> None:
     session = _session(env)
     result = AgentLoopResult(
         final_message="ok",
-        turn_messages=Conversation(
-            messages=[Message(role=Role.USER, content="hi")]
-        ),
+        turn_messages=Conversation(messages=[Message(role=Role.USER, content="hi")]),
         stop_reason=StopReason.COMPLETED,
     )
     monkeypatch.setattr(session._loop, "invoke", lambda **kwargs: result)

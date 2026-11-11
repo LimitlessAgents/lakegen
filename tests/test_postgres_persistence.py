@@ -9,9 +9,7 @@ def test_store_uses_parameterized_insert(mocker) -> None:
     connection = MagicMock()
     cursor = MagicMock()
     connection.cursor.return_value.__enter__.return_value = cursor
-    connect = mocker.patch(
-        "lakegen.core.persistence.postgres.psycopg.connect"
-    )
+    connect = mocker.patch("lakegen.core.persistence.postgres.psycopg.connect")
     connect.return_value.__enter__.return_value = connection
 
     persistence = PostgresPersistence("postgresql://localhost/lakegen")
@@ -27,9 +25,7 @@ def test_store_uses_parameterized_insert(mocker) -> None:
 
 def test_ensure_schema_applies_schema_sql(mocker) -> None:
     connection = MagicMock()
-    connect = mocker.patch(
-        "lakegen.core.persistence.postgres.psycopg.connect"
-    )
+    connect = mocker.patch("lakegen.core.persistence.postgres.psycopg.connect")
     connect.return_value.__enter__.return_value = connection
 
     PostgresPersistence("postgresql://localhost/lakegen").ensure_schema()

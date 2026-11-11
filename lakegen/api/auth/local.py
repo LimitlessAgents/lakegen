@@ -24,8 +24,6 @@ class LocalAuth:
     def resolve(self, request: Request) -> Principal:
         user_id = request.headers.get(_HEADER) or self._default_user_id
         display = (
-            self._default_display_name
-            if user_id == self._default_user_id
-            else user_id
+            self._default_display_name if user_id == self._default_user_id else user_id
         )
         return Principal(id=user_id, display_name=display)

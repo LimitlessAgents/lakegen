@@ -59,9 +59,7 @@ def _env(agent_turn_repository=None):
         context_engine=context_engine,
         session_repository=MagicMock(),
         agent_turn_repository=(
-            agent_turn_repository
-            if agent_turn_repository is not None
-            else MagicMock()
+            agent_turn_repository if agent_turn_repository is not None else MagicMock()
         ),
     )
 

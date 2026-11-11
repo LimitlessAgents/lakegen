@@ -74,7 +74,11 @@ def test_stream_forwards_timeout(provider, mocker):
     client.responses.create.return_value = iter(())
     provider.client = client
 
-    list(provider.stream(_request(), inactivity_timeout=21.0, cancel_event=threading.Event()))
+    list(
+        provider.stream(
+            _request(), inactivity_timeout=21.0, cancel_event=threading.Event()
+        )
+    )
 
     assert client.responses.create.call_args.kwargs["timeout"] == 21.0
     assert client.responses.create.call_args.kwargs["stream"] is True
@@ -193,7 +197,11 @@ def test_stream_preserves_sdk_cause(provider, mocker):
     provider.client = client
 
     with pytest.raises(BaseError) as exc_info:
-        list(provider.stream(_request(), inactivity_timeout=10.0, cancel_event=threading.Event()))
+        list(
+            provider.stream(
+                _request(), inactivity_timeout=10.0, cancel_event=threading.Event()
+            )
+        )
 
     err = exc_info.value
     assert err.code == ErrorCode.INFERENCE_FAILED

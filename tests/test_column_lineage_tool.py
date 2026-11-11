@@ -83,9 +83,7 @@ def test_inspect_column_lineage_detects_added_column():
         "schemas": [
             {
                 "schema-id": 0,
-                "fields": [
-                    {"id": 1, "name": "id", "type": "long", "required": True}
-                ],
+                "fields": [{"id": 1, "name": "id", "type": "long", "required": True}],
             }
         ],
     }
@@ -97,9 +95,7 @@ def test_inspect_column_lineage_detects_added_column():
         "schemas": [
             {
                 "schema-id": 0,
-                "fields": [
-                    {"id": 1, "name": "id", "type": "long", "required": True}
-                ],
+                "fields": [{"id": 1, "name": "id", "type": "long", "required": True}],
             },
             {
                 "schema-id": 1,

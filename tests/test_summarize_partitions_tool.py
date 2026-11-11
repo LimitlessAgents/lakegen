@@ -133,9 +133,7 @@ def test_summarize_partitions_aggregates_rows_and_specs():
     assert result["summary"]["partition_count"] == 2
     assert result["summary"]["data_size_bytes"] == 3072
     assert result["data_by_spec"][0]["data_size_bytes"] == 3072
-    assert result["data_by_spec"][0]["oldest_data_at"] == (
-        "2024-01-01T00:00:00+00:00"
-    )
+    assert result["data_by_spec"][0]["oldest_data_at"] == ("2024-01-01T00:00:00+00:00")
     assert [row["partition_key"] for row in result["partitions"]["rows"]] == [
         "day=2024-01-02",
         "day=2024-01-01",
@@ -223,9 +221,7 @@ def test_summarize_partitions_includes_spec_history():
     )
     metadata = _metadata(
         specs=[_spec(0, []), _spec(1, [_field(1000, "day")])],
-        metadata_log=[
-            {"timestamp-ms": 1_000, "metadata-file": "s3://meta/old.json"}
-        ],
+        metadata_log=[{"timestamp-ms": 1_000, "metadata-file": "s3://meta/old.json"}],
     )
     metadata["last-updated-ms"] = 2_000
     catalog = FakeCatalog(
@@ -242,9 +238,7 @@ def test_summarize_partitions_includes_spec_history():
     assert result["spec_history"]["changes"][0]["snapshot_attribution"] == (
         "metadata_only"
     )
-    assert result["partitioning"]["active_spec_since"] == (
-        "1970-01-01T00:00:02+00:00"
-    )
+    assert result["partitioning"]["active_spec_since"] == ("1970-01-01T00:00:02+00:00")
 
 
 def test_summarize_partitions_passes_historical_snapshot():

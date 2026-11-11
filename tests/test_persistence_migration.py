@@ -152,7 +152,9 @@ def test_retire_compressions_marks_without_a_legacy_table(monkeypatch) -> None:
     connection = MagicMock()
     markers = _markers(applied=False)
     monkeypatch.setattr(retire_migration, "_markers", markers)
-    monkeypatch.setattr(retire_migration, "_table_exists", MagicMock(return_value=False))
+    monkeypatch.setattr(
+        retire_migration, "_table_exists", MagicMock(return_value=False)
+    )
 
     retire_migration.migrate(connection)
 

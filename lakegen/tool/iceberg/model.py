@@ -52,9 +52,7 @@ class InspectTableArguments(CatalogTableArguments):
 class TimeTravelInspectArguments(InspectTableArguments):
     snapshot_id: int | None = Field(
         default=None,
-        description=(
-            "Optional snapshot ID to inspect table state at a point in time."
-        ),
+        description=("Optional snapshot ID to inspect table state at a point in time."),
     )
 
 

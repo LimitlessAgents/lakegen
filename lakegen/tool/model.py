@@ -68,7 +68,7 @@ class ToolOutput:
             "ok": self.ok,
             "response": self.response,
             "error": self.error,
-            "tool_call_id": self.tool_call_id
+            "tool_call_id": self.tool_call_id,
         }
 
 

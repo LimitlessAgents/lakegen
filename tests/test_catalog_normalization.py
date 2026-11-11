@@ -29,6 +29,7 @@ def _make_catalog():
 # list_namespaces
 # ---------------------------------------------------------------------------
 
+
 def test_list_namespaces_tuples_become_dotted_strings():
     cat = _make_catalog()
     cat.catalog.list_namespaces.return_value = [("sales",), ("finance", "q1")]
@@ -53,6 +54,7 @@ def test_list_namespaces_error_wrapped():
 # ---------------------------------------------------------------------------
 # list_tables
 # ---------------------------------------------------------------------------
+
 
 def test_list_tables_tuples_become_dotted_strings():
     cat = _make_catalog()
@@ -79,6 +81,7 @@ def test_list_tables_error_wrapped():
 # ---------------------------------------------------------------------------
 # get_table_metadata
 # ---------------------------------------------------------------------------
+
 
 def _mock_field(name, field_type_str):
     f = MagicMock()
@@ -163,14 +166,17 @@ def test_get_table_metadata_includes_full_metadata_when_available():
     assert result["current_snapshot_id"] == 1001
     assert result["properties"] == {"write.target-file-size-bytes": "134217728"}
     assert result["snapshots"] == [{"snapshot-id": 1001}]
-    assert result["metadata_location"] == "s3://bucket/sales/orders/metadata/v1.metadata.json"
+    assert (
+        result["metadata_location"]
+        == "s3://bucket/sales/orders/metadata/v1.metadata.json"
+    )
     assert "metadata" in result
-
 
 
 # ---------------------------------------------------------------------------
 # inspect_snapshots / inspect_partitions
 # ---------------------------------------------------------------------------
+
 
 def test_inspect_snapshots_returns_json_rows():
     from datetime import datetime
@@ -257,9 +263,7 @@ def test_inspect_history_returns_limited_rows():
 
     cat = _make_catalog()
     mock_table = MagicMock()
-    mock_table.inspect.history.return_value = pa.table(
-        {"snapshot_id": list(range(3))}
-    )
+    mock_table.inspect.history.return_value = pa.table({"snapshot_id": list(range(3))})
     cat.catalog.load_table.return_value = mock_table
 
     result = cat.inspect_history("sales.orders", limit=2)

@@ -45,7 +45,9 @@ class SessionManager:
         self.env = env if env is not None else Environment.default()
         self.config = config if config is not None else EnvConfig.from_env()
         self._cache = SessionCache(
-            cache_size if cache_size is not None else _int_env(
+            cache_size
+            if cache_size is not None
+            else _int_env(
                 "LAKEGEN_SESSION_CACHE_SIZE",
                 _DEFAULT_CACHE_SIZE,
             )

@@ -24,7 +24,6 @@ _METADATA_COLUMNS = "name, lakehouse, catalog_type, config"
 
 
 class CatalogRepository(Repository):
-
     def create(self, spec: Mapping[str, object]) -> None:
         """Persist public config and credentials in one row."""
         payload = dict(spec)
@@ -35,9 +34,7 @@ class CatalogRepository(Repository):
             if key not in _IDENTITY_FIELDS and key not in _SENSITIVE_FIELDS
         }
         credentials = {
-            key: value
-            for key, value in payload.items()
-            if key in _SENSITIVE_FIELDS
+            key: value for key, value in payload.items() if key in _SENSITIVE_FIELDS
         }
         row = {
             "name": name,

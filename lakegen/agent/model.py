@@ -15,7 +15,7 @@ class CompressionScope(StrEnum):
     """Which part of the context a compression replaced."""
 
     HISTORY = "history"  # everything before the current turn
-    TURN = "turn"        # completed iterations of the current turn
+    TURN = "turn"  # completed iterations of the current turn
 
 
 @dataclass(frozen=True)

@@ -79,7 +79,7 @@ class LocalRunAdapter:
             provider=provider,
             stream=True,
             on_chunk=_on_chunk,
-            cancel_event=cancel_event
+            cancel_event=cancel_event,
         )
 
         turn = TurnResult(

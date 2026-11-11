@@ -34,6 +34,7 @@ class Message:
 @dataclass
 class ChatRequest:
     """What we send to a provider."""
+
     model: str
     system_prompt: str
     messages: list[Message]

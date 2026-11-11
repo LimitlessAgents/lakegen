@@ -203,8 +203,7 @@ class ContextEngine:
             (
                 index
                 for index in range(len(messages) - 1, -1, -1)
-                if messages[index].role is Role.ASSISTANT
-                and messages[index].tool_calls
+                if messages[index].role is Role.ASSISTANT and messages[index].tool_calls
             ),
             None,
         )
@@ -215,7 +214,11 @@ class ContextEngine:
 
         # The user request and the in-flight iteration are not summarizable:
         # without them the model cannot continue the turn.
-        return messages[: request + 1], messages[request + 1 : latest], messages[latest:]
+        return (
+            messages[: request + 1],
+            messages[request + 1 : latest],
+            messages[latest:],
+        )
 
     def _summarize(
         self,
@@ -295,8 +298,7 @@ class ContextEngine:
             (
                 index
                 for index in range(len(messages) - 1, -1, -1)
-                if messages[index].role is Role.ASSISTANT
-                and messages[index].tool_calls
+                if messages[index].role is Role.ASSISTANT and messages[index].tool_calls
             ),
             None,
         )

@@ -99,7 +99,7 @@ async def run_turn(
                         type=AgentEventType.ERROR,
                         data=ErrorBody(
                             code=ErrorCode.INTERNAL,
-                            message="An unexpected error occurred."
+                            message="An unexpected error occurred.",
                         ).model_dump(mode="json"),
                     )
                 )
@@ -114,9 +114,7 @@ async def run_turn(
                 if await request.is_disconnected():
                     break
                 try:
-                    item = await asyncio.to_thread(
-                        events.get, True, _QUEUE_POLL_S
-                    )
+                    item = await asyncio.to_thread(events.get, True, _QUEUE_POLL_S)
                 except Empty:
                     continue
                 if item is None:

@@ -216,7 +216,9 @@ def test_create_unknown_catalog_raises(registered_catalog):
 
 def test_spawn_inherits_catalog(registered_catalog):
     mgr = SessionManager(env=_env())
-    parent = open_session(mgr, _config(), owner_id=_OWNER, catalog_name=registered_catalog)
+    parent = open_session(
+        mgr, _config(), owner_id=_OWNER, catalog_name=registered_catalog
+    )
     child = mgr.get(parent.spawn(_config(system_prompt="child")))
 
     assert child.parent_id == parent.id
@@ -229,7 +231,9 @@ def test_spawn_inherits_catalog(registered_catalog):
 def test_delete_keeps_registry_when_persistence_fails(registered_catalog):
     env = _env()
     mgr = SessionManager(env=env)
-    parent = open_session(mgr, _config(), owner_id=_OWNER, catalog_name=registered_catalog)
+    parent = open_session(
+        mgr, _config(), owner_id=_OWNER, catalog_name=registered_catalog
+    )
     child = mgr.get(parent.spawn(_config()))
     env.session_repository.delete.side_effect = RuntimeError("database unavailable")
 
@@ -244,7 +248,9 @@ def test_delete_keeps_registry_when_persistence_fails(registered_catalog):
 def test_delete_removes_only_requested_session(registered_catalog):
     env = _env()
     mgr = SessionManager(env=env)
-    parent = open_session(mgr, _config(), owner_id=_OWNER, catalog_name=registered_catalog)
+    parent = open_session(
+        mgr, _config(), owner_id=_OWNER, catalog_name=registered_catalog
+    )
     child = mgr.get(parent.spawn(_config()))
 
     mgr.delete(child.id)
@@ -288,7 +294,9 @@ def test_create_with_missing_parent_raises(registered_catalog):
 
 def test_delete_closes_session_so_send_and_spawn_fail(registered_catalog):
     mgr = SessionManager(env=_env())
-    session = open_session(mgr, _config(), owner_id=_OWNER, catalog_name=registered_catalog)
+    session = open_session(
+        mgr, _config(), owner_id=_OWNER, catalog_name=registered_catalog
+    )
 
     mgr.delete(session.id)
 
@@ -301,7 +309,9 @@ def test_delete_closes_session_so_send_and_spawn_fail(registered_catalog):
 
 def test_delete_closes_cached_session(registered_catalog):
     mgr = SessionManager(env=_env())
-    parent = open_session(mgr, _config(), owner_id=_OWNER, catalog_name=registered_catalog)
+    parent = open_session(
+        mgr, _config(), owner_id=_OWNER, catalog_name=registered_catalog
+    )
     child = mgr.get(parent.spawn(_config()))
 
     mgr.delete(parent.id)
@@ -312,7 +322,9 @@ def test_delete_closes_cached_session(registered_catalog):
 
 def test_close_blocks_further_send_and_spawn(registered_catalog):
     mgr = SessionManager(env=_env())
-    session = open_session(mgr, _config(), owner_id=_OWNER, catalog_name=registered_catalog)
+    session = open_session(
+        mgr, _config(), owner_id=_OWNER, catalog_name=registered_catalog
+    )
 
     session.close()
 
@@ -330,8 +342,12 @@ def test_delete_quiesces_session_without_blocking_unrelated_sessions(
 ):
     env = _env()
     mgr = SessionManager(env=env)
-    active = open_session(mgr, _config(), owner_id=_OWNER, catalog_name=registered_catalog)
-    other = open_session(mgr, _config(), owner_id=_OWNER, catalog_name=registered_catalog)
+    active = open_session(
+        mgr, _config(), owner_id=_OWNER, catalog_name=registered_catalog
+    )
+    other = open_session(
+        mgr, _config(), owner_id=_OWNER, catalog_name=registered_catalog
+    )
 
     holding = threading.Event()
     release = threading.Event()
@@ -722,7 +738,9 @@ def test_env_config_base_url_reaches_the_turn(monkeypatch: pytest.MonkeyPatch) -
     """The endpoint resolved by ``EnvConfig`` is what the agent loop is asked to use."""
     mgr = SessionManager(
         env=_env(),
-        config=EnvConfig(base_url="https://proxy.example/v1", model="m", provider="openai"),
+        config=EnvConfig(
+            base_url="https://proxy.example/v1", model="m", provider="openai"
+        ),
     )
     session = mgr.get(mgr.create(owner_id=_OWNER, catalog_name="prod"))
 

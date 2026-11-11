@@ -56,9 +56,7 @@ def test_measure_uses_last_assistant_usage_as_an_anchor() -> None:
 
 def test_measure_estimates_when_there_is_no_anchor() -> None:
     engine = ContextEngine()
-    conversation = Conversation(
-        messages=[Message(role=Role.USER, content="x" * 400)]
-    )
+    conversation = Conversation(messages=[Message(role=Role.USER, content="x" * 400)])
 
     measurement = engine.measure(
         history=conversation,

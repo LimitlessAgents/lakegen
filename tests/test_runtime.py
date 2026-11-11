@@ -14,6 +14,7 @@ from lakegen.tool.runtime import ToolRuntime
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 class _SimpleArguments(BaseModel):
     value: str
 
@@ -41,6 +42,7 @@ def _run(rt: ToolRuntime, name: str, arguments):
 # ---------------------------------------------------------------------------
 # Success path
 # ---------------------------------------------------------------------------
+
 
 def test_use_tool_success():
     def handler(arguments: _SimpleArguments):
@@ -129,6 +131,7 @@ def test_dispatch_injects_catalog_connection():
 # ---------------------------------------------------------------------------
 # Error paths
 # ---------------------------------------------------------------------------
+
 
 def test_validation_error_returns_invalid_argument():
     def handler(arguments: _SimpleArguments):
@@ -220,7 +223,6 @@ def test_dispatch_runs_until_cancel():
     )
     assert len(results) == 1
     assert calls == ["one"]
-
 
 
 def test_non_dict_arguments_returns_invalid_type():

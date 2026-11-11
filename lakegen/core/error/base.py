@@ -66,7 +66,7 @@ class BaseError(Exception):
     def to_dict(self) -> dict[str, Any]:
         cause = self.__cause__
         if isinstance(cause, BaseError):
-            cause_repr = cause.to_dict()          # full structured lineage
+            cause_repr = cause.to_dict()  # full structured lineage
         elif cause is not None:
             cause_repr = {"type": type(cause).__name__, "message": str(cause)}
         else:
