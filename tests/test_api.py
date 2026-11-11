@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
+import threading
 from datetime import datetime
 from unittest.mock import MagicMock
-import threading
 
 import pytest
 from fastapi.testclient import TestClient
@@ -246,21 +246,15 @@ def test_list_sessions_rejects_negative_offset(
 def test_delete_session(client: TestClient, agent_runner: MagicMock) -> None:
     res = client.delete(f"/v1/sessions/{_SESSION_ID}")
     assert res.status_code == 204
-    agent_runner.delete_session.assert_called_once_with(
-        _SESSION_ID, owner_id="local"
-    )
+    agent_runner.delete_session.assert_called_once_with(_SESSION_ID, owner_id="local")
 
 
 def test_delete_session_passes_x_user(
     client: TestClient, agent_runner: MagicMock
 ) -> None:
-    res = client.delete(
-        f"/v1/sessions/{_SESSION_ID}", headers={"X-User": "alice"}
-    )
+    res = client.delete(f"/v1/sessions/{_SESSION_ID}", headers={"X-User": "alice"})
     assert res.status_code == 204
-    agent_runner.delete_session.assert_called_once_with(
-        _SESSION_ID, owner_id="alice"
-    )
+    agent_runner.delete_session.assert_called_once_with(_SESSION_ID, owner_id="alice")
 
 
 def test_local_auth_x_user_header(client: TestClient, agent_runner: MagicMock) -> None:
@@ -295,6 +289,10 @@ def test_list_turns(client: TestClient, agent_runner: MagicMock) -> None:
                 "stop_reason": "completed",
                 "turn_messages": {"messages": [{"role": "user", "content": "hi"}]},
             },
+            "summary": None,
+            "summary_kind": None,
+            "context_tokens": None,
+            "context_source": None,
         }
     ]
     agent_runner.list_turns.assert_called_once_with(

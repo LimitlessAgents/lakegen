@@ -7,7 +7,6 @@ from lakegen.core.error.base import BaseError
 from lakegen.core.error.code import ErrorCode
 from lakegen.core.persistence.repository.base import Repository
 
-
 _IDENTITY_FIELDS = frozenset({"name", "lakehouse", "catalog_type"})
 _SENSITIVE_FIELDS = frozenset(
     {
@@ -25,7 +24,6 @@ _METADATA_COLUMNS = "name, lakehouse, catalog_type, config"
 
 
 class CatalogRepository(Repository):
-
     def create(self, spec: Mapping[str, object]) -> None:
         """Persist public config and credentials in one row."""
         payload = dict(spec)
@@ -36,9 +34,7 @@ class CatalogRepository(Repository):
             if key not in _IDENTITY_FIELDS and key not in _SENSITIVE_FIELDS
         }
         credentials = {
-            key: value
-            for key, value in payload.items()
-            if key in _SENSITIVE_FIELDS
+            key: value for key, value in payload.items() if key in _SENSITIVE_FIELDS
         }
         row = {
             "name": name,
@@ -68,9 +64,9 @@ class CatalogRepository(Repository):
         config = row["config"]
         credentials = row["credentials"]
         if not isinstance(config, Mapping):
-            raise RuntimeError("Stored catalog config must be an object.")
+            raise TypeError("Stored catalog config must be an object.")
         if not isinstance(credentials, Mapping):
-            raise RuntimeError("Stored catalog credentials must be an object.")
+            raise TypeError("Stored catalog credentials must be an object.")
         return {
             **config,
             "name": row["name"],
@@ -119,7 +115,7 @@ class CatalogRepository(Repository):
     def _public_metadata(row: Mapping[str, object]) -> dict[str, object]:
         config = row["config"]
         if not isinstance(config, Mapping):
-            raise RuntimeError("Stored catalog config must be an object.")
+            raise TypeError("Stored catalog config must be an object.")
         return {
             "name": row["name"],
             "lakehouse": row["lakehouse"],

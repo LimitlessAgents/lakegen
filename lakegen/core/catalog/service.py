@@ -172,9 +172,7 @@ class CatalogService:
             name=str(metadata["name"]),
             connected=connected,
             lakehouse=CatalogService._optional_string(metadata.get("lakehouse")),
-            catalog_type=CatalogService._optional_string(
-                metadata.get("catalog_type")
-            ),
+            catalog_type=CatalogService._optional_string(metadata.get("catalog_type")),
             warehouse=CatalogService._optional_string(metadata.get("warehouse")),
         )
 

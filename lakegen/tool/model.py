@@ -1,5 +1,6 @@
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any, Callable, Protocol, runtime_checkable
+from typing import Any, Protocol, runtime_checkable
 
 
 @runtime_checkable
@@ -67,7 +68,7 @@ class ToolOutput:
             "ok": self.ok,
             "response": self.response,
             "error": self.error,
-            "tool_call_id": self.tool_call_id
+            "tool_call_id": self.tool_call_id,
         }
 
 

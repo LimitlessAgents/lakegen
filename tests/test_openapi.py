@@ -15,7 +15,7 @@ def test_openapi_matches_snapshot() -> None:
     committed = json.loads(_SNAPSHOT.read_text())
     assert generated == committed, (
         "OpenAPI drifted from openapi/v1.json. Re-export with:\n"
-        "  uv run python -c \"from pathlib import Path; import json; "
+        '  uv run python -c "from pathlib import Path; import json; '
         "from lakegen.api.openapi import openapi_document; "
         "Path('openapi/v1.json').write_text(json.dumps(openapi_document(), indent=2) + chr(10))\""
     )

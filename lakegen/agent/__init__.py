@@ -3,15 +3,19 @@ from lakegen.agent.model import (
     AgentConfig,
     AgentLoopFailure,
     AgentLoopResult,
+    CompressionEvent,
+    CompressionScope,
     Conversation,
     StopReason,
 )
 
 __all__ = [
     "AgentConfig",
-    "AgentLoopFailure",
     "AgentLoop",
+    "AgentLoopFailure",
     "AgentLoopResult",
+    "CompressionEvent",
+    "CompressionScope",
     "Conversation",
     "StopReason",
 ]

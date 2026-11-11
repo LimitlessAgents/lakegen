@@ -1,6 +1,7 @@
 import json
 import threading
-from typing import Any, Iterator
+from collections.abc import Iterator
+from typing import Any
 
 import openai
 
@@ -8,7 +9,6 @@ from lakegen.core.error.base import BaseError
 from lakegen.core.error.code import ErrorCode
 from lakegen.inference.model import (
     ChatRequest,
-    ChatResponse,
     Message,
     Role,
     StreamChunk,
@@ -91,15 +91,9 @@ class _OpenAI:
         ``retry_after`` seconds when the response provides ``Retry-After``.
         Response bodies and credentials are never attached.
         """
-        status = (
-            error.status_code
-            if isinstance(error, openai.APIStatusError)
-            else None
-        )
+        status = error.status_code if isinstance(error, openai.APIStatusError) else None
         request_id = (
-            error.request_id
-            if isinstance(error, openai.APIStatusError)
-            else None
+            error.request_id if isinstance(error, openai.APIStatusError) else None
         )
         details: dict[str, Any] = {
             "provider": self.name,
@@ -153,9 +147,7 @@ class _OpenAI:
             )
 
         # Deterministic client / config problems (4xx, auth) vs unclassified.
-        is_client_error = (
-            status is not None and 400 <= status < 500
-        ) or (
+        is_client_error = (status is not None and 400 <= status < 500) or (
             isinstance(error, openai.OpenAIError)
             and not isinstance(error, openai.APIError)
         )
@@ -226,16 +218,16 @@ class _OpenAI:
         request: ChatRequest,
         *,
         inactivity_timeout: float,
-    ) -> ChatResponse:
+    ) -> Message:
         """Run a non-streaming Responses API call and normalize the result."""
         try:
-            kwargs: dict[str, Any] = dict(
-                model=request.model,
-                instructions=request.system_prompt,
-                input=self._message_to_native(request.messages),
-                temperature=request.temperature,
-                timeout=inactivity_timeout,
-            )
+            kwargs: dict[str, Any] = {
+                "model": request.model,
+                "instructions": request.system_prompt,
+                "input": self._message_to_native(request.messages),
+                "temperature": request.temperature,
+                "timeout": inactivity_timeout,
+            }
             # Omit `tools` entirely when empty: some OpenAI-compatible
             # endpoints reject `tools: null` in a Responses API request.
             native_tools = self._tools_to_native(request.tools)
@@ -262,12 +254,10 @@ class _OpenAI:
                 else None
             )
 
-            return ChatResponse(
-                message=Message(
-                    role=Role.ASSISTANT,
-                    content=response.output_text or None,
-                    tool_calls=tool_calls or None,
-                ),
+            return Message(
+                role=Role.ASSISTANT,
+                content=response.output_text or None,
+                tool_calls=tool_calls or None,
                 tokens=tokens,
             )
         except BaseError:
@@ -292,14 +282,14 @@ class _OpenAI:
         done = threading.Event()
         waiter: threading.Thread | None = None
         try:
-            kwargs: dict[str, Any] = dict(
-                model=request.model,
-                instructions=request.system_prompt,
-                input=self._message_to_native(request.messages),
-                temperature=request.temperature,
-                stream=True,
-                timeout=inactivity_timeout,
-            )
+            kwargs: dict[str, Any] = {
+                "model": request.model,
+                "instructions": request.system_prompt,
+                "input": self._message_to_native(request.messages),
+                "temperature": request.temperature,
+                "stream": True,
+                "timeout": inactivity_timeout,
+            }
             # Omit `tools` entirely when empty: some OpenAI-compatible
             # endpoints reject `tools: null` in a Responses API request.
             native_tools = self._tools_to_native(request.tools)
@@ -333,9 +323,7 @@ class _OpenAI:
                             if isinstance(item.arguments, str)
                             else item.arguments
                         )
-                        tool_calls.append(
-                            ToolCall(item.call_id, item.name, args)
-                        )
+                        tool_calls.append(ToolCall(item.call_id, item.name, args))
 
                 elif event.type == "response.completed":
                     usage = event.response.usage
@@ -373,7 +361,7 @@ def _close_stream(stream: Any) -> None:
         return
     try:
         close()
-    except Exception:
+    except Exception:  # noqa: BLE001, S110
         pass
 
 

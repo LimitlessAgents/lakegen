@@ -1,17 +1,18 @@
+from __future__ import annotations
+
 from dataclasses import dataclass
 
+from lakegen.agent.policy import ContextPolicy
 from lakegen.core.catalog.service import CatalogService, catalog_service
 from lakegen.core.persistence import (
     PostgresPersistence,
+)
+from lakegen.core.persistence import (
     persistence as persistence_def,
 )
 from lakegen.core.persistence.repository.agent_turn_repository import (
     AgentTurnRepository,
     agent_turn_repository,
-)
-from lakegen.core.persistence.repository.compaction_repository import (
-    CompactionRepository,
-    compaction_repository,
 )
 from lakegen.core.persistence.repository.session_repository import (
     SessionRepository,
@@ -20,23 +21,21 @@ from lakegen.core.persistence.repository.session_repository import (
 from lakegen.inference import (
     InferenceRegistry,
     Router,
+)
+from lakegen.inference import (
     registry as inference_reg,
+)
+from lakegen.inference import (
     router as inference_rout,
 )
+from lakegen.session.context import ContextEngine
 from lakegen.tool import (
     ToolRegistry,
+)
+from lakegen.tool import (
     registry as tool_reg,
 )
-from lakegen.session.model import TokenBudget
 
-
-def calculate_token_budget(total_budget: int = 128_000) -> TokenBudget:
-    return TokenBudget(
-        total=total_budget,
-        system_prompt=int(total_budget * 0.1),
-        tool_definitions=int(total_budget * 0.1),
-        conversation=int(total_budget * 0.8),
-    )
 
 @dataclass(frozen=True)
 class Environment:
@@ -45,21 +44,21 @@ class Environment:
     inference_registry: InferenceRegistry
     inference_router: Router
     persistence: PostgresPersistence
+    context_engine: ContextEngine
+    context_policy: ContextPolicy
     session_repository: SessionRepository
     agent_turn_repository: AgentTurnRepository
-    compaction_repository: CompactionRepository
-    token_budget: TokenBudget
 
     @classmethod
-    def default(cls) -> "Environment":
+    def default(cls) -> Environment:
         return cls(
             tool_reg,
             catalog_service,
             inference_reg,
             inference_rout,
             persistence_def,
+            ContextEngine(),
+            ContextPolicy.from_env(),
             session_repository,
             agent_turn_repository,
-            compaction_repository,
-            calculate_token_budget(),
         )

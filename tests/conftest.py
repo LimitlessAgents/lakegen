@@ -2,8 +2,8 @@ import os
 
 import pytest
 
-from lakegen.session.session import Session
 from lakegen.session.manager import SessionManager
+from lakegen.session.session import Session
 
 
 def open_session(mgr: SessionManager, *args, **kwargs) -> Session:

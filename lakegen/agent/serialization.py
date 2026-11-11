@@ -4,8 +4,21 @@ from dataclasses import asdict
 from typing import Any
 
 from lakegen.agent.model import AgentLoopResult, Conversation
-from lakegen.inference import Message, Role
+from lakegen.inference import Message, Role, TokenUsage
 from lakegen.tool.model import ToolCall
+
+
+def _tokens_from_mapping(raw: object) -> TokenUsage | None:
+    if not isinstance(raw, Mapping):
+        return None
+    values = [
+        raw.get("prompt_tokens"),
+        raw.get("completion_tokens"),
+        raw.get("total_tokens"),
+    ]
+    if not all(isinstance(value, int) for value in values):
+        return None
+    return TokenUsage(*values)
 
 
 def serialize_agent_loop_result(result: AgentLoopResult) -> dict[str, Any]:
@@ -52,12 +65,16 @@ def _message_from_mapping(data: Mapping[str, object]) -> Message | None:
     if tool_name is not None and not isinstance(tool_name, str):
         return None
 
+    tokens = _tokens_from_mapping(data.get("tokens"))
+
     return Message(
         role=role,
         content=content,
         tool_calls=tool_calls,
         tool_call_id=tool_call_id,
         tool_name=tool_name if isinstance(tool_name, str) else None,
+        is_summary=bool(data.get("is_summary", False)),
+        tokens=tokens,
     )
 
 

@@ -7,7 +7,8 @@ from lakegen.core.catalog.service import CatalogService, catalog_service
 from lakegen.core.error.base import BaseError
 from lakegen.core.error.code import ErrorCode
 from lakegen.tool.model import ToolCall, ToolOutput
-from lakegen.tool.registry import ToolRegistry, registry as default_registry
+from lakegen.tool.registry import ToolRegistry
+from lakegen.tool.registry import registry as default_registry
 
 
 class ToolRuntime:
@@ -137,7 +138,7 @@ class ToolRuntime:
             )
         # Anything unexpected: wrap as INTERNAL so the batch still returns cleanly.
         # Attach the original as the cause so its type/message survive in to_dict.
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             return ToolOutput(
                 tool_name=name,
                 tool_call_id=call_id,

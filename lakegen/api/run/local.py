@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-from collections.abc import Callable
-
 import threading
+from collections.abc import Callable
 
 from lakegen.api.run.runner import AgentEvent, AgentEventType, TurnResult
 from lakegen.core.error.base import BaseError
@@ -80,7 +79,7 @@ class LocalRunAdapter:
             provider=provider,
             stream=True,
             on_chunk=_on_chunk,
-            cancel_event=cancel_event
+            cancel_event=cancel_event,
         )
 
         turn = TurnResult(

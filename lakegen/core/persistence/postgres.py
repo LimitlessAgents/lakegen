@@ -6,7 +6,8 @@ from pathlib import Path
 import psycopg
 from psycopg import sql
 from psycopg.rows import dict_row
-from psycopg.types.json import Jsonb
+
+from lakegen.core.persistence.migrations import migrate
 
 _SCHEMA_PATH = Path(__file__).with_name("schema")
 
@@ -38,8 +39,9 @@ class PostgresPersistence:
             yield connection
 
     def ensure_schema(self) -> None:
-        """Apply schema files in order. Call at process startup, not per write."""
+        """Apply migrations and schema files in order. Call at process startup."""
         with self.transaction() as connection:
+            migrate(connection)
             for schema_file in sorted(_SCHEMA_PATH.glob("*.sql")):
                 statements = [
                     statement.strip()
@@ -49,15 +51,15 @@ class PostgresPersistence:
                 for statement in statements:
                     connection.execute(statement)
 
-
     def insert(
         self,
         table_name: str,
         data: Mapping[str, object],
         *,
+        returning: str | None = None,
         connection: psycopg.Connection | None = None,
-    ) -> None:
-        """Insert one row, optionally as part of an existing transaction."""
+    ) -> dict[str, object] | None:
+        """Insert one row, optionally returning columns as a mapping."""
         if not table_name:
             raise ValueError("table_name must not be empty.")
         if not data:
@@ -65,8 +67,12 @@ class PostgresPersistence:
 
         if connection is None:
             with self.transaction() as transaction:
-                self.insert(table_name, data, connection=transaction)
-            return
+                return self.insert(
+                    table_name,
+                    data,
+                    returning=returning,
+                    connection=transaction,
+                )
 
         columns = tuple(data)
         statement = sql.SQL("INSERT INTO {} ({}) VALUES ({})").format(
@@ -74,9 +80,12 @@ class PostgresPersistence:
             sql.SQL(", ").join(sql.Identifier(column) for column in columns),
             sql.SQL(", ").join(sql.Placeholder() for _ in columns),
         )
+        if returning is not None:
+            statement += sql.SQL(" RETURNING {}").format(sql.Identifier(returning))
 
-        with connection.cursor() as cursor:
+        with connection.cursor(row_factory=dict_row) as cursor:
             cursor.execute(statement, tuple(data[column] for column in columns))
+            return cursor.fetchone() if returning is not None else None
 
     def execute(
         self,
@@ -99,10 +108,12 @@ class PostgresPersistence:
         parameters: Sequence[object] = (),
     ) -> dict[str, object] | None:
         """Return one row as a dictionary."""
-        with self.transaction() as connection:
-            with connection.cursor(row_factory=dict_row) as cursor:
-                cursor.execute(statement, parameters)
-                return cursor.fetchone()
+        with (
+            self.transaction() as connection,
+            connection.cursor(row_factory=dict_row) as cursor,
+        ):
+            cursor.execute(statement, parameters)
+            return cursor.fetchone()
 
     def fetch_all(
         self,
@@ -110,10 +121,12 @@ class PostgresPersistence:
         parameters: Sequence[object] = (),
     ) -> list[dict[str, object]]:
         """Return all rows as dictionaries."""
-        with self.transaction() as connection:
-            with connection.cursor(row_factory=dict_row) as cursor:
-                cursor.execute(statement, parameters)
-                return cursor.fetchall()
+        with (
+            self.transaction() as connection,
+            connection.cursor(row_factory=dict_row) as cursor,
+        ):
+            cursor.execute(statement, parameters)
+            return cursor.fetchall()
 
     def _store(
         self,

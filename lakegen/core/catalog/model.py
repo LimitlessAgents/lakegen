@@ -193,8 +193,17 @@ class SqlCatalogSpec(BaseCatalogSpec):
             by_alias=True,
             exclude_none=True,
             exclude_unset=True,
-            exclude={"lakehouse", "catalog_type", "name",
-                    "database_type", "username", "password", "host", "port", "database"},
+            exclude={
+                "lakehouse",
+                "catalog_type",
+                "name",
+                "database_type",
+                "username",
+                "password",
+                "host",
+                "port",
+                "database",
+            },
         )
         props["uri"] = self.uri()
         return self.name, props

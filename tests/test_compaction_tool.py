@@ -48,9 +48,9 @@ def _data_file(partition: dict, size_bytes: int) -> dict:
 
 
 def test_compaction_reads_files_beyond_first_page():
-    files = [
-        _data_file({"day": "2024-01-01"}, 200 * _MB) for _ in range(100)
-    ] + [_data_file({"day": "2024-01-01"}, 1024) for _ in range(200)]
+    files = [_data_file({"day": "2024-01-01"}, 200 * _MB) for _ in range(100)] + [
+        _data_file({"day": "2024-01-01"}, 1024) for _ in range(200)
+    ]
     catalog = FakeCatalog(files)
 
     result = is_compaction_needed(

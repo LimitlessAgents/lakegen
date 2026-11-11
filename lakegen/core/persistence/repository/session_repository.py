@@ -9,7 +9,6 @@ from lakegen.core.persistence.repository.base import Repository
 
 
 class SessionRepository(Repository):
-
     def create(self, data: Mapping[str, object]) -> None:
         payload = dict(data)
         session_id = self._required_string(payload, "id")

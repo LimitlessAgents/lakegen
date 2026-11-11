@@ -59,9 +59,7 @@ class IcebergCatalog(BaseCatalog):
     def list_tables(self, namespace: str) -> list[str]:
         """Return table names in a namespace as dotted strings."""
         try:
-            return [
-                ".".join(t) for t in self.catalog.list_tables(namespace=namespace)
-            ]
+            return [".".join(t) for t in self.catalog.list_tables(namespace=namespace)]
         except Exception as e:
             raise BaseError(
                 ErrorCode.INTERNAL,
@@ -79,19 +77,21 @@ class IcebergCatalog(BaseCatalog):
             metadata_obj = getattr(table, "metadata", None)
             meta_dict = None
             if metadata_obj is not None:
-                if hasattr(metadata_obj, "model_dump") and callable(metadata_obj.model_dump):
+                if hasattr(metadata_obj, "model_dump") and callable(
+                    metadata_obj.model_dump
+                ):
                     try:
                         dumped = metadata_obj.model_dump(mode="json")
                         if isinstance(dumped, dict):
                             meta_dict = dumped
-                    except Exception:
+                    except Exception:  # noqa: BLE001, S110
                         pass
                 elif hasattr(metadata_obj, "dict") and callable(metadata_obj.dict):
                     try:
                         dumped = metadata_obj.dict()
                         if isinstance(dumped, dict):
                             meta_dict = dumped
-                    except Exception:
+                    except Exception:  # noqa: BLE001, S110
                         pass
                 elif isinstance(metadata_obj, dict):
                     meta_dict = metadata_obj
@@ -119,8 +119,7 @@ class IcebergCatalog(BaseCatalog):
             result["name"] = str(table.name())
             result["location"] = table.location()
             result["schema"] = {
-                field.name: str(field.field_type)
-                for field in table.schema().fields
+                field.name: str(field.field_type) for field in table.schema().fields
             }
 
             return result
@@ -169,9 +168,7 @@ class IcebergCatalog(BaseCatalog):
             from pyiceberg.serializers import FromInputFile
 
             table = self.catalog.load_table(table_name)
-            metadata = FromInputFile.table_metadata(
-                table.io.new_input(metadata_file)
-            )
+            metadata = FromInputFile.table_metadata(table.io.new_input(metadata_file))
             return _json_safe(metadata.model_dump(mode="json"))
         except Exception as e:
             raise BaseError(
@@ -216,9 +213,7 @@ class IcebergCatalog(BaseCatalog):
         """Return all raw PyIceberg data file rows for a table snapshot."""
         try:
             table = self.catalog.load_table(table_name)
-            return arrow_table_to_rows(
-                table.inspect.files(snapshot_id=snapshot_id)
-            )
+            return arrow_table_to_rows(table.inspect.files(snapshot_id=snapshot_id))
         except Exception as e:
             raise BaseError(
                 ErrorCode.INTERNAL,
@@ -299,6 +294,6 @@ class IcebergCatalog(BaseCatalog):
         # simply to drop the handle, which the final assignment guarantees.
         try:
             self.catalog.close()
-        except Exception:
+        except Exception:  # noqa: BLE001, S110
             pass
         self.catalog = None

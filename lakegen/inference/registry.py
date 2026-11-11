@@ -17,4 +17,3 @@ class InferenceRegistry:
 
 
 registry = InferenceRegistry()
-

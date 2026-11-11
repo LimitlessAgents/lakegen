@@ -119,9 +119,7 @@ def _schema_history(table_name: str, catalog) -> dict[str, Any]:
         return {
             "timestamp": timestamp,
             "schema_id": _pick(source, "current-schema-id", "current_schema_id"),
-            "snapshot_id": _pick(
-                source, "current-snapshot-id", "current_snapshot_id"
-            ),
+            "snapshot_id": _pick(source, "current-snapshot-id", "current_snapshot_id"),
         }
 
     versions: list[dict[str, Any]] = []
@@ -132,12 +130,10 @@ def _schema_history(table_name: str, catalog) -> dict[str, Any]:
             previous = catalog.read_metadata_file(
                 table_name, _pick(entry, "metadata-file", "metadata_file")
             )
-        except Exception:
+        except Exception:  # noqa: BLE001
             truncated = True
             break
-        versions.append(
-            version(previous, _pick(entry, "timestamp-ms", "timestamp_ms"))
-        )
+        versions.append(version(previous, _pick(entry, "timestamp-ms", "timestamp_ms")))
     versions.reverse()
 
     # The current metadata is not part of its own metadata-log.
@@ -153,8 +149,7 @@ def _parse_decimal(type_name: str) -> tuple[int, int] | None:
         return None
     try:
         precision, scale = (
-            int(part)
-            for part in type_name[len("decimal(") : -1].split(",")
+            int(part) for part in type_name[len("decimal(") : -1].split(",")
         )
     except ValueError:
         return None

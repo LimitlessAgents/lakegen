@@ -14,7 +14,6 @@ from lakegen.core.error.base import BaseError
 from lakegen.core.error.code import ErrorCode
 from lakegen.core.persistence import PostgresPersistence
 from lakegen.session import Environment, SessionManager
-
 from tests.conftest import open_session
 
 
@@ -24,12 +23,12 @@ def registered_catalog():
 
 
 def _config(**overrides) -> AgentConfig:
-    base = dict(
-        model="test-model",
-        system_prompt="test",
-        provider="openai",
-        max_turns=3,
-    )
+    base = {
+        "model": "test-model",
+        "system_prompt": "test",
+        "provider": "openai",
+        "max_turns": 3,
+    }
     base.update(overrides)
     return AgentConfig(**base)
 
@@ -47,15 +46,12 @@ def _env():
     catalogs.require.side_effect = require
     persistence = MagicMock(spec=PostgresPersistence)
     persistence.configured = False
-    compaction_repository = MagicMock()
-    compaction_repository.list.return_value = []
     return replace(
         Environment.default(),
         catalog_service=catalogs,
         persistence=persistence,
         session_repository=MagicMock(),
         agent_turn_repository=MagicMock(),
-        compaction_repository=compaction_repository,
     )
 
 
@@ -220,7 +216,9 @@ def test_create_unknown_catalog_raises(registered_catalog):
 
 def test_spawn_inherits_catalog(registered_catalog):
     mgr = SessionManager(env=_env())
-    parent = open_session(mgr, _config(), owner_id=_OWNER, catalog_name=registered_catalog)
+    parent = open_session(
+        mgr, _config(), owner_id=_OWNER, catalog_name=registered_catalog
+    )
     child = mgr.get(parent.spawn(_config(system_prompt="child")))
 
     assert child.parent_id == parent.id
@@ -233,7 +231,9 @@ def test_spawn_inherits_catalog(registered_catalog):
 def test_delete_keeps_registry_when_persistence_fails(registered_catalog):
     env = _env()
     mgr = SessionManager(env=env)
-    parent = open_session(mgr, _config(), owner_id=_OWNER, catalog_name=registered_catalog)
+    parent = open_session(
+        mgr, _config(), owner_id=_OWNER, catalog_name=registered_catalog
+    )
     child = mgr.get(parent.spawn(_config()))
     env.session_repository.delete.side_effect = RuntimeError("database unavailable")
 
@@ -248,7 +248,9 @@ def test_delete_keeps_registry_when_persistence_fails(registered_catalog):
 def test_delete_removes_only_requested_session(registered_catalog):
     env = _env()
     mgr = SessionManager(env=env)
-    parent = open_session(mgr, _config(), owner_id=_OWNER, catalog_name=registered_catalog)
+    parent = open_session(
+        mgr, _config(), owner_id=_OWNER, catalog_name=registered_catalog
+    )
     child = mgr.get(parent.spawn(_config()))
 
     mgr.delete(child.id)
@@ -292,7 +294,9 @@ def test_create_with_missing_parent_raises(registered_catalog):
 
 def test_delete_closes_session_so_send_and_spawn_fail(registered_catalog):
     mgr = SessionManager(env=_env())
-    session = open_session(mgr, _config(), owner_id=_OWNER, catalog_name=registered_catalog)
+    session = open_session(
+        mgr, _config(), owner_id=_OWNER, catalog_name=registered_catalog
+    )
 
     mgr.delete(session.id)
 
@@ -305,7 +309,9 @@ def test_delete_closes_session_so_send_and_spawn_fail(registered_catalog):
 
 def test_delete_closes_cached_session(registered_catalog):
     mgr = SessionManager(env=_env())
-    parent = open_session(mgr, _config(), owner_id=_OWNER, catalog_name=registered_catalog)
+    parent = open_session(
+        mgr, _config(), owner_id=_OWNER, catalog_name=registered_catalog
+    )
     child = mgr.get(parent.spawn(_config()))
 
     mgr.delete(parent.id)
@@ -316,7 +322,9 @@ def test_delete_closes_cached_session(registered_catalog):
 
 def test_close_blocks_further_send_and_spawn(registered_catalog):
     mgr = SessionManager(env=_env())
-    session = open_session(mgr, _config(), owner_id=_OWNER, catalog_name=registered_catalog)
+    session = open_session(
+        mgr, _config(), owner_id=_OWNER, catalog_name=registered_catalog
+    )
 
     session.close()
 
@@ -334,8 +342,12 @@ def test_delete_quiesces_session_without_blocking_unrelated_sessions(
 ):
     env = _env()
     mgr = SessionManager(env=env)
-    active = open_session(mgr, _config(), owner_id=_OWNER, catalog_name=registered_catalog)
-    other = open_session(mgr, _config(), owner_id=_OWNER, catalog_name=registered_catalog)
+    active = open_session(
+        mgr, _config(), owner_id=_OWNER, catalog_name=registered_catalog
+    )
+    other = open_session(
+        mgr, _config(), owner_id=_OWNER, catalog_name=registered_catalog
+    )
 
     holding = threading.Event()
     release = threading.Event()
@@ -475,7 +487,7 @@ def test_get_concurrent_hydrate_returns_same_session(registered_catalog):
 
 def test_get_hydrates_persisted_session(registered_catalog):
     env = _env()
-    mgr = SessionManager(env=env, cache_size=8, hydrate_turn_limit=20)
+    mgr = SessionManager(env=env, cache_size=8)
     created_at = datetime.now()
     session_id = "00000000-0000-0000-0000-000000000001"
     env.session_repository.get.return_value = {
@@ -484,6 +496,7 @@ def test_get_hydrates_persisted_session(registered_catalog):
         "catalog_name": registered_catalog,
         "created_at": created_at,
     }
+    env.agent_turn_repository.latest_with_summary.return_value = None
     env.agent_turn_repository.list.return_value = [
         {
             "id": "turn-1",
@@ -511,14 +524,13 @@ def test_get_hydrates_persisted_session(registered_catalog):
     assert session.state.owner_id == _OWNER
     assert session.state.catalog_name == registered_catalog
     assert [message.content for message in session.state.messages.messages] == ["hello"]
-    env.agent_turn_repository.list.assert_called_once_with(session_id, 0, 20)
+    env.agent_turn_repository.list.assert_called_once_with(session_id, 0, None)
 
 
-def test_get_hydrates_persisted_session_with_compaction(registered_catalog):
+def test_get_hydrates_persisted_session_with_compression(registered_catalog):
     env = _env()
-    mgr = SessionManager(env=env, cache_size=8, hydrate_turn_limit=20)
+    mgr = SessionManager(env=env, cache_size=8)
     created_at = datetime.now()
-    compaction_time = datetime.now()
     session_id = "00000000-0000-0000-0000-000000000001"
     env.session_repository.get.return_value = {
         "id": session_id,
@@ -526,18 +538,17 @@ def test_get_hydrates_persisted_session_with_compaction(registered_catalog):
         "catalog_name": registered_catalog,
         "created_at": created_at,
     }
-    env.compaction_repository.list.return_value = [
-        {
-            "id": "compaction-1",
-            "session_id": session_id,
-            "data": "Compacted summary of previous conversation",
-            "last_compacted_turn_id": "turn-1",
-            "created_at": compaction_time,
-        }
-    ]
+    env.agent_turn_repository.latest_with_summary.return_value = {
+        "id": 10,
+        "summary": "Compressed summary of previous conversation",
+        "summary_kind": "history",
+        "context_tokens": 500,
+        "context_source": "estimated",
+        "created_at": created_at,
+    }
     env.agent_turn_repository.list_where.return_value = [
         {
-            "id": "turn-2",
+            "id": 11,
             "created_at": datetime.now(),
             "result": {
                 "final_message": "table info",
@@ -566,19 +577,50 @@ def test_get_hydrates_persisted_session_with_compaction(registered_catalog):
 
     session = mgr.get(session_id)
 
-    env.compaction_repository.list.assert_called_once_with(session_id, 0, 1)
+    env.agent_turn_repository.latest_with_summary.assert_called_once_with(session_id)
     env.agent_turn_repository.list_where.assert_called_once_with(
         session_id,
-        "created_at > %s",
-        (compaction_time,),
+        "id > %s",
+        (10,),
     )
     env.agent_turn_repository.list.assert_not_called()
 
     messages = session.state.messages.messages
     assert len(messages) == 3
-    assert messages[0].content == "Compacted summary of previous conversation"
+    assert messages[0].content == "Compressed summary of previous conversation"
+    assert messages[0].is_summary is True
     assert messages[1].content == "show table schema"
     assert messages[2].content == "schema is ..."
+
+
+def test_hydrate_keeps_only_the_summary_when_no_turn_follows(registered_catalog):
+    env = _env()
+    mgr = SessionManager(env=env, cache_size=8)
+    created_at = datetime.now()
+    session_id = "00000000-0000-0000-0000-000000000001"
+    env.session_repository.get.return_value = {
+        "id": session_id,
+        "owner_id": _OWNER,
+        "catalog_name": registered_catalog,
+        "created_at": created_at,
+    }
+    env.agent_turn_repository.latest_with_summary.return_value = {
+        "id": 10,
+        "summary": "Compressed summary of previous conversation",
+        "summary_kind": "history",
+        "created_at": created_at,
+    }
+    env.agent_turn_repository.list_where.return_value = []
+
+    session = mgr.get(session_id)
+
+    messages = session.state.messages.messages
+    assert [message.content for message in messages] == [
+        "Compressed summary of previous conversation"
+    ]
+    assert messages[0].is_summary is True
+    # Raw turns are the replay source; hydration never writes new rows.
+    env.agent_turn_repository.create.assert_not_called()
 
 
 def test_pin_session_does_not_replace_fresher_cached_session(registered_catalog):
@@ -696,7 +738,9 @@ def test_env_config_base_url_reaches_the_turn(monkeypatch: pytest.MonkeyPatch) -
     """The endpoint resolved by ``EnvConfig`` is what the agent loop is asked to use."""
     mgr = SessionManager(
         env=_env(),
-        config=EnvConfig(base_url="https://proxy.example/v1", model="m", provider="openai"),
+        config=EnvConfig(
+            base_url="https://proxy.example/v1", model="m", provider="openai"
+        ),
     )
     session = mgr.get(mgr.create(owner_id=_OWNER, catalog_name="prod"))
 

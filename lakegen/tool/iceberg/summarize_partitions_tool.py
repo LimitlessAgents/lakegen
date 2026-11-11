@@ -6,8 +6,9 @@ All aggregation and metadata-log interpretation happens here; the catalog only
 fetches raw PyIceberg data.
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
+from itertools import pairwise
 from typing import Any
 
 from pydantic import Field
@@ -42,8 +43,7 @@ class PartitionSummaryArguments(CatalogTableArguments):
         default=0,
         ge=0,
         description=(
-            "Number of partition rows to skip. Rows are sorted by data size "
-            "descending."
+            "Number of partition rows to skip. Rows are sorted by data size descending."
         ),
     )
     limit: int = Field(
@@ -71,7 +71,7 @@ def _pick(mapping: dict[str, Any], *keys: str, default=None):
 def _timestamp_iso(timestamp_ms: int | None) -> str | None:
     if timestamp_ms is None:
         return None
-    return datetime.fromtimestamp(timestamp_ms / 1000, tz=timezone.utc).isoformat()
+    return datetime.fromtimestamp(timestamp_ms / 1000, tz=UTC).isoformat()
 
 
 def _spec_definition(spec: dict[str, Any]) -> dict[str, Any]:
@@ -109,9 +109,7 @@ def _version(
 ) -> dict[str, Any]:
     return {
         "timestamp": timestamp_ms,
-        "snapshot_id": _pick(
-            metadata, "current-snapshot-id", "current_snapshot_id"
-        ),
+        "snapshot_id": _pick(metadata, "current-snapshot-id", "current_snapshot_id"),
         "default_spec_id": _pick(metadata, "default-spec-id", "default_spec_id"),
         "specs": _specs_by_id(metadata),
     }
@@ -172,7 +170,7 @@ def _field_map(spec: dict[str, Any] | None) -> dict[tuple, dict[str, Any]]:
 def _spec_changes(versions: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Return active-spec changes between consecutive metadata versions."""
     changes: list[dict[str, Any]] = []
-    for older, newer in zip(versions, versions[1:]):
+    for older, newer in pairwise(versions):
         old_id = older["default_spec_id"]
         new_id = newer["default_spec_id"]
         old_fields = _field_map(older["specs"].get(old_id))
@@ -225,9 +223,7 @@ def _current_fields(metadata: dict[str, Any]) -> dict[int, dict[str, Any]]:
             fields[_pick(item, "id", "field-id", "field_id")] = {
                 "name": name,
                 "type": (
-                    field_type
-                    if isinstance(field_type, str)
-                    else str(field_type)
+                    field_type if isinstance(field_type, str) else str(field_type)
                 ),
             }
             if isinstance(field_type, dict) and field_type.get("fields"):
@@ -373,9 +369,7 @@ def summarize_partitions(
     history_truncated = False
     active_spec_since = None
     if arguments.include_spec_history:
-        versions, history_truncated = _metadata_versions(
-            table_name, metadata, catalog
-        )
+        versions, history_truncated = _metadata_versions(table_name, metadata, catalog)
         changes = _spec_changes(versions)
         active_spec_since = next(
             (
@@ -387,12 +381,8 @@ def summarize_partitions(
         )
 
     snapshot = _resolve_snapshot(metadata, arguments.snapshot_id)
-    snapshot_id = (
-        _pick(snapshot, "snapshot-id", "snapshot_id") if snapshot else None
-    )
-    current_snapshot_id = _pick(
-        metadata, "current-snapshot-id", "current_snapshot_id"
-    )
+    snapshot_id = _pick(snapshot, "snapshot-id", "snapshot_id") if snapshot else None
+    current_snapshot_id = _pick(metadata, "current-snapshot-id", "current_snapshot_id")
     rows: list[dict[str, Any]] = []
     if snapshot is not None:
         for item in catalog.inspect_partitions(
@@ -411,8 +401,7 @@ def summarize_partitions(
                     "partition_key": _partition_key(partition),
                     "record_count": item.get("record_count") or 0,
                     "file_count": item.get("file_count") or 0,
-                    "data_size_bytes": item.get("total_data_file_size_in_bytes")
-                    or 0,
+                    "data_size_bytes": item.get("total_data_file_size_in_bytes") or 0,
                     "position_delete_file_count": position_files,
                     "position_delete_record_count": item.get(
                         "position_delete_record_count"
@@ -430,9 +419,7 @@ def summarize_partitions(
                     + (item.get("equality_delete_record_count") or 0),
                     "last_updated_at": item.get("last_updated_at")
                     or _timestamp_iso(_pick(snapshot, "timestamp-ms", "timestamp_ms")),
-                    "last_updated_snapshot_id": item.get(
-                        "last_updated_snapshot_id"
-                    )
+                    "last_updated_snapshot_id": item.get("last_updated_snapshot_id")
                     or snapshot_id,
                 }
             )
@@ -457,9 +444,7 @@ def summarize_partitions(
         if arguments.spec_id is not None and current_spec_id != arguments.spec_id:
             continue
         spec_rows = by_spec.get(current_spec_id, [])
-        times = [
-            row["last_updated_at"] for row in spec_rows if row["last_updated_at"]
-        ]
+        times = [row["last_updated_at"] for row in spec_rows if row["last_updated_at"]]
         data_by_spec.append(
             {
                 "spec_id": current_spec_id,
@@ -505,9 +490,7 @@ def summarize_partitions(
             "limit": arguments.limit,
             "total": total,
             "truncated": truncated,
-            "next_offset": (
-                arguments.offset + len(window) if truncated else None
-            ),
+            "next_offset": (arguments.offset + len(window) if truncated else None),
         },
     }
 

@@ -11,7 +11,12 @@ from fastapi import APIRouter, Depends, Query, Request
 from sse_starlette.sse import EventSourceResponse
 
 from lakegen.api.auth.authenticator import Principal
-from lakegen.api.deps import AppState, get_agent_runner, get_app_state, require_principal
+from lakegen.api.deps import (
+    AppState,
+    get_agent_runner,
+    get_app_state,
+    require_principal,
+)
 from lakegen.api.errors import error_body_for
 from lakegen.api.responses import SERVICE_ERROR_RESPONSES
 from lakegen.api.run.runner import AgentEvent, AgentEventType, AgentRunner
@@ -94,7 +99,7 @@ async def run_turn(
                         type=AgentEventType.ERROR,
                         data=ErrorBody(
                             code=ErrorCode.INTERNAL,
-                            message="An unexpected error occurred."
+                            message="An unexpected error occurred.",
                         ).model_dump(mode="json"),
                     )
                 )
@@ -109,9 +114,7 @@ async def run_turn(
                 if await request.is_disconnected():
                     break
                 try:
-                    item = await asyncio.to_thread(
-                        events.get, True, _QUEUE_POLL_S
-                    )
+                    item = await asyncio.to_thread(events.get, True, _QUEUE_POLL_S)
                 except Empty:
                     continue
                 if item is None:

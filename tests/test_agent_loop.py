@@ -1,7 +1,7 @@
 """Tests for lakegen.agent.loop.AgentLoop cancel and completion."""
 
-from collections.abc import Iterator
 import threading
+from collections.abc import Iterator
 
 import pytest
 
@@ -12,13 +12,14 @@ from lakegen.agent.model import (
     Conversation,
     StopReason,
 )
+from lakegen.agent.policy import ContextPolicy
 from lakegen.inference.model import (
     ChatRequest,
-    ChatResponse,
     Message,
     Role,
     StreamChunk,
 )
+from lakegen.session.context import Compression, ContextMeasurement
 from lakegen.tool.model import ToolCall, ToolOutput
 from lakegen.tool.runtime import ToolRuntime
 
@@ -34,13 +35,17 @@ def _config(*, max_turns: int = 3) -> AgentConfig:
 
 class _FakeRouter:
     def __init__(self, chunks: list[StreamChunk] | None = None) -> None:
-        self.chunks = chunks if chunks is not None else [
-            StreamChunk(text="hello"),
-            StreamChunk(done=True),
-        ]
+        self.chunks = (
+            chunks
+            if chunks is not None
+            else [
+                StreamChunk(text="hello"),
+                StreamChunk(done=True),
+            ]
+        )
         self.stream_calls = 0
 
-    def complete(self, provider: str, request: ChatRequest) -> ChatResponse:
+    def complete(self, provider: str, request: ChatRequest) -> Message:
         raise AssertionError("complete should not be used")
 
     def stream(
@@ -274,10 +279,146 @@ def test_agent_config_base_url_reaches_chat_request():
         ),
     )
 
-    assert [request.base_url for request in requests] == ["https://openrouter.ai/api/v1"]
+    assert [request.base_url for request in requests] == [
+        "https://openrouter.ai/api/v1"
+    ]
 
 
 def test_chat_request_base_url_defaults_to_none():
     requests = _invoke_with(_CapturingRouter(), _config())
 
     assert [request.base_url for request in requests] == [None]
+
+
+class _CompressingContext:
+    def measure(self, *, history, turn, system_prompt, tools) -> ContextMeasurement:
+        # Trigger only once a completed iteration can be summarized while the
+        # latest one is preserved.
+        turn_tokens = 100 if len(turn.messages) > 4 else 0
+        return ContextMeasurement(
+            total=turn_tokens,
+            history=0,
+            turn=turn_tokens,
+            source="estimated",
+        )
+
+    def compress(self, scope, conversation, **_kwargs) -> Compression:
+        # Mirror ContextEngine.compress: keep the opening request and the
+        # in-flight iteration, replace the completed middle with a summary.
+        messages = conversation.messages
+        request = next(
+            index
+            for index, message in enumerate(messages)
+            if message.role is Role.USER and not message.is_summary
+        )
+        latest = next(
+            index
+            for index in range(len(messages) - 1, -1, -1)
+            if messages[index].role is Role.ASSISTANT and messages[index].tool_calls
+        )
+        assert latest > request + 1
+        summary = Message(role=Role.USER, content="summary", is_summary=True)
+        return Compression(
+            scope=scope,
+            messages=Conversation(
+                messages=[*messages[: request + 1], summary, *messages[latest:]]
+            ),
+            summary=summary,
+            replaced_messages=latest - request - 1,
+        )
+
+    def fit(self, messages, *, budget) -> Conversation:
+        return Conversation(messages=messages)
+
+
+class _TwoToolThenTextRouter(_CapturingRouter):
+    """Two tool iterations, so the first one is safe to summarize."""
+
+    def stream(self, provider, request, *, cancel_event):
+        self.requests.append(request)
+        self.stream_calls += 1
+        if self.stream_calls <= 2:
+            yield StreamChunk(
+                done=True,
+                tool_calls=[
+                    ToolCall(
+                        id=f"c{self.stream_calls}",
+                        name="list_tables",
+                        arguments={},
+                    )
+                ],
+            )
+            return
+        yield StreamChunk(text="final")
+        yield StreamChunk(done=True)
+
+
+def test_loop_compresses_after_tools_and_returns_the_visible_turn():
+    router = _TwoToolThenTextRouter()
+    loop = AgentLoop(
+        router=router,
+        tool_runtime=_FakeTools(),
+        context_engine=_CompressingContext(),
+    )
+
+    result = loop.invoke(
+        _config(max_turns=4),
+        Conversation(messages=[Message(role=Role.USER, content="old")]),
+        "hi",
+        catalog_name="prod",
+        stream=True,
+        cancel_event=threading.Event(),
+        context_policy=ContextPolicy(window=200, reserve_ratio=0),
+    )
+
+    # The model saw a summary of the first iteration instead of its messages,
+    # and the persisted turn is that same view.
+    assert router.requests[2].messages[2].is_summary is True
+    assert [message.role for message in result.turn_messages.messages] == [
+        Role.USER,
+        Role.USER,
+        Role.ASSISTANT,
+        Role.TOOL,
+        Role.ASSISTANT,
+    ]
+    assert result.turn_messages.messages[1].is_summary is True
+    preserved_call = result.turn_messages.messages[2].tool_calls[0]
+    assert preserved_call.id == "c2"
+    assert all(
+        call.id != "c1"
+        for message in result.turn_messages.messages
+        for call in message.tool_calls or []
+    )
+    assert len(result.compression_events) == 1
+    assert result.compression_events[0].scope == "turn"
+    assert result.compression_events[0].summary == "summary"
+
+
+class _FailingContext(_CompressingContext):
+    def compress(self, *_args, **_kwargs):
+        raise RuntimeError("summarizer down")
+
+
+def test_turn_compression_failure_does_not_break_the_turn():
+    router = _TwoToolThenTextRouter()
+    loop = AgentLoop(
+        router=router,
+        tool_runtime=_FakeTools(),
+        context_engine=_FailingContext(),
+    )
+
+    result = loop.invoke(
+        _config(max_turns=4),
+        Conversation(),
+        "hi",
+        catalog_name="prod",
+        stream=True,
+        cancel_event=threading.Event(),
+        context_policy=ContextPolicy(window=200, reserve_ratio=0),
+    )
+
+    # The turn still completes on the uncompressed context.
+    assert result.stop_reason is StopReason.COMPLETED
+    assert result.final_message == "final"
+    assert result.compression_events == ()
+    assert router.requests[2].messages[-1].role is Role.TOOL

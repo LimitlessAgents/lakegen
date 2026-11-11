@@ -1,7 +1,7 @@
 """Tests for lakegen.inference.router.Router."""
 
-from collections.abc import Iterator
 import threading
+from collections.abc import Iterator
 
 import pytest
 
@@ -9,7 +9,6 @@ from lakegen.core.error.base import BaseError
 from lakegen.core.error.code import ErrorCode
 from lakegen.inference.model import (
     ChatRequest,
-    ChatResponse,
     Message,
     Role,
     StreamChunk,
@@ -29,8 +28,8 @@ def _request() -> ChatRequest:
     )
 
 
-def _response(text: str = "ok") -> ChatResponse:
-    return ChatResponse(message=Message(role=Role.ASSISTANT, content=text))
+def _response(text: str = "ok") -> Message:
+    return Message(role=Role.ASSISTANT, content=text)
 
 
 class FakeProvider:
@@ -58,7 +57,7 @@ class FakeProvider:
         request: ChatRequest,
         *,
         inactivity_timeout: float,
-    ) -> ChatResponse:
+    ) -> Message:
         self.complete_calls += 1
         if self._complete is not None:
             return self._complete(request, inactivity_timeout=inactivity_timeout)
@@ -225,7 +224,7 @@ def test_recovers_on_later_attempt():
 
     response = router.complete("fake", _request())
 
-    assert response.message.content == "recovered"
+    assert response.content == "recovered"
     assert attempts["count"] == 2
     assert delays == [0.25]
 
@@ -271,7 +270,7 @@ def test_sequential_calls_keep_independent_attempt_state():
     first_router_call["active"] = False
     response = router.complete("fake", _request())
 
-    assert response.message.content == "second call"
+    assert response.content == "second call"
     assert provider.complete_calls == 4
     assert delays == [0.25, 0.5]
 
@@ -361,4 +360,3 @@ def test_stream_does_not_retry_after_cancel():
     assert chunks == []
     assert attempts["count"] == 1
     assert delays == [0.05]
-

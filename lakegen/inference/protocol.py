@@ -1,9 +1,9 @@
-from dataclasses import dataclass
-from typing import Iterator, Protocol, runtime_checkable
-
 import threading
+from collections.abc import Iterator
+from dataclasses import dataclass
+from typing import Protocol, runtime_checkable
 
-from lakegen.inference.model import ChatRequest, ChatResponse, StreamChunk
+from lakegen.inference.model import ChatRequest, Message, StreamChunk
 
 
 @dataclass(frozen=True, slots=True)
@@ -40,7 +40,7 @@ class InferenceProvider(Protocol):
         request: ChatRequest,
         *,
         inactivity_timeout: float,
-    ) -> ChatResponse:
+    ) -> Message:
         """Run a non-streaming completion.
 
         ``inactivity_timeout`` is keyword-only so callers pass it by name.

@@ -1,6 +1,6 @@
-PROMPT = """You are a conversation compaction agent.
+PROMPT = """You are a conversation compression agent.
 
-Rewrite the conversation you are given as ONE compact, factual summary that
+Rewrite the conversation you are given as ONE concise, factual summary that
 lets the work continue without re-reading the original.
 
 The input may begin with an earlier summary followed by newer turns. Merge them
@@ -12,6 +12,8 @@ Preserve:
 - Exact identifiers: names, paths, table and column names, commands, and
   numeric values.
 - Open questions, blockers, and next steps.
+- Give extra weight to the final turn: it is the most likely context for the
+  next request.
 
 Remove:
 - Greetings, acknowledgements, and other pleasantries.

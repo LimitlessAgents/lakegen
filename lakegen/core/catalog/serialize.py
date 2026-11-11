@@ -48,9 +48,6 @@ def _json_safe(value: Any) -> Any:
         if value and all(
             isinstance(item, (list, tuple)) and len(item) == 2 for item in value
         ):
-            return {
-                str(_json_safe(key)): _json_safe(item)
-                for key, item in value
-            }
+            return {str(_json_safe(key)): _json_safe(item) for key, item in value}
         return [_json_safe(item) for item in value]
     return str(value)

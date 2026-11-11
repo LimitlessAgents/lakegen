@@ -24,10 +24,15 @@ def test_serialize_agent_loop_result() -> None:
                     "tool_calls": None,
                     "tool_call_id": None,
                     "tool_name": None,
+                    "is_summary": False,
+                    "tokens": None,
                 }
             ]
         },
         "stop_reason": "completed",
+        "compression_events": [],
+        "context_tokens": None,
+        "context_source": None,
     }
 
 

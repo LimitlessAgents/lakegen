@@ -7,21 +7,19 @@ from datetime import datetime
 
 from lakegen.agent import AgentConfig, Conversation
 from lakegen.agent.serialization import conversation_from_turn_rows
+from lakegen.core.config import EnvConfig
 from lakegen.core.error.base import BaseError
 from lakegen.core.error.code import ErrorCode
 from lakegen.inference import Message, Role
+from lakegen.prompt import SYSTEM_PROMPT as _DEFAULT_SYSTEM_PROMPT
 from lakegen.session.cache import SessionCache
 from lakegen.session.environment import Environment
 from lakegen.session.model import AgentTurnInfo, SessionInfo, SessionState
 from lakegen.session.session import Session
-from lakegen.prompt import SYSTEM_PROMPT as _DEFAULT_SYSTEM_PROMPT
-from lakegen.core.config import EnvConfig
-
 
 _DEFAULT_MAX_TURNS = 10
 _SESSION_PAGE_SIZE = 10
 _DEFAULT_CACHE_SIZE = 32
-_DEFAULT_HYDRATE_TURN_LIMIT = 20
 
 
 def _int_env(name: str, default: int) -> int:
@@ -43,22 +41,15 @@ class SessionManager:
         *,
         config: EnvConfig | None = None,
         cache_size: int | None = None,
-        hydrate_turn_limit: int | None = None,
     ) -> None:
         self.env = env if env is not None else Environment.default()
         self.config = config if config is not None else EnvConfig.from_env()
         self._cache = SessionCache(
-            cache_size if cache_size is not None else _int_env(
+            cache_size
+            if cache_size is not None
+            else _int_env(
                 "LAKEGEN_SESSION_CACHE_SIZE",
                 _DEFAULT_CACHE_SIZE,
-            )
-        )
-        self._hydrate_turn_limit = (
-            hydrate_turn_limit
-            if hydrate_turn_limit is not None
-            else _int_env(
-                "LAKEGEN_SESSION_HYDRATE_TURN_LIMIT",
-                _DEFAULT_HYDRATE_TURN_LIMIT,
             )
         )
         self._deleting: set[str] = set()
@@ -281,34 +272,25 @@ class SessionManager:
 
     def _hydrate(self, session_id: str) -> Session:
         row = self.env.session_repository.get(session_id)
-        compactions = self.env.compaction_repository.list(session_id, 0, 1)
-        if isinstance(compactions, list) and len(compactions) > 0:
-            latest_compaction = compactions[0]
+        summary_row = self.env.agent_turn_repository.latest_with_summary(session_id)
+        summary = summary_row.get("summary") if summary_row else None
 
-            # TODO: Currently `created_at` is being used as the replay
-            ## cutoff because `last_compacted_turn_id` is UUID which
-            ## has no chronology. Fine temporarily but this needs to
-            ## be fixed.
-            last_turn_created_at = latest_compaction.get("created_at")
+        if isinstance(summary, str) and summary.strip():
+            # A summary replaces all history up to its turn. Everything after
+            # is replayed exactly as stored, so the context is deterministic.
             turn_rows = self.env.agent_turn_repository.list_where(
                 session_id,
-                "created_at > %s",
-                (last_turn_created_at,),
+                "id > %s",
+                (summary_row["id"],),
             )
-            summary_content = latest_compaction.get("data")
-            summary_messages: list[Message] = []
-            if isinstance(summary_content, str) and summary_content.strip():
-                summary_messages.append(Message(role=Role.USER, content=summary_content))
-            messages = Conversation(
-                messages=[*summary_messages, *conversation_from_turn_rows(turn_rows).messages]
-            )
+            messages = [
+                Message(role=Role.USER, content=summary, is_summary=True),
+                *conversation_from_turn_rows(turn_rows).messages,
+            ]
         else:
-            turn_rows = self.env.agent_turn_repository.list(
-                session_id,
-                0,
-                self._hydrate_turn_limit,
-            )
-            messages = conversation_from_turn_rows(turn_rows)
+            messages = conversation_from_turn_rows(
+                self.env.agent_turn_repository.list(session_id, 0, None)
+            ).messages
 
         state = SessionState(
             id=session_id,
@@ -316,7 +298,7 @@ class SessionManager:
             owner_id=str(row["owner_id"]),
             catalog_name=self._optional_catalog_name(row),
             created_at=self._created_at(row),
-            messages=messages,
+            messages=Conversation(messages=messages),
         )
         return Session(state=state, env=self.env, manager=self)
 
@@ -336,16 +318,30 @@ class SessionManager:
     def _created_at(row: dict[str, object]) -> datetime:
         created_at = row["created_at"]
         if not isinstance(created_at, datetime):
-            raise RuntimeError("Stored session created_at must be a datetime.")
+            raise TypeError("Stored session created_at must be a datetime.")
         return created_at
 
     @staticmethod
     def _agent_turn_info(row: dict[str, object]) -> AgentTurnInfo:
         result = row["result"]
         if not isinstance(result, dict):
-            raise RuntimeError("Stored agent turn result must be an object.")
+            raise TypeError("Stored agent turn result must be an object.")
         return AgentTurnInfo(
             id=str(row["id"]),
             created_at=SessionManager._created_at(row),
             result=result,
+            summary=SessionManager._optional_string(row, "summary"),
+            summary_kind=SessionManager._optional_string(row, "summary_kind"),
+            context_tokens=SessionManager._optional_int(row, "context_tokens"),
+            context_source=SessionManager._optional_string(row, "context_source"),
         )
+
+    @staticmethod
+    def _optional_string(row: dict[str, object], field: str) -> str | None:
+        value = row.get(field)
+        return value if isinstance(value, str) else None
+
+    @staticmethod
+    def _optional_int(row: dict[str, object], field: str) -> int | None:
+        value = row.get(field)
+        return value if isinstance(value, int) and not isinstance(value, bool) else None

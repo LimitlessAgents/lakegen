@@ -69,14 +69,11 @@ def _analyze_partition(
     small_file_count = sum(
         (f.get("file_size_in_bytes") or 0) < small_threshold for f in data_files
     )
-    small_file_ratio = (
-        small_file_count / total_data_files if total_data_files else 0.0
-    )
+    small_file_ratio = small_file_count / total_data_files if total_data_files else 0.0
     total_delete_files = sum(delete_files.values())
 
     too_many_small_files = (
-        total_data_files > 1
-        and small_file_ratio > _SMALL_FILE_RATIO_THRESHOLD
+        total_data_files > 1 and small_file_ratio > _SMALL_FILE_RATIO_THRESHOLD
     )
     too_many_delete_files = total_delete_files > _DELETE_FILE_COUNT_THRESHOLD
 
@@ -117,20 +114,14 @@ def is_compaction_needed(
     metadata = catalog.get_table_metadata(table_name)
     target_file_size = _get_target_file_size(metadata.get("properties") or {})
     format_version = (
-        metadata.get("format_version")
-        or metadata.get("format-version")
-        or 2
+        metadata.get("format_version") or metadata.get("format-version") or 2
     )
 
     default_spec_id = (
-        metadata.get("default_spec_id")
-        or metadata.get("default-spec-id")
-        or 0
+        metadata.get("default_spec_id") or metadata.get("default-spec-id") or 0
     )
     partition_specs = (
-        metadata.get("partition_specs")
-        or metadata.get("partition-specs")
-        or []
+        metadata.get("partition_specs") or metadata.get("partition-specs") or []
     )
     active_spec = next(
         (spec for spec in partition_specs if spec.get("spec-id") == default_spec_id),
@@ -142,9 +133,7 @@ def is_compaction_needed(
     partition_buckets: dict[str, list[dict[str, Any]]] = {}
     for row in catalog.inspect_files(table_name):
         key = (
-            _partition_key(row.get("partition"))
-            if is_partitioned
-            else "unpartitioned"
+            _partition_key(row.get("partition")) if is_partitioned else "unpartitioned"
         )
         partition_buckets.setdefault(key, []).append(row)
 

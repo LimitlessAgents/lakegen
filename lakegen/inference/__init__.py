@@ -1,10 +1,6 @@
 from lakegen.inference.discovery import discover_providers
-
-discover_providers()
-
 from lakegen.inference.model import (
     ChatRequest,
-    ChatResponse,
     Message,
     Role,
     StreamChunk,
@@ -13,9 +9,10 @@ from lakegen.inference.model import (
 from lakegen.inference.registry import InferenceRegistry, registry
 from lakegen.inference.router import Router, router
 
+discover_providers()
+
 __all__ = [
     "ChatRequest",
-    "ChatResponse",
     "InferenceRegistry",
     "Message",
     "Role",

@@ -2,7 +2,6 @@
 
 from dataclasses import replace
 from unittest.mock import MagicMock
-from uuid import UUID
 
 import pytest
 
@@ -15,10 +14,10 @@ from lakegen.agent import (
 )
 from lakegen.core.error.base import BaseError
 from lakegen.core.error.code import ErrorCode
-from lakegen.inference import Message, Role
 from lakegen.core.persistence import PostgresPersistence
+from lakegen.inference import Message, Role
 from lakegen.session import Environment, SessionManager
-
+from lakegen.session.context import ContextMeasurement
 from tests.conftest import open_session
 
 
@@ -46,19 +45,22 @@ def _env(agent_turn_repository=None):
     catalogs.require.side_effect = require
     persistence = MagicMock(spec=PostgresPersistence)
     persistence.configured = False
-    compaction_repository = MagicMock()
-    compaction_repository.list.return_value = []
+    context_engine = MagicMock()
+    context_engine.measure.return_value = ContextMeasurement(
+        total=123,
+        history=123,
+        turn=0,
+        source="estimated",
+    )
     return replace(
         Environment.default(),
         catalog_service=catalogs,
         persistence=persistence,
+        context_engine=context_engine,
         session_repository=MagicMock(),
         agent_turn_repository=(
-            agent_turn_repository
-            if agent_turn_repository is not None
-            else MagicMock()
+            agent_turn_repository if agent_turn_repository is not None else MagicMock()
         ),
-        compaction_repository=compaction_repository,
     )
 
 
@@ -85,6 +87,7 @@ def test_send_uses_per_turn_model(registered_catalogs, monkeypatch):
 
 def test_send_assigns_and_persists_turn_id(registered_catalogs, monkeypatch):
     agent_turn_repository = MagicMock()
+    agent_turn_repository.create.return_value = 42
     mgr = SessionManager(env=_env(agent_turn_repository))
     session = open_session(
         mgr,
@@ -107,11 +110,10 @@ def test_send_assigns_and_persists_turn_id(registered_catalogs, monkeypatch):
 
     turn = session.send("hello")
 
-    UUID(turn.id)
+    assert turn.id == 42
     assert turn.result is loop_result
     agent_turn_repository.create.assert_called_once_with(
         {
-            "id": turn.id,
             "session_id": session.id,
             "result": {
                 "final_message": "ok",
@@ -123,6 +125,8 @@ def test_send_assigns_and_persists_turn_id(registered_catalogs, monkeypatch):
                             "tool_calls": None,
                             "tool_call_id": None,
                             "tool_name": None,
+                            "is_summary": False,
+                            "tokens": None,
                         },
                         {
                             "role": "assistant",
@@ -130,12 +134,20 @@ def test_send_assigns_and_persists_turn_id(registered_catalogs, monkeypatch):
                             "tool_calls": None,
                             "tool_call_id": None,
                             "tool_name": None,
+                            "is_summary": False,
+                            "tokens": None,
                         },
                     ]
                 },
                 "stop_reason": "completed",
+                "compression_events": [],
+                "context_tokens": None,
+                "context_source": None,
             },
-        }
+            "context_tokens": 123,
+            "context_source": "estimated",
+        },
+        connection=None,
     )
     assert session.state.messages.messages == turn_messages.messages
 
