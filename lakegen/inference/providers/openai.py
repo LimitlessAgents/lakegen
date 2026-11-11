@@ -1,6 +1,7 @@
 import json
 import threading
-from typing import Any, Iterator
+from collections.abc import Iterator
+from typing import Any
 
 import openai
 
@@ -228,13 +229,13 @@ class _OpenAI:
     ) -> Message:
         """Run a non-streaming Responses API call and normalize the result."""
         try:
-            kwargs: dict[str, Any] = dict(
-                model=request.model,
-                instructions=request.system_prompt,
-                input=self._message_to_native(request.messages),
-                temperature=request.temperature,
-                timeout=inactivity_timeout,
-            )
+            kwargs: dict[str, Any] = {
+                "model": request.model,
+                "instructions": request.system_prompt,
+                "input": self._message_to_native(request.messages),
+                "temperature": request.temperature,
+                "timeout": inactivity_timeout,
+            }
             # Omit `tools` entirely when empty: some OpenAI-compatible
             # endpoints reject `tools: null` in a Responses API request.
             native_tools = self._tools_to_native(request.tools)
@@ -289,14 +290,14 @@ class _OpenAI:
         done = threading.Event()
         waiter: threading.Thread | None = None
         try:
-            kwargs: dict[str, Any] = dict(
-                model=request.model,
-                instructions=request.system_prompt,
-                input=self._message_to_native(request.messages),
-                temperature=request.temperature,
-                stream=True,
-                timeout=inactivity_timeout,
-            )
+            kwargs: dict[str, Any] = {
+                "model": request.model,
+                "instructions": request.system_prompt,
+                "input": self._message_to_native(request.messages),
+                "temperature": request.temperature,
+                "stream": True,
+                "timeout": inactivity_timeout,
+            }
             # Omit `tools` entirely when empty: some OpenAI-compatible
             # endpoints reject `tools: null` in a Responses API request.
             native_tools = self._tools_to_native(request.tools)

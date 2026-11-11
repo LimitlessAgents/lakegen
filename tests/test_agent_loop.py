@@ -1,7 +1,7 @@
 """Tests for lakegen.agent.loop.AgentLoop cancel and completion."""
 
-from collections.abc import Iterator
 import threading
+from collections.abc import Iterator
 
 import pytest
 
@@ -12,6 +12,7 @@ from lakegen.agent.model import (
     Conversation,
     StopReason,
 )
+from lakegen.agent.policy import ContextPolicy
 from lakegen.inference.model import (
     ChatRequest,
     Message,
@@ -19,7 +20,6 @@ from lakegen.inference.model import (
     StreamChunk,
 )
 from lakegen.session.context import Compression, ContextMeasurement
-from lakegen.agent.policy import ContextPolicy
 from lakegen.tool.model import ToolCall, ToolOutput
 from lakegen.tool.runtime import ToolRuntime
 

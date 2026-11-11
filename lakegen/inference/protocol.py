@@ -1,7 +1,7 @@
-from dataclasses import dataclass
-from typing import Iterator, Protocol, runtime_checkable
-
 import threading
+from collections.abc import Iterator
+from dataclasses import dataclass
+from typing import Protocol, runtime_checkable
 
 from lakegen.inference.model import ChatRequest, Message, StreamChunk
 

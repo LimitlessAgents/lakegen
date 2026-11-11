@@ -108,10 +108,12 @@ class PostgresPersistence:
         parameters: Sequence[object] = (),
     ) -> dict[str, object] | None:
         """Return one row as a dictionary."""
-        with self.transaction() as connection:
-            with connection.cursor(row_factory=dict_row) as cursor:
-                cursor.execute(statement, parameters)
-                return cursor.fetchone()
+        with (
+            self.transaction() as connection,
+            connection.cursor(row_factory=dict_row) as cursor,
+        ):
+            cursor.execute(statement, parameters)
+            return cursor.fetchone()
 
     def fetch_all(
         self,
@@ -119,10 +121,12 @@ class PostgresPersistence:
         parameters: Sequence[object] = (),
     ) -> list[dict[str, object]]:
         """Return all rows as dictionaries."""
-        with self.transaction() as connection:
-            with connection.cursor(row_factory=dict_row) as cursor:
-                cursor.execute(statement, parameters)
-                return cursor.fetchall()
+        with (
+            self.transaction() as connection,
+            connection.cursor(row_factory=dict_row) as cursor,
+        ):
+            cursor.execute(statement, parameters)
+            return cursor.fetchall()
 
     def _store(
         self,

@@ -20,12 +20,15 @@ from lakegen.inference import (
     ChatRequest,
     Message,
     Role,
-    StreamChunk,
     Router,
+    StreamChunk,
+)
+from lakegen.inference import (
     router as default_router,
 )
 from lakegen.tool.model import ToolDefinition, ToolOutput
-from lakegen.tool.runtime import ToolRuntime, runtime as default_tool_runtime
+from lakegen.tool.runtime import ToolRuntime
+from lakegen.tool.runtime import runtime as default_tool_runtime
 
 if TYPE_CHECKING:
     from lakegen.session.context import ContextEngine, ContextMeasurement
@@ -219,10 +222,13 @@ class AgentLoop:
                 streamed_tool_calls = None
                 assistant_appended = False
 
-                def capture_chunk(chunk: StreamChunk) -> None:
+                def capture_chunk(
+                    chunk: StreamChunk,
+                    text_parts: list[str] = streamed_text_parts,
+                ) -> None:
                     nonlocal streamed_tool_calls
                     if chunk.text:
-                        streamed_text_parts.append(chunk.text)
+                        text_parts.append(chunk.text)
                     if chunk.done:
                         streamed_tool_calls = chunk.tool_calls
                     if on_chunk is not None:

@@ -6,8 +6,9 @@ All aggregation and metadata-log interpretation happens here; the catalog only
 fetches raw PyIceberg data.
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
+from itertools import pairwise
 from typing import Any
 
 from pydantic import Field
@@ -71,7 +72,7 @@ def _pick(mapping: dict[str, Any], *keys: str, default=None):
 def _timestamp_iso(timestamp_ms: int | None) -> str | None:
     if timestamp_ms is None:
         return None
-    return datetime.fromtimestamp(timestamp_ms / 1000, tz=timezone.utc).isoformat()
+    return datetime.fromtimestamp(timestamp_ms / 1000, tz=UTC).isoformat()
 
 
 def _spec_definition(spec: dict[str, Any]) -> dict[str, Any]:
@@ -172,7 +173,7 @@ def _field_map(spec: dict[str, Any] | None) -> dict[tuple, dict[str, Any]]:
 def _spec_changes(versions: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Return active-spec changes between consecutive metadata versions."""
     changes: list[dict[str, Any]] = []
-    for older, newer in zip(versions, versions[1:]):
+    for older, newer in pairwise(versions):
         old_id = older["default_spec_id"]
         new_id = newer["default_spec_id"]
         old_fields = _field_map(older["specs"].get(old_id))

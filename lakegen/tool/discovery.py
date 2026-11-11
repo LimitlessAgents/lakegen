@@ -13,6 +13,7 @@ other changes required.
 
 import importlib
 import pkgutil
+
 import lakegen.tool as _root_pkg
 
 

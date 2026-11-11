@@ -14,7 +14,6 @@ from lakegen.core.error.base import BaseError
 from lakegen.core.error.code import ErrorCode
 from lakegen.core.persistence import PostgresPersistence
 from lakegen.session import Environment, SessionManager
-
 from tests.conftest import open_session
 
 
@@ -24,12 +23,12 @@ def registered_catalog():
 
 
 def _config(**overrides) -> AgentConfig:
-    base = dict(
-        model="test-model",
-        system_prompt="test",
-        provider="openai",
-        max_turns=3,
-    )
+    base = {
+        "model": "test-model",
+        "system_prompt": "test",
+        "provider": "openai",
+        "max_turns": 3,
+    }
     base.update(overrides)
     return AgentConfig(**base)
 

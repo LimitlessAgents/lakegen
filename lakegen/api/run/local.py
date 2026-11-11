@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-from collections.abc import Callable
-
 import threading
+from collections.abc import Callable
 
 from lakegen.api.run.runner import AgentEvent, AgentEventType, TurnResult
 from lakegen.core.error.base import BaseError

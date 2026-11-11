@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from enum import StrEnum
 
-from lakegen.tool.model import ToolDefinition, ToolCall
+from lakegen.tool.model import ToolCall, ToolDefinition
 
 
 class Role(StrEnum):

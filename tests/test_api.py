@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
+import threading
 from datetime import datetime
 from unittest.mock import MagicMock
-import threading
 
 import pytest
 from fastapi.testclient import TestClient

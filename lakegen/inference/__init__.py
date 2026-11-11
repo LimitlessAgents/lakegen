@@ -1,5 +1,4 @@
 from lakegen.inference.discovery import discover_providers
-
 from lakegen.inference.model import (
     ChatRequest,
     Message,

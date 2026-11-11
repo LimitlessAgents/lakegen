@@ -1,7 +1,7 @@
 """Tests for lakegen.inference.providers.openai._OpenAI."""
 
-from types import SimpleNamespace
 import threading
+from types import SimpleNamespace
 
 import httpx
 import openai

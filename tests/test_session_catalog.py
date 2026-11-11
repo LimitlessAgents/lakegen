@@ -14,11 +14,10 @@ from lakegen.agent import (
 )
 from lakegen.core.error.base import BaseError
 from lakegen.core.error.code import ErrorCode
-from lakegen.inference import Message, Role
 from lakegen.core.persistence import PostgresPersistence
+from lakegen.inference import Message, Role
 from lakegen.session import Environment, SessionManager
 from lakegen.session.context import ContextMeasurement
-
 from tests.conftest import open_session
 
 

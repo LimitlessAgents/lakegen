@@ -1,8 +1,7 @@
 import random as random_module
+import threading
 import time
 from collections.abc import Callable, Iterator
-
-import threading
 
 from lakegen.core.error.base import BaseError
 from lakegen.core.error.code import ErrorCode
@@ -10,6 +9,8 @@ from lakegen.inference.model import ChatRequest, Message, StreamChunk
 from lakegen.inference.policy import InferencePolicy
 from lakegen.inference.registry import (
     InferenceRegistry,
+)
+from lakegen.inference.registry import (
     registry as inference_registry,
 )
 

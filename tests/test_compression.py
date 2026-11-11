@@ -8,7 +8,6 @@ from lakegen.core.persistence import PostgresPersistence
 from lakegen.inference import Message, Role
 from lakegen.session import Environment, Session, SessionManager
 from lakegen.session.context import Compression, ContextMeasurement
-
 from tests.conftest import open_session
 
 

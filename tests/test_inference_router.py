@@ -1,7 +1,7 @@
 """Tests for lakegen.inference.router.Router."""
 
-from collections.abc import Iterator
 import threading
+from collections.abc import Iterator
 
 import pytest
 

@@ -7,7 +7,6 @@ from lakegen.core.error.base import BaseError
 from lakegen.core.error.code import ErrorCode
 from lakegen.core.persistence.repository.base import Repository
 
-
 _IDENTITY_FIELDS = frozenset({"name", "lakehouse", "catalog_type"})
 _SENSITIVE_FIELDS = frozenset(
     {

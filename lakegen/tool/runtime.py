@@ -7,7 +7,8 @@ from lakegen.core.catalog.service import CatalogService, catalog_service
 from lakegen.core.error.base import BaseError
 from lakegen.core.error.code import ErrorCode
 from lakegen.tool.model import ToolCall, ToolOutput
-from lakegen.tool.registry import ToolRegistry, registry as default_registry
+from lakegen.tool.registry import ToolRegistry
+from lakegen.tool.registry import registry as default_registry
 
 
 class ToolRuntime:

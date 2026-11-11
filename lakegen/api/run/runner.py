@@ -1,11 +1,10 @@
 from __future__ import annotations
 
+import threading
 from collections.abc import Callable
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any, Protocol, runtime_checkable
-
-import threading
 
 from lakegen.agent import StopReason
 from lakegen.session.model import AgentTurnInfo, SessionInfo

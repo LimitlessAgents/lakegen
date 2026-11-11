@@ -11,7 +11,12 @@ from fastapi import APIRouter, Depends, Query, Request
 from sse_starlette.sse import EventSourceResponse
 
 from lakegen.api.auth.authenticator import Principal
-from lakegen.api.deps import AppState, get_agent_runner, get_app_state, require_principal
+from lakegen.api.deps import (
+    AppState,
+    get_agent_runner,
+    get_app_state,
+    require_principal,
+)
 from lakegen.api.errors import error_body_for
 from lakegen.api.responses import SERVICE_ERROR_RESPONSES
 from lakegen.api.run.runner import AgentEvent, AgentEventType, AgentRunner

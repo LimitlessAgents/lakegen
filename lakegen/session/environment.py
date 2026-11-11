@@ -6,6 +6,8 @@ from lakegen.agent.policy import ContextPolicy
 from lakegen.core.catalog.service import CatalogService, catalog_service
 from lakegen.core.persistence import (
     PostgresPersistence,
+)
+from lakegen.core.persistence import (
     persistence as persistence_def,
 )
 from lakegen.core.persistence.repository.agent_turn_repository import (
@@ -19,12 +21,18 @@ from lakegen.core.persistence.repository.session_repository import (
 from lakegen.inference import (
     InferenceRegistry,
     Router,
+)
+from lakegen.inference import (
     registry as inference_reg,
+)
+from lakegen.inference import (
     router as inference_rout,
 )
 from lakegen.session.context import ContextEngine
 from lakegen.tool import (
     ToolRegistry,
+)
+from lakegen.tool import (
     registry as tool_reg,
 )
 

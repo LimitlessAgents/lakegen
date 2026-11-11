@@ -1,8 +1,8 @@
-from typing import Callable
+from collections.abc import Callable
 
 from lakegen.core.error.base import BaseError
 from lakegen.core.error.code import ErrorCode
-from lakegen.tool.model import ToolDefinition, ToolArguments
+from lakegen.tool.model import ToolArguments, ToolDefinition
 
 
 class ToolRegistry:

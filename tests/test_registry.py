@@ -6,7 +6,6 @@ from lakegen.core.error.base import BaseError
 from lakegen.core.error.code import ErrorCode
 from lakegen.tool.registry import ToolRegistry
 
-
 # ---------------------------------------------------------------------------
 # Minimal arguments model that satisfies the ToolArguments protocol
 # ---------------------------------------------------------------------------

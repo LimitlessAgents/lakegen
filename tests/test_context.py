@@ -2,9 +2,9 @@ import threading
 from unittest.mock import MagicMock
 
 from lakegen.agent.model import CompressionScope, Conversation
+from lakegen.agent.policy import ContextPolicy, TurnCompressionState
 from lakegen.inference import Message, Role, StreamChunk, TokenUsage
 from lakegen.session.context import ContextEngine
-from lakegen.agent.policy import ContextPolicy, TurnCompressionState
 from lakegen.tool.model import ToolCall
 
 

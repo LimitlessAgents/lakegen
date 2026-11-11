@@ -10,7 +10,6 @@ from lakegen.tool.model import ToolCall
 from lakegen.tool.registry import ToolRegistry
 from lakegen.tool.runtime import ToolRuntime
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------

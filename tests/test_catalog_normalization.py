@@ -173,8 +173,9 @@ def test_get_table_metadata_includes_full_metadata_when_available():
 # ---------------------------------------------------------------------------
 
 def test_inspect_snapshots_returns_json_rows():
-    import pyarrow as pa
     from datetime import datetime
+
+    import pyarrow as pa
 
     cat = _make_catalog()
     mock_table = MagicMock()
@@ -209,8 +210,9 @@ def test_inspect_snapshots_returns_json_rows():
 
 
 def test_inspect_partitions_returns_raw_json_rows():
-    import pyarrow as pa
     from datetime import date
+
+    import pyarrow as pa
 
     cat = _make_catalog()
     mock_table = MagicMock()
