@@ -35,7 +35,7 @@ def test_create_inserts_json_result() -> None:
 
 
 def test_create_requires_object_result() -> None:
-    with pytest.raises(ValueError, match="result"):
+    with pytest.raises(TypeError, match="result"):
         AgentTurnRepository(MagicMock(spec=PostgresPersistence)).create(
             {
                 "session_id": "session-1",

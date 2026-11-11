@@ -316,14 +316,14 @@ class SessionManager:
     def _created_at(row: dict[str, object]) -> datetime:
         created_at = row["created_at"]
         if not isinstance(created_at, datetime):
-            raise RuntimeError("Stored session created_at must be a datetime.")
+            raise TypeError("Stored session created_at must be a datetime.")
         return created_at
 
     @staticmethod
     def _agent_turn_info(row: dict[str, object]) -> AgentTurnInfo:
         result = row["result"]
         if not isinstance(result, dict):
-            raise RuntimeError("Stored agent turn result must be an object.")
+            raise TypeError("Stored agent turn result must be an object.")
         return AgentTurnInfo(
             id=str(row["id"]),
             created_at=SessionManager._created_at(row),

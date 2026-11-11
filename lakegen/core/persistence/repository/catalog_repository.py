@@ -67,9 +67,9 @@ class CatalogRepository(Repository):
         config = row["config"]
         credentials = row["credentials"]
         if not isinstance(config, Mapping):
-            raise RuntimeError("Stored catalog config must be an object.")
+            raise TypeError("Stored catalog config must be an object.")
         if not isinstance(credentials, Mapping):
-            raise RuntimeError("Stored catalog credentials must be an object.")
+            raise TypeError("Stored catalog credentials must be an object.")
         return {
             **config,
             "name": row["name"],
@@ -118,7 +118,7 @@ class CatalogRepository(Repository):
     def _public_metadata(row: Mapping[str, object]) -> dict[str, object]:
         config = row["config"]
         if not isinstance(config, Mapping):
-            raise RuntimeError("Stored catalog config must be an object.")
+            raise TypeError("Stored catalog config must be an object.")
         return {
             "name": row["name"],
             "lakehouse": row["lakehouse"],

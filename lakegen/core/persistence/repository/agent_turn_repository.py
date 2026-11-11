@@ -25,7 +25,7 @@ class AgentTurnRepository(Repository):
         session_id = self._required_string(payload, "session_id")
         result = payload.get("result")
         if not isinstance(result, Mapping):
-            raise ValueError("result must be an object.")
+            raise TypeError("result must be an object.")
 
         row = {
             "session_id": session_id,
