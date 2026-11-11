@@ -26,6 +26,9 @@ packages = ["lakegen"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 
+[tool.ruff.lint]
+ignore = ["BLE001", "S110"]
+
 [dependency-groups]
 dev = [
     "httpx2>=2.13.1",
