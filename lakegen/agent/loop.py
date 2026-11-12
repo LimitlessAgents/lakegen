@@ -366,7 +366,4 @@ class AgentLoop:
         )
 
     def _build_prompt(self, agent_config: AgentConfig, catalog_name: str) -> str:
-        return (
-            f"{agent_config.system_prompt}\n\n"
-            f"Active catalog: {catalog_name!r}. "
-        )
+        return f"{agent_config.system_prompt}\n\nActive catalog: {catalog_name!r}. "
