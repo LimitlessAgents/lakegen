@@ -19,6 +19,20 @@ def test_prompt_reexported_from_package():
     assert "Iceberg" in SYSTEM_PROMPT
 
 
+def test_prompt_sections_follow_intended_order():
+    sections = [
+        "## Who I am",
+        "## What I do",
+        "## How I investigate",
+        "## How I answer",
+        "## When a request is outside my scope",
+        "## When something is unclear, missing, or uncertain",
+        "## What I keep private",
+    ]
+    positions = [SYSTEM_PROMPT.index(section) for section in sections]
+    assert positions == sorted(positions)
+
+
 def test_build_prompt_composes_identity_and_catalog():
     loop = AgentLoop()
     config = AgentConfig(
@@ -30,7 +44,6 @@ def test_build_prompt_composes_identity_and_catalog():
     built = loop._build_prompt(config, "prod")
     assert built.startswith("identity-only\n\n")
     assert "Active catalog: 'prod'" in built
-    assert "Do not ask which catalog to use." in built
 
 
 class _CapturingRouter:

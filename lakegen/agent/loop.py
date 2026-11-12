@@ -369,6 +369,4 @@ class AgentLoop:
         return (
             f"{agent_config.system_prompt}\n\n"
             f"Active catalog: {catalog_name!r}. "
-            "All tools operate on this catalog. "
-            "Do not ask which catalog to use."
         )
