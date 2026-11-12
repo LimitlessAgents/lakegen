@@ -1,38 +1,47 @@
 <p align="center">
-  <img src="static/logo.png" alt="LakeGen logo" width="160" />
+  <img src="apps/web/public/images/brand/lakegen-mark-dark.svg" alt="LakeGen logo" width="140" />
 </p>
 
 <h1 align="center">LakeGen</h1>
 
+<h3 align="center">Ask. Understand. Operate.</h3>
+
 <p align="center">
-  <strong>The AI agent for your lakehouse.</strong><br />
-  Understand your data environment, preserve operational context, and carry
-  out lakehouse work through one interface.
+  The AI agent for your Apache Iceberg™ lakehouse.
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Python-3.13%2B-3776AB?style=flat-square&amp;logo=python&amp;logoColor=white" alt="Python 3.13+" />
-  <img src="https://img.shields.io/badge/Docker-Compose-2496ED?style=flat-square&amp;logo=docker&amp;logoColor=white" alt="Docker Compose" />
+  <a href="https://github.com/YOUR_USERNAME/lakegen/stargazers"><img src="https://img.shields.io/github/stars/YOUR_USERNAME/lakegen?style=flat-square&color=C6FF3D&labelColor=1B1033" alt="GitHub stars" /></a>
+  <img src="https://img.shields.io/badge/Python-3.13%2B-3776AB?style=flat-square&logo=python&logoColor=white" alt="Python 3.13+" />
+  <img src="https://img.shields.io/badge/Docker-Compose-2496ED?style=flat-square&logo=docker&logoColor=white" alt="Docker Compose" />
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-2F855A?style=flat-square" alt="MIT License" /></a>
 </p>
 
 <p align="center">
-  <a href="#overview">Overview</a> ·
-  <a href="#what-lakegen-helps-you-do">What it helps you do</a> ·
-  <a href="#quickstart">Quickstart</a> ·
-  <a href="#development">Development</a> ·
-  <a href="#project-status">Status</a> ·
-  <a href="#contributing">Contributing</a>
+  <a href="#-quick-start"><strong>Quick Start</strong></a> ·
+  <a href="#-what-you-can-ask">What you can ask</a> ·
+  <a href="#-how-it-works">How it works</a> ·
+  <a href="#-roadmap">Roadmap</a> ·
+  <a href="#-contributing">Contributing</a>
 </p>
 
----
+<p align="center">
+  <video
+    src="assets/videos/lakegen-demo.mp4"
+    width="820"
+    controls
+    autoplay
+    loop
+    muted
+    playsinline
+  >
+    <a href="assets/videos/lakegen-demo.mp4">Watch the LakeGen demo</a>
+  </video>
+</p>
 
-## Overview
-
-LakeGen is an AI layer for managing lakehouses built on
-[Apache Iceberg™](https://iceberg.apache.org/). It combines lakehouse-aware
-tools, an agent runtime, and a streamed web interface so teams can investigate,
-understand, and operate their data environment through one consistent workflow.
+Debugging an Iceberg table usually means six tabs of metadata queries.
+LakeGen replaces that with one conversation: it investigates, explains what
+it found, and suggests what to do next.
 
 <p align="center">
   <strong>AWS Glue</strong> &nbsp;·&nbsp;
@@ -40,55 +49,37 @@ understand, and operate their data environment through one consistent workflow.
   <strong>SQL-backed catalogs</strong>
 </p>
 
-## What LakeGen helps you do
+> ⭐ If LakeGen saves you time, a star helps other data engineers find it.
 
-<table>
-  <tr>
-    <td width="50%" valign="top">
-      <strong>Understand your lakehouse</strong><br />
-      Get answers grounded in the structure and live state of your data
-      environment.
-    </td>
-    <td width="50%" valign="top">
-      <strong>Investigate issues faster</strong><br />
-      Examine tables, partitions, manifests, files, and references without
-      moving between specialized tools.
-    </td>
-  </tr>
-  <tr>
-    <td width="50%" valign="top">
-      <strong>Trace how data changed</strong><br />
-      Follow snapshots and table history to understand what changed and what
-      state came before.
-    </td>
-    <td width="50%" valign="top">
-      <strong>Preserve operational context</strong><br />
-      Continue work across turns without repeatedly explaining your catalog or
-      investigation.
-    </td>
-  </tr>
-</table>
+---
 
-## Quickstart
+## 🎬 LakeGen Demo
 
-> [!TIP]
-> This path runs the complete LakeGen stack. You only need Docker and an
-> inference API key.
 
-### 1. Prerequisites
 
-- [Docker](https://docs.docker.com/get-docker/)
-- An OpenAI or OpenAI-compatible API key
+## The problem
 
-### 2. Configure inference
+Your lakehouse knows exactly why it's slow. It just can't tell you.
 
-From the repository root:
+Iceberg tables get slow. Costs creep up. Nobody knows why. The evidence is
+all there, buried in snapshots, manifests, and partition stats. Finding it
+takes a dozen metadata queries and a lot of guessing, and the one person who
+knows how is always busy.
+
+LakeGen turns that investigation into a conversation. 👇
+
+## ⚡ Quick Start
+
+Run the complete stack in about 2 minutes.
+
+**You'll need:** [Docker](https://docs.docker.com/get-docker/) and an OpenAI
+or OpenAI-compatible API key.
+
+**1. Configure inference**
 
 ```bash
 cp .env.example .env
 ```
-
-Set your key and configuration in `.env`:
 
 ```dotenv
 OPENAI_API_KEY=your-api-key
@@ -99,47 +90,146 @@ OPENAI_MODEL=gpt-4o-mini
 | Variable | Required | Description |
 |---|---|---|
 | `OPENAI_API_KEY` | Yes | API key used for inference. |
-| `OPENAI_BASE_URL` | No | Custom OpenAI-compatible API endpoint, including OpenRouter or a proxy. |
-| `OPENAI_MODEL` | No | Default model used when no model is explicitly specified. Defaults to `gpt-4o-mini`. |
+| `OPENAI_BASE_URL` | No | Custom OpenAI-compatible endpoint (OpenRouter, a proxy, or a self-hosted model server). |
+| `OPENAI_MODEL` | No | Default model. Defaults to `gpt-4o-mini`. |
 
-> [!NOTE]
-> Users routing through OpenRouter should configure both `OPENAI_BASE_URL` and an appropriate `OPENAI_MODEL` for their chosen endpoint.
-
-### 3. Start LakeGen
+**2. Start LakeGen**
 
 ```bash
 docker compose up -d
 ```
 
-Docker starts PostgreSQL, the API, and the web application.
+Docker starts PostgreSQL, the API, and the web app. Once the services are
+healthy, open **[http://localhost:8080](http://localhost:8080)** and try:
 
-> [!IMPORTANT]
-> LakeGen is ready at [http://localhost:8080](http://localhost:8080) once the
-> services are healthy.
+> *"Which tables have a small-file problem?"*
+> *"Why is `orders` slow?"*
+> *"What changed in the last 24 hours?"*
 
-To stop LakeGen, run `docker compose down`. PostgreSQL data remains in the
+Stop it with `docker compose down`. Your data stays in the
 `lakegen_pg_data` Docker volume.
 
-## Development
+<details>
+<summary><strong>Something not working?</strong></summary>
+
+<br />
+
+| Problem | Fix |
+|---|---|
+| Page won't load | Wait for healthy services: `docker compose ps` |
+| Errors or empty answers | Check logs: `docker compose logs -f` |
+| Model errors | Confirm `OPENAI_API_KEY`, `OPENAI_MODEL`, and `OPENAI_BASE_URL` in `.env`, then `docker compose up -d` again |
+
+Still stuck? [Open an issue](https://github.com/YOUR_USERNAME/lakegen/issues).
+
+</details>
+
+## 🔎 What you can ask
+
+| Ask this | LakeGen does this |
+|---|---|
+| *"Why is `orders` slow?"* | Examines files, manifests, and partitions, then explains the likely cause with evidence |
+| *"Which tables have a small-file problem?"* | Surveys file layout across your tables and flags the outliers |
+| *"What changed in the last 24 hours?"* | Walks snapshots and table history to show what changed and what came before |
+| *"What's on the `audit` branch?"* | Inspects Iceberg references such as branches and tags |
+| *"Pick up where we left off."* | Continues the investigation with context preserved across turns |
+
+**Also built in**
+
+-  **Iceberg-native tools:** reads tables, partitions, manifests, files, and snapshots directly, not just SQL results
+-  **Streams live:** watch the agent investigate step by step
+-  **Remembers context:** conversations and turns persist in PostgreSQL
+-  **Bring your own model:** any OpenAI-compatible endpoint
+
+##  Why not just use…?
+
+| | **LakeGen** | Generic "chat with your data" | Catalog / dashboard UIs | DIY scripts & notebooks |
+|---|---|---|---|---|
+| Understands Iceberg internals (snapshots, manifests) | ✅ | ❌ SQL only | ⚠️ Partial | ✅ If you write it |
+| Explains *why*, not just *what* | ✅ | ⚠️ | ❌ | ⚠️ Manual |
+| Keeps context across a conversation | ✅ | ⚠️ | ❌ | ❌ |
+| Streams its investigation live | ✅ | ⚠️ | ❌ | ❌ |
+| Takes actions with approval | 🚧 Planned | ❌ | ⚠️ Limited | ✅ If you write it |
+| Open source and self-hosted | ✅ | Varies | Varies | ✅ |
+
+**Pick something else if** you only need dashboards on query metrics, or you
+want a fully managed service with SLAs. LakeGen is for teams who run Iceberg
+themselves and want answers without the archaeology.
+
+##  Safe by design
+
+LakeGen is built so you can point it at a real lakehouse without worrying.
+
+-  **Read-only today:** the current release investigates and explains. It does not change your tables.
+-  **Self-hosted:** runs in your environment, and conversations are stored in your own PostgreSQL.
+- **You choose the model:** prompts and tool results go only to the endpoint you configure. Point it at a self-hosted OpenAI-compatible server to keep everything inside your network.
+- **Least privilege:** we recommend read-only credentials for your catalog and storage.
+- **Coming next:** write actions will be opt-in and gated behind explicit approval.
+
+## How it works
+
+```mermaid
+flowchart LR
+    U[" You<br/>(web app)"] -->|question| A["Agent runtime<br/>plans and reasons"]
+    A -->|tool calls| T["🔧 Lakehouse tools<br/>tables · partitions<br/>manifests · snapshots"]
+    T -->|reads metadata| C[(" Iceberg catalog<br/>Glue · REST · SQL")]
+    A <-->|prompts| M["Your LLM<br/>(OpenAI-compatible)"]
+    A <-->|context + turns| P[("🐘 PostgreSQL")]
+    A -->|streams steps + evidence| U
+```
+
+1. **You ask** in the web app.
+2. **The agent plans** and calls Iceberg-aware tools against your live catalog.
+3. **You watch it work**, streamed step by step, with context saved for the next turn.
+
+## 🗺️ Roadmap
+
+**Shipped**
+- [x] Read-only lakehouse investigation
+- [x] Persistent conversational context
+- [x] Streamed agent execution
+- [x] PostgreSQL-backed catalog and turn persistence
+- [x] AWS Glue, Iceberg REST, and SQL-backed catalog support
+
+**Next**
+- [ ] Approval-gated actions (compaction, snapshot expiry)
+- [ ] Bundled sample warehouse for a zero-setup demo
+- [ ] Scheduled health reports
+- [ ] Plugin API for custom tools
+
+** Ideas?** Vote with 👍 on [open feature requests](https://github.com/YOUR_USERNAME/lakegen/issues?q=label%3Aenhancement).
+
+## 🤝 Contributing
+
+LakeGen is built in the open, and contributions, bug reports, and design
+proposals are welcome. To keep work coordinated, **every change starts with a
+GitHub issue and maintainer approval** before implementation.
+
+**Easy ways to start**
+- Pick a [good first issue](https://github.com/YOUR_USERNAME/lakegen/issues?q=label%3A%22good+first+issue%22)
+- Report a bug, even a small one
+- Try it on your own lakehouse and tell us what broke
+- Improve a doc or example
+
+Read [CONTRIBUTING.md](CONTRIBUTING.md) for the full workflow.
 
 <details>
 <summary><strong>Run LakeGen locally with hot reload</strong></summary>
 
 <br />
 
-**Requirements:** Python 3.13+, [uv](https://docs.astral.sh/uv/), Node.js,
-npm, PostgreSQL, and an inference API key.
+**Requirements:** Python 3.13+, [uv](https://docs.astral.sh/uv/), Node.js, npm,
+PostgreSQL, and an inference API key.
 
-1. Copy `.env.example` to `.env`.
-2. Set `OPENAI_API_KEY` and `LAKEGEN_DATABASE_URL`.
-3. Start the API from the repository root:
+1. Copy `.env.example` to `.env` and set `OPENAI_API_KEY` and `LAKEGEN_DATABASE_URL`.
+2. Start the API from the repository root:
 
    ```bash
    uv sync
    uv run uvicorn lakegen.api.app:app --reload
    ```
 
-4. Start the web application in a second terminal:
+3. Start the web app in a second terminal:
 
    ```bash
    cd apps/web
@@ -148,27 +238,14 @@ npm, PostgreSQL, and an inference API key.
    ```
 
 Open [http://localhost:5173](http://localhost:5173). The API runs at
-[http://localhost:8000](http://localhost:8000), with health status available
-at [`/health`](http://localhost:8000/health). Vite proxies `/v1` and `/health`
+[http://localhost:8000](http://localhost:8000), with health status at
+[`/health`](http://localhost:8000/health). Vite proxies `/v1` and `/health`
 to the API during development.
 
 </details>
 
-## Project status
-
-> [!NOTE]
-> The current release supports read-only lakehouse investigation, persistent
-> conversational context, streamed agent execution, and PostgreSQL-backed
-> catalog and turn persistence.
-
-## Contributing
-
-Contributions, bug reports, and design proposals are welcome. To keep work
-coordinated, all changes begin with a GitHub issue and maintainer approval
-before implementation.
-
-Read [CONTRIBUTING.md](CONTRIBUTING.md) for the full workflow.
-
-## License
+## 📄 License
 
 LakeGen is available under the [MIT License](LICENSE).
+
+---
