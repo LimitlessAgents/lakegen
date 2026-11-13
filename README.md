@@ -11,7 +11,6 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/YOUR_USERNAME/lakegen/stargazers"><img src="https://img.shields.io/github/stars/YOUR_USERNAME/lakegen?style=flat-square&color=C6FF3D&labelColor=1B1033" alt="GitHub stars" /></a>
   <img src="https://img.shields.io/badge/Python-3.13%2B-3776AB?style=flat-square&logo=python&logoColor=white" alt="Python 3.13+" />
   <img src="https://img.shields.io/badge/Docker-Compose-2496ED?style=flat-square&logo=docker&logoColor=white" alt="Docker Compose" />
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-2F855A?style=flat-square" alt="MIT License" /></a>
@@ -72,19 +71,27 @@ LakeGen turns that investigation into a conversation. 👇
 
 Run the complete stack in about 2 minutes.
 
-**You'll need:** [Docker](https://docs.docker.com/get-docker/) and an OpenAI
-or OpenAI-compatible API key.
+**Prerequisites:**
+ - [Docker](https://docs.docker.com/get-docker/) 
+ - OpenAI-compatible API key.
 
-**1. Configure inference**
+**1. Clone the repository**
+```md
+git clone https://github.com/LimitlessAgents/lakegen.git
+```
+
+**2. Configure inference**
 
 ```bash
 cp .env.example .env
 ```
 
+Set the following values in .env
+
 ```dotenv
 OPENAI_API_KEY=your-api-key
-# OPENAI_BASE_URL=https://your-openai-compatible-endpoint/v1
 OPENAI_MODEL=gpt-4o-mini
+OPENAI_BASE_URL=https://your-openai-compatible-endpoint/v1
 ```
 
 | Variable | Required | Description |
@@ -93,18 +100,14 @@ OPENAI_MODEL=gpt-4o-mini
 | `OPENAI_BASE_URL` | No | Custom OpenAI-compatible endpoint (OpenRouter, a proxy, or a self-hosted model server). |
 | `OPENAI_MODEL` | No | Default model. Defaults to `gpt-4o-mini`. |
 
-**2. Start LakeGen**
+**3. Start LakeGen**
 
 ```bash
 docker compose up -d
 ```
 
 Docker starts PostgreSQL, the API, and the web app. Once the services are
-healthy, open **[http://localhost:8080](http://localhost:8080)** and try:
-
-> *"Which tables have a small-file problem?"*
-> *"Why is `orders` slow?"*
-> *"What changed in the last 24 hours?"*
+healthy, access LakeGen at **[http://localhost:8080](http://localhost:8080)**
 
 Stop it with `docker compose down`. Your data stays in the
 `lakegen_pg_data` Docker volume.
@@ -120,26 +123,9 @@ Stop it with `docker compose down`. Your data stays in the
 | Errors or empty answers | Check logs: `docker compose logs -f` |
 | Model errors | Confirm `OPENAI_API_KEY`, `OPENAI_MODEL`, and `OPENAI_BASE_URL` in `.env`, then `docker compose up -d` again |
 
-Still stuck? [Open an issue](https://github.com/YOUR_USERNAME/lakegen/issues).
+Still stuck? [Open an issue](https://github.com/LimitlessAgents/lakegen/issues/new).
 
 </details>
-
-## 🔎 What you can ask
-
-| Ask this | LakeGen does this |
-|---|---|
-| *"Why is `orders` slow?"* | Examines files, manifests, and partitions, then explains the likely cause with evidence |
-| *"Which tables have a small-file problem?"* | Surveys file layout across your tables and flags the outliers |
-| *"What changed in the last 24 hours?"* | Walks snapshots and table history to show what changed and what came before |
-| *"What's on the `audit` branch?"* | Inspects Iceberg references such as branches and tags |
-| *"Pick up where we left off."* | Continues the investigation with context preserved across turns |
-
-**Also built in**
-
--  **Iceberg-native tools:** reads tables, partitions, manifests, files, and snapshots directly, not just SQL results
--  **Streams live:** watch the agent investigate step by step
--  **Remembers context:** conversations and turns persist in PostgreSQL
--  **Bring your own model:** any OpenAI-compatible endpoint
 
 ##  Why not just use…?
 
@@ -163,41 +149,7 @@ LakeGen is built so you can point it at a real lakehouse without worrying.
 -  **Read-only today:** the current release investigates and explains. It does not change your tables.
 -  **Self-hosted:** runs in your environment, and conversations are stored in your own PostgreSQL.
 - **You choose the model:** prompts and tool results go only to the endpoint you configure. Point it at a self-hosted OpenAI-compatible server to keep everything inside your network.
-- **Least privilege:** we recommend read-only credentials for your catalog and storage.
 - **Coming next:** write actions will be opt-in and gated behind explicit approval.
-
-## How it works
-
-```mermaid
-flowchart LR
-    U[" You<br/>(web app)"] -->|question| A["Agent runtime<br/>plans and reasons"]
-    A -->|tool calls| T["🔧 Lakehouse tools<br/>tables · partitions<br/>manifests · snapshots"]
-    T -->|reads metadata| C[(" Iceberg catalog<br/>Glue · REST · SQL")]
-    A <-->|prompts| M["Your LLM<br/>(OpenAI-compatible)"]
-    A <-->|context + turns| P[("🐘 PostgreSQL")]
-    A -->|streams steps + evidence| U
-```
-
-1. **You ask** in the web app.
-2. **The agent plans** and calls Iceberg-aware tools against your live catalog.
-3. **You watch it work**, streamed step by step, with context saved for the next turn.
-
-## 🗺️ Roadmap
-
-**Shipped**
-- [x] Read-only lakehouse investigation
-- [x] Persistent conversational context
-- [x] Streamed agent execution
-- [x] PostgreSQL-backed catalog and turn persistence
-- [x] AWS Glue, Iceberg REST, and SQL-backed catalog support
-
-**Next**
-- [ ] Approval-gated actions (compaction, snapshot expiry)
-- [ ] Bundled sample warehouse for a zero-setup demo
-- [ ] Scheduled health reports
-- [ ] Plugin API for custom tools
-
-** Ideas?** Vote with 👍 on [open feature requests](https://github.com/YOUR_USERNAME/lakegen/issues?q=label%3Aenhancement).
 
 ## 🤝 Contributing
 
@@ -206,12 +158,12 @@ proposals are welcome. To keep work coordinated, **every change starts with a
 GitHub issue and maintainer approval** before implementation.
 
 **Easy ways to start**
-- Pick a [good first issue](https://github.com/YOUR_USERNAME/lakegen/issues?q=label%3A%22good+first+issue%22)
+- Pick a [good first issue](https://github.com/LimitlessAgents/lakegen/issues?q=is%3Aissue+state%3Aopen+label%3A%22good+first+issue%22)
 - Report a bug, even a small one
 - Try it on your own lakehouse and tell us what broke
 - Improve a doc or example
 
-Read [CONTRIBUTING.md](CONTRIBUTING.md) for the full workflow.
+Read [CONTRIBUTING.md](https://github.com/LimitlessAgents/lakegen/blob/main/CONTRIBUTING.md) for the full workflow.
 
 <details>
 <summary><strong>Run LakeGen locally with hot reload</strong></summary>
