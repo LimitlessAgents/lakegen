@@ -18,9 +18,6 @@
 
 <p align="center">
   <a href="#-quick-start"><strong>Quick Start</strong></a> ·
-  <a href="#-what-you-can-ask">What you can ask</a> ·
-  <a href="#-how-it-works">How it works</a> ·
-  <a href="#-roadmap">Roadmap</a> ·
   <a href="#-contributing">Contributing</a>
 </p>
 
@@ -51,10 +48,6 @@ it found, and suggests what to do next.
 > ⭐ If LakeGen saves you time, a star helps other data engineers find it.
 
 ---
-
-## 🎬 LakeGen Demo
-
-
 
 ## The problem
 
