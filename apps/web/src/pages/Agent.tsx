@@ -92,11 +92,13 @@ export function Agent() {
       <AgentHeader />
 
       {isLanding ? (
-        <div className="flex min-h-0 flex-1 flex-col items-center justify-center px-4 pb-[12vh] sm:px-8">
-          <div className="w-full max-w-[760px]">
-            <AgentEmptyState />
-            <div className="mt-8">
-              <Composer variant="landing" />
+        <div className="lg-scroll flex min-h-0 flex-1 overflow-y-auto">
+          <div className="flex min-h-full w-full flex-col items-center justify-center px-4 pb-[12vh] pt-6 sm:px-8">
+            <div className="w-full max-w-[760px]">
+              <AgentEmptyState />
+              <div className="mt-8">
+                <Composer variant="landing" />
+              </div>
             </div>
           </div>
         </div>
