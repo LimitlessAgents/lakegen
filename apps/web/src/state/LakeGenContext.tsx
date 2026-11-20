@@ -230,6 +230,18 @@ export function LakeGenProvider({ children }: { children: React.ReactNode }) {
   const hasLoadedCatalogsRef = useRef(false);
   const activeCatalogNameRef = useRef<string | null>(activeCatalogName);
   const sessionsRef = useRef<SessionResponse[]>([]);
+  // Titles known locally, keyed by session id. A ``session_named`` event can
+  // arrive before the session is in the list, and a list response served before
+  // the naming write still carries ``name: null``; merging this map on every
+  // commit keeps the title from being dropped or clobbered.
+  const sessionNamesRef = useRef<Map<string, string>>(new Map());
+  // Sessions the user renamed by hand in this tab. Their local title outranks
+  // the server's automatic one, which can arrive late over SSE or in a list
+  // response that raced the rename.
+  const manualNamesRef = useRef<Set<string>>(new Set());
+  // One in-flight rename per session: the editor closes before the request
+  // finishes, so later renames queue behind earlier ones.
+  const renameChainsRef = useRef<Map<string, Promise<boolean>>>(new Map());
   const sessionsRevisionRef = useRef(0);
   const sessionsLoadingMoreRef = useRef(false);
   const historyMoreInFlightSessionRef = useRef<string | null>(null);
@@ -272,8 +284,23 @@ export function LakeGenProvider({ children }: { children: React.ReactNode }) {
   }, [updateConversations]);
 
   const replaceSessions = useCallback((next: SessionResponse[]) => {
-    sessionsRef.current = next;
-    setSessions(next);
+    const knownNames = sessionNamesRef.current;
+    const manualNames = manualNamesRef.current;
+    const merged = next.map((session) => {
+      const known = knownNames.get(session.id);
+      // A manual rename outranks the automatic title the server may still
+      // return while it races the rename request.
+      if (known !== undefined && manualNames.has(session.id)) {
+        return { ...session, name: known };
+      }
+      if (session.name != null) {
+        knownNames.set(session.id, session.name);
+        return session;
+      }
+      return known === undefined ? session : { ...session, name: known };
+    });
+    sessionsRef.current = merged;
+    setSessions(merged);
   }, []);
 
   const commitSessions = useCallback((next: SessionResponse[]) => {
@@ -312,29 +339,49 @@ export function LakeGenProvider({ children }: { children: React.ReactNode }) {
 
   const renameSession = useCallback(
     async (session: SessionResponse, name: string): Promise<boolean> => {
+      const sessionId = session.id;
       const trimmed = name.trim();
       if (!trimmed || trimmed === (session.name ?? '').trim()) return false;
       const previousName = session.name;
+      manualNamesRef.current.add(sessionId);
       // Patch the list in place so the new title shows before the round trip;
       // revert just this row if the server rejects the rename.
       const applyName = (value: string | null) => {
+        if (value === null) sessionNamesRef.current.delete(sessionId);
+        else sessionNamesRef.current.set(sessionId, value);
         commitSessions(
           sessionsRef.current.map((item) =>
-            item.id === session.id ? { ...item, name: value } : item,
+            item.id === sessionId ? { ...item, name: value } : item,
           ),
         );
       };
       applyName(trimmed);
+      // Only a request whose name is still the displayed one may touch it, so
+      // an older failure cannot undo a newer rename.
+      const ownsName = () => sessionNamesRef.current.get(sessionId) === trimmed;
+      const chains = renameChainsRef.current;
+      const previous = chains.get(sessionId) ?? Promise.resolve(false);
+      const request: Promise<boolean> = previous.then(async () => {
+        try {
+          await renameSessionRequest(sessionId, trimmed);
+          // A list refresh that raced the PATCH can restore the old title; claim
+          // the name back unless a newer rename has superseded this one.
+          if (ownsName()) applyName(trimmed);
+          return true;
+        } catch (error) {
+          if (ownsName()) applyName(previousName);
+          notify({
+            tone: 'error',
+            message: error instanceof Error ? error.message : 'Failed to rename session',
+          });
+          return false;
+        }
+      });
+      chains.set(sessionId, request);
       try {
-        await renameSessionRequest(session.id, trimmed);
-        return true;
-      } catch (error) {
-        applyName(previousName);
-        notify({
-          tone: 'error',
-          message: error instanceof Error ? error.message : 'Failed to rename session',
-        });
-        return false;
+        return await request;
+      } finally {
+        if (chains.get(sessionId) === request) chains.delete(sessionId);
       }
     },
     [commitSessions, notify],
@@ -771,15 +818,15 @@ export function LakeGenProvider({ children }: { children: React.ReactNode }) {
                 text: m.text + event.data.text,
               }));
             } else if (event.type === 'session_named') {
-              // The server named the session from this turn's first message.
-              // Patch the list in place instead of refetching.
-              commitSessions(
-                sessionsRef.current.map((session) =>
-                  session.id === event.data.id
-                    ? { ...session, name: event.data.name }
-                    : session,
-                ),
-              );
+              // The server titled the session from this turn's first message.
+              // Record the name before committing: the sessions list may not
+              // contain the row yet, and the commit applies it when it does.
+              // Skip it once the user renamed by hand: the event is queued and
+              // may be stale by the time it reaches the browser.
+              if (!manualNamesRef.current.has(event.data.id)) {
+                sessionNamesRef.current.set(event.data.id, event.data.name);
+                commitSessions(sessionsRef.current);
+              }
             } else if (event.type === 'turn_done') {
               clearRetainedTurns(sessionId);
               updateConversation(conversation.id, (current) => ({
