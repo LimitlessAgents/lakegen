@@ -80,9 +80,10 @@ class SessionRepository(Repository):
     def set_name_if_empty(self, session_id: str, name: str) -> str | None:
         """Claim the name only while the session is unnamed.
 
-        Returns the stored name, or ``None`` when the session already had one.
-        The ``name IS NULL`` guard keeps a background auto-title from
-        overwriting a rename the user made in the meantime.
+        Returns the stored name, or ``None`` when the session already had one
+        (or no longer exists). The ``name IS NULL`` guard makes the claim
+        atomic, so a user rename and the auto-title emitted by the first turn
+        cannot overwrite each other.
         """
         row = self._database.fetch_one(
             """

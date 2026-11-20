@@ -207,7 +207,8 @@ class SessionManager:
     def set_name_if_empty(self, session_id: str, name: str) -> str | None:
         """Store ``name`` only while the session is unnamed.
 
-        Returns the stored name, or ``None`` when a name already existed.
+        Returns the stored name, or ``None`` when a name already existed or the
+        session no longer exists.
         """
         return self.env.session_repository.set_name_if_empty(session_id, name)
 

@@ -72,10 +72,11 @@ class LocalRunAdapter:
         session = self._require_owner(session_id, owner_id)
 
         # Name the session from its first message before inference starts, so
-        # the sidebar shows a title while the turn is still streaming. Only the
-        # first turn writes: the store refuses to overwrite an existing name,
-        # which also means a user rename always wins. A title must never break
-        # an otherwise-successful turn.
+        # the sidebar shows a title while the turn is still streaming. The first
+        # turn that finds the name empty claims it: the store refuses to
+        # overwrite an existing name, so a user rename always wins and a later
+        # turn only titles a session an earlier one left unnamed. A title must
+        # never break an otherwise-successful turn.
         name = derive_session_name(user_text)
         if name:
             try:

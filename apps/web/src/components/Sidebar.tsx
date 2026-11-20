@@ -1,7 +1,11 @@
+import { useRef, useState } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
-import { DatabaseIcon, MessagesSquareIcon, PlusIcon } from 'lucide-react';
+import { DatabaseIcon, MessagesSquareIcon, PencilIcon, PlusIcon } from 'lucide-react';
 import { useLakeGen } from '../state/LakeGenContext';
+import type { SessionResponse } from '../api/types';
 import { Button } from './ui/Button';
+
+const SESSION_NAME_MAX_LENGTH = 100;
 
 const items = [
   { to: '/agent', label: 'Agent', icon: MessagesSquareIcon },
@@ -26,14 +30,27 @@ export function Sidebar() {
     loadMoreSessions,
     selectedSessionId,
     selectSession,
+    renameSession,
     newConversation,
   } = useLakeGen();
   const navigate = useNavigate();
   const location = useLocation();
+  const [editing, setEditing] = useState<{ id: string; value: string } | null>(null);
+  const discardOnBlurRef = useRef(false);
 
   function startConversation() {
     newConversation();
     if (location.pathname !== '/agent') navigate('/agent');
+  }
+
+  function startEditing(session: SessionResponse) {
+    discardOnBlurRef.current = false;
+    setEditing({ id: session.id, value: session.name ?? '' });
+  }
+
+  async function submitRename(session: SessionResponse, rawValue: string) {
+    setEditing(null);
+    await renameSession(session, rawValue);
   }
 
   return (
@@ -105,19 +122,59 @@ export function Sidebar() {
                   timeStyle: 'short',
                 });
               const title = session.name?.trim() || fallback;
+              if (editing?.id === session.id) {
+                return (
+                  <input
+                    key={session.id}
+                    autoFocus
+                    value={editing.value}
+                    maxLength={SESSION_NAME_MAX_LENGTH}
+                    aria-label={`Rename ${title}`}
+                    onChange={(event) => setEditing({ id: session.id, value: event.target.value })}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter') {
+                        event.preventDefault();
+                        void submitRename(session, event.currentTarget.value);
+                      } else if (event.key === 'Escape') {
+                        event.preventDefault();
+                        discardOnBlurRef.current = true;
+                        setEditing(null);
+                      }
+                    }}
+                    onBlur={(event) => {
+                      if (discardOnBlurRef.current) {
+                        discardOnBlurRef.current = false;
+                        return;
+                      }
+                      void submitRename(session, event.currentTarget.value);
+                    }}
+                    className="block w-full rounded-md border border-accent/50 bg-panel px-2.5 py-1 text-[12px] text-ink outline-none focus:border-accent"
+                  />
+                );
+              }
               return (
-                <button
-                  key={session.id}
-                  type="button"
-                  onClick={() => void selectSession(session)}
-                  className={`block w-full truncate rounded-md px-2.5 py-1.5 text-left text-[12px] transition-colors ${session.id === selectedSessionId
-                    ? 'bg-accent-soft font-medium text-accent shadow-[inset_2px_0_0_0_theme(colors.accent.DEFAULT)]'
-                    : 'text-ink-muted hover:bg-line/60 hover:text-ink'
-                    }`}
-                  title={title}
-                >
-                  {title}
-                </button>
+                <div key={session.id} className="group relative">
+                  <button
+                    type="button"
+                    onClick={() => void selectSession(session)}
+                    className={`block w-full truncate rounded-md py-1.5 pl-2.5 pr-7 text-left text-[12px] transition-colors ${session.id === selectedSessionId
+                      ? 'bg-accent-soft font-medium text-accent shadow-[inset_2px_0_0_0_theme(colors.accent.DEFAULT)]'
+                      : 'text-ink-muted hover:bg-line/60 hover:text-ink'
+                      }`}
+                    title={title}
+                  >
+                    {title}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => startEditing(session)}
+                    aria-label={`Rename ${title}`}
+                    title="Rename session"
+                    className="absolute right-1 top-1/2 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded text-ink-faint opacity-0 transition-opacity hover:bg-line hover:text-ink focus-visible:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100"
+                  >
+                    <PencilIcon className="h-3 w-3" strokeWidth={2} />
+                  </button>
+                </div>
               );
             })}
             {sessionsError && (

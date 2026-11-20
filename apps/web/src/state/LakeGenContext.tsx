@@ -15,6 +15,7 @@ import {
   listCatalogs,
   listSessions,
   listSessionTurns,
+  renameSession as renameSessionRequest,
 } from '../api/client';
 import { runTurn } from '../api/sse';
 import { readLocal, removeLocal, writeLocal } from '../lib/storage';
@@ -66,6 +67,7 @@ interface LakeGenValue {
   loadMoreSessions: () => Promise<void>;
   selectedSessionId: string | null;
   selectSession: (session: SessionResponse) => Promise<void>;
+  renameSession: (session: SessionResponse, name: string) => Promise<boolean>;
   sessionHistoryLoading: boolean;
   sessionHistoryLoadingMore: boolean;
   sessionHistoryHasMore: boolean;
@@ -307,6 +309,36 @@ export function LakeGenProvider({ children }: { children: React.ReactNode }) {
       setSessionsLoadingMore(false);
     }
   }, [commitSessions]);
+
+  const renameSession = useCallback(
+    async (session: SessionResponse, name: string): Promise<boolean> => {
+      const trimmed = name.trim();
+      if (!trimmed || trimmed === (session.name ?? '').trim()) return false;
+      const previousName = session.name;
+      // Patch the list in place so the new title shows before the round trip;
+      // revert just this row if the server rejects the rename.
+      const applyName = (value: string | null) => {
+        commitSessions(
+          sessionsRef.current.map((item) =>
+            item.id === session.id ? { ...item, name: value } : item,
+          ),
+        );
+      };
+      applyName(trimmed);
+      try {
+        await renameSessionRequest(session.id, trimmed);
+        return true;
+      } catch (error) {
+        applyName(previousName);
+        notify({
+          tone: 'error',
+          message: error instanceof Error ? error.message : 'Failed to rename session',
+        });
+        return false;
+      }
+    },
+    [commitSessions, notify],
+  );
 
   useEffect(() => {
     let active = true;
@@ -848,6 +880,7 @@ export function LakeGenProvider({ children }: { children: React.ReactNode }) {
     loadMoreSessions,
     selectedSessionId,
     selectSession,
+    renameSession,
     sessionHistoryLoading,
     sessionHistoryLoadingMore,
     sessionHistoryHasMore,
