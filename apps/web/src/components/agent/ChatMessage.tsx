@@ -52,7 +52,7 @@ export const ChatMessage = memo(function ChatMessage({ message, onRetry }: ChatM
       </div>
 
       {isUser ? (
-        <p className="text-[14px] leading-[1.6] text-ink">{message.text}</p>
+        <p className="whitespace-pre-wrap text-[14px] leading-[1.6] text-ink">{message.text}</p>
       ) : (
         <div className="space-y-3">
           {message.status === 'error' && message.errorMessage && (

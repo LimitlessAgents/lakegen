@@ -23,6 +23,11 @@ export function Agent() {
   const historyScrollAnchorRef = useRef<{ sessionId: string; height: number } | null>(null);
   const previousSessionIdRef = useRef(selectedSessionId);
   const [showJumpToLatest, setShowJumpToLatest] = useState(false);
+  const isLanding =
+    messages.length === 0
+    && !selectedSessionId
+    && !sessionHistoryLoading
+    && !sessionHistoryError;
   const retryMessage = useCallback((text: string) => {
     void sendMessage(text);
   }, [sendMessage]);
@@ -86,54 +91,71 @@ export function Agent() {
     <main className="flex h-full min-w-0 flex-1 flex-col bg-canvas">
       <AgentHeader />
 
-      <div
-        ref={scrollRef}
-        onScroll={handleScroll}
-        aria-live="polite"
-        aria-busy={isStreaming}
-        className="lg-scroll relative flex-1 overflow-y-auto"
-      >
-        {sessionHistoryLoading ? (
-          <div className="mx-auto max-w-[760px] px-8 pt-[18vh] text-[14px] text-ink-muted">
-            Loading session history…
+      {isLanding ? (
+        <div className="lg-scroll flex min-h-0 flex-1 overflow-y-auto">
+          <div className="flex min-h-full w-full flex-col items-center justify-center px-4 pb-[12vh] pt-6 sm:px-8">
+            <div className="w-full max-w-[760px]">
+              <AgentEmptyState />
+              <div className="mt-8">
+                <Composer variant="landing" />
+              </div>
+            </div>
           </div>
-        ) : sessionHistoryError ? (
-          <div role="alert" className="mx-auto max-w-[760px] px-8 pt-[18vh] text-[14px] text-err">
-            {sessionHistoryError}
-          </div>
-        ) : selectedSessionId && messages.length === 0 ? (
-          <div className="mx-auto max-w-[760px] px-8 pt-[18vh] text-[14px] text-ink-muted">
-            This session has no messages.
-          </div>
-        ) : messages.length === 0 ? (
-          <AgentEmptyState />
-        ) : (
-          <div className="mx-auto max-w-[760px] px-8 pb-10 pt-2">
-            {sessionHistoryLoadingMore && (
-              <p className="py-2 text-center text-[13px] text-ink-muted">Loading older messages…</p>
-            )}
-            {messages.map((message) => (
-              <ChatMessage key={message.id} message={message} onRetry={retryMessage} />
-            ))}
-          </div>
-        )}
-        {showJumpToLatest && (
-          <button
-            type="button"
-            onClick={() => {
-              const container = scrollRef.current;
-              if (container) container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
-              pinnedToBottomRef.current = true;
-              setShowJumpToLatest(false);
-            }}
-            className="sticky bottom-4 left-1/2 -translate-x-1/2 rounded-full border border-line bg-panel px-3 py-1.5 text-[12px] font-medium text-ink shadow-subtle hover:bg-line-soft"
+        </div>
+      ) : (
+        <>
+          <div
+            ref={scrollRef}
+            onScroll={handleScroll}
+            aria-live="polite"
+            aria-busy={isStreaming}
+            className="lg-scroll relative flex-1 overflow-y-auto"
           >
-            Jump to latest
-          </button>
-        )}
-      </div>
+            {sessionHistoryLoading ? (
+              <div className="mx-auto max-w-[760px] px-8 pt-[18vh] text-[14px] text-ink-muted">
+                Loading session history…
+              </div>
+            ) : sessionHistoryError ? (
+              <div role="alert" className="mx-auto max-w-[760px] px-8 pt-[18vh] text-[14px] text-err">
+                {sessionHistoryError}
+              </div>
+            ) : selectedSessionId && messages.length === 0 ? (
+              <div className="mx-auto max-w-[760px] px-8 pt-[18vh] text-[14px] text-ink-muted">
+                This session has no messages.
+              </div>
+            ) : (
+              <div className="mx-auto max-w-[760px] px-8 pb-10 pt-2">
+                {sessionHistoryLoadingMore && (
+                  <p className="py-2 text-center text-[13px] text-ink-muted">Loading older messages…</p>
+                )}
+                {messages.map((message) => (
+                  <ChatMessage key={message.id} message={message} onRetry={retryMessage} />
+                ))}
+              </div>
+            )}
+            <div
+              aria-hidden="true"
+              className="pointer-events-none sticky bottom-0 -mt-12 h-12 bg-gradient-to-t from-canvas to-canvas/0"
+            />
+            {showJumpToLatest && (
+              <button
+                type="button"
+                onClick={() => {
+                  const container = scrollRef.current;
+                  if (container) container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
+                  pinnedToBottomRef.current = true;
+                  setShowJumpToLatest(false);
+                }}
+                className="sticky bottom-4 left-1/2 -translate-x-1/2 rounded-full border border-line bg-panel px-3 py-1.5 text-[12px] font-medium text-ink shadow-subtle hover:bg-line-soft"
+              >
+                Jump to latest
+              </button>
+            )}
+          </div>
 
-      <Composer />
+          <Composer />
+        </>
+      )}
     </main>
   );
 }

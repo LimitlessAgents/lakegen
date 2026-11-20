@@ -7,15 +7,16 @@ export default {content: [
       colors: {
         canvas: '#FAF9F8',
         panel: '#FFFFFF',
+        sunken: '#F3F0EC',
         line: {
           DEFAULT: '#E6E3E0',
           soft: '#F0EDEA',
-          strong: '#D5D0CB',
+          strong: '#CFC9C3',
         },
         ink: {
           DEFAULT: '#1A1918',
           muted: '#6E6963',
-          faint: '#9C9691',
+          faint: '#767068',
         },
         accent: {
           DEFAULT: '#0F6F63',
@@ -61,11 +62,13 @@ export default {content: [
       boxShadow: {
         subtle: '0 1px 2px rgba(26,25,24,0.05)',
         pop: '0 12px 32px -12px rgba(26,25,24,0.22)',
+        raised:
+          '0 1px 2px rgba(25,24,23,0.06), 0 12px 32px -16px rgba(25,24,23,0.22), inset 0 1px 0 #FFFFFF',
       },
       borderRadius: {
         md: '6px',
         lg: '8px',
-        xl: '10px',
+        xl: '12px',
       },
       spacing: {
         header: '52px',

@@ -273,6 +273,13 @@ class AgentLoop:
                         context_source=measurement.source if measurement else None,
                     )
 
+                # Each model call is a separate assistant message. The stream
+                # otherwise concatenates consecutive iterations verbatim, so a
+                # preamble would run straight into the text that follows the
+                # tool results ("...too.The next..."). Mark the boundary.
+                if on_chunk is not None and streamed_text_parts:
+                    on_chunk(StreamChunk(text="\n"))
+
                 tools_output: list[ToolOutput] = self._tools.dispatch(
                     tool_calls,
                     catalog_name=catalog_name,

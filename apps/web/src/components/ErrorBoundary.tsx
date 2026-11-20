@@ -23,7 +23,7 @@ export class ErrorBoundary extends React.Component<React.PropsWithChildren, Erro
             <button
               type="button"
               onClick={() => window.location.reload()}
-              className="mt-5 rounded-md bg-ink px-3 py-2 text-[13px] font-medium text-white hover:bg-black"
+              className="mt-5 rounded-md bg-accent h-8 px-3 text-[13px] font-medium text-white hover:bg-accent-hover"
             >
               Reload
             </button>

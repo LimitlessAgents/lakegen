@@ -1,11 +1,15 @@
 import { useEffect, useRef, useState } from 'react';
 import { ArrowUpIcon, SquareIcon } from 'lucide-react';
 import { useLakeGen } from '../../state/LakeGenContext';
-import { IconButton } from '../ui/IconButton';
 
 const MAX_MESSAGE_LENGTH = 10_000;
 
-export function Composer() {
+interface ComposerProps {
+  /** `landing` drops the docked page padding so the card can sit in a centered hero. */
+  variant?: 'docked' | 'landing';
+}
+
+export function Composer({ variant = 'docked' }: ComposerProps) {
   const {
     catalogs,
     sendMessage,
@@ -19,6 +23,7 @@ export function Composer() {
   } = useLakeGen();
   const [value, setValue] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const autofocusedRef = useRef(false);
 
   useEffect(() => {
     const el = textareaRef.current;
@@ -39,6 +44,12 @@ export function Composer() {
               : null;
   const cannotSend = Boolean(unavailableReason) || isStreaming || value.length > MAX_MESSAGE_LENGTH;
 
+  useEffect(() => {
+    if (autofocusedRef.current || unavailableReason) return;
+    autofocusedRef.current = true;
+    textareaRef.current?.focus();
+  }, [unavailableReason]);
+
   function submit() {
     if (!value.trim() || cannotSend) return;
     const text = value;
@@ -47,14 +58,15 @@ export function Composer() {
   }
 
   return (
-    <div className="border-t border-line bg-canvas px-8 py-4">
+    <div className={variant === 'landing' ? undefined : 'px-4 pb-4 pt-2 sm:px-8 sm:pb-6'}>
       <div className="mx-auto max-w-[760px]">
         {sendError && (
           <p role="alert" className="mb-2 text-[13px] text-err">
             {sendError}
           </p>
         )}
-        <div className="rounded-xl border border-line bg-panel shadow-subtle transition-colors duration-150 focus-within:border-line-strong">
+
+        <div className="rounded-xl border border-line-strong bg-panel shadow-raised transition-[border-color,box-shadow] duration-150 focus-within:border-accent-hover focus-within:ring-[3px] focus-within:ring-accent/15">
           <label htmlFor="composer" className="sr-only">
             Message LakeGen
           </label>
@@ -73,57 +85,52 @@ export function Composer() {
               }
             }}
             placeholder={unavailableReason ?? 'Ask about namespaces, tables, snapshots, or files…'}
-            className="lg-scroll block w-full resize-none bg-transparent px-3.5 pb-1 pt-3 text-[14px] leading-[1.55] text-ink outline-none placeholder:text-ink-faint disabled:cursor-not-allowed disabled:text-ink-faint"
+            className="lg-scroll block w-full resize-none bg-transparent px-4 pb-1 pt-3 text-[14px] leading-[1.55] text-ink placeholder:text-ink-faint focus-visible:outline-none disabled:cursor-not-allowed disabled:text-ink-faint"
           />
 
-          <div className="flex items-center gap-2 px-3 pb-2.5 pt-1">
-            <span className="flex items-center gap-1.5 text-[12px] text-ink-faint">
-              <span>Catalog</span>
-              <span className="font-mono text-ink-muted">
-                {activeCatalog ? activeCatalog.name : 'none'}
-              </span>
+          <div className="flex items-center gap-3 pb-2 pl-4 pr-2 pt-1">
+            <span className="min-w-0 truncate text-2xs tabular-nums text-ink-faint">
+              {value.length >= MAX_MESSAGE_LENGTH * 0.9
+                ? `${value.length.toLocaleString()} / ${MAX_MESSAGE_LENGTH.toLocaleString()}`
+                : isStreaming
+                  ? 'Generating response…'
+                  : ''}
             </span>
 
-            <span className="ml-auto hidden text-[12px] text-ink-faint sm:inline">
-              {isStreaming ? 'Wait for the response to finish' : unavailableReason ?? 'Enter to send'}
-            </span>
-
-            {isStreaming ? (
-              <>
-                <span title="Wait for the response to finish">
-                  <IconButton
-                    disabled
-                    label="Send message unavailable while generating"
-                    className="bg-line-strong text-white"
-                  >
-                    <ArrowUpIcon className="h-3.5 w-3.5" strokeWidth={2.5} />
-                  </IconButton>
+            {!isStreaming && (
+              <div className="ml-auto flex items-center gap-3">
+                <span className="hidden items-center gap-1.5 text-2xs text-ink-faint sm:flex">
+                  Send
+                  <kbd className="inline-flex h-4 min-w-4 items-center justify-center rounded border border-line bg-canvas px-1 font-mono text-[10px] leading-none text-ink-muted">
+                    ⏎
+                  </kbd>
                 </span>
-                <IconButton
-                  onClick={stopStreaming}
-                  label="Stop generating"
+
+                <button
+                  type="button"
+                  onClick={() => void submit()}
+                  disabled={!value.trim() || Boolean(unavailableReason)}
+                  title={unavailableReason ?? undefined}
+                  aria-label="Send message"
+                  className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-accent text-white transition-colors duration-150 enabled:hover:bg-accent-hover disabled:cursor-not-allowed disabled:bg-sunken disabled:text-ink-faint"
                 >
-                  <SquareIcon className="h-3 w-3 fill-current" strokeWidth={0} />
-                </IconButton>
-              </>
-            ) : (
-              <IconButton
-                onClick={() => void submit()}
-                disabled={!value.trim() || Boolean(unavailableReason)}
-                title={unavailableReason ?? undefined}
-                label="Send message"
-                variant="primary"
-                className="disabled:bg-line-strong"
+                  <ArrowUpIcon className="h-4 w-4" strokeWidth={2.5} />
+                </button>
+              </div>
+            )}
+
+            {isStreaming && (
+              <button
+                type="button"
+                onClick={stopStreaming}
+                aria-label="Stop generating"
+                title="Stop generating"
+                className="ml-auto inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-accent text-white transition-colors duration-150 hover:bg-accent-hover"
               >
-                <ArrowUpIcon className="h-3.5 w-3.5" strokeWidth={2.5} />
-              </IconButton>
+                <SquareIcon className="h-3.5 w-3.5 fill-current" strokeWidth={0} />
+              </button>
             )}
           </div>
-          {value.length >= MAX_MESSAGE_LENGTH * 0.9 && (
-            <p className="px-3 pb-2 text-right text-[11px] text-ink-faint">
-              {value.length.toLocaleString()} / {MAX_MESSAGE_LENGTH.toLocaleString()}
-            </p>
-          )}
         </div>
       </div>
     </div>

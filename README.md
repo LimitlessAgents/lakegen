@@ -1,5 +1,9 @@
 <p align="center">
-  <img src="apps/web/public/images/brand/lakegen-mark-dark.svg" alt="LakeGen logo" width="140" />
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="apps/web/public/images/brand/lakegen-mark-dark.svg">
+    <source media="(prefers-color-scheme: light)" srcset="apps/web/public/images/brand/lakegen-mark-light.svg">
+    <img src="apps/web/public/images/brand/lakegen-mark-light.svg" alt="LakeGen logo" width="140" />
+  </picture>
 </p>
 
 <h1 align="center">LakeGen</h1>
