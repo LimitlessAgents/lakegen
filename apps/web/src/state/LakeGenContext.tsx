@@ -365,7 +365,7 @@ export function LakeGenProvider({ children }: { children: React.ReactNode }) {
             current.every((session, index) => session.id === loaded[index].id));
         if (!stable) continue;
         const ids = new Set(loaded.map((session) => session.id));
-        commitSessions([...loaded, ...page.filter((session) => !ids.has(session.id))], requestedAt);
+        commitSessions([...current, ...page.filter((session) => !ids.has(session.id))], requestedAt);
         setSessionsHasMore(page.length === SESSION_PAGE_SIZE);
         setSessionsError(null);
         return;
@@ -953,11 +953,11 @@ export function LakeGenProvider({ children }: { children: React.ReactNode }) {
                 messages: current.messages.map((message) =>
                   message.id === assistantId
                     ? {
-                        ...message,
-                        role: 'assistant',
-                        status: event.data.stop_reason === 'completed' ? 'done' : 'incomplete',
-                        stopReason: event.data.stop_reason,
-                      }
+                      ...message,
+                      role: 'assistant',
+                      status: event.data.stop_reason === 'completed' ? 'done' : 'incomplete',
+                      stopReason: event.data.stop_reason,
+                    }
                     : message,
                 ),
               }));
