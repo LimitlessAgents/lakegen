@@ -21,7 +21,7 @@ export function CatalogRow({
         <div className="flex min-w-0 items-center gap-2">
           <span className="truncate font-mono text-[13px] text-ink">{catalog.name}</span>
           {isActive && (
-            <span className="shrink-0 rounded border border-line bg-panel px-1 text-[10px] uppercase tracking-wider text-ink-faint">
+            <span className="shrink-0 rounded border border-transparent bg-accent-soft px-1 text-[10px] uppercase tracking-wider text-accent">
               active
             </span>
           )}

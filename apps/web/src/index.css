@@ -7,6 +7,7 @@
 :root {
   --canvas: #faf9f8;
   --ink: #1a1918;
+  --accent: #0f6f63;
   --accent-soft: #d9e7e4;
 }
 
@@ -27,7 +28,7 @@ body {
   background: var(--accent-soft);
 }
 *:focus-visible {
-  outline: 2px solid rgba(15, 111, 99, 0.45);
+  outline: 2px solid var(--accent);
   outline-offset: 1px;
 }
 .lg-scroll::-webkit-scrollbar {

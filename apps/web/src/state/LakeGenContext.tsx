@@ -154,27 +154,52 @@ function messagesFromTurns(turns: AgentTurnInfo[]): Message[] {
         : null;
     if (!Array.isArray(rawMessages)) return [];
 
-    const createdAt = Date.parse(turn.created_at);
-    return rawMessages.flatMap((value, index): Message[] => {
-      if (!value || typeof value !== 'object') return [];
+    const parsedCreatedAt = Date.parse(turn.created_at);
+    const createdAt = Number.isNaN(parsedCreatedAt) ? Date.now() : parsedCreatedAt;
+    const userParts: string[] = [];
+    const assistantParts: string[] = [];
+
+    for (const value of rawMessages) {
+      if (!value || typeof value !== 'object') continue;
+      if ('is_summary' in value && value.is_summary === true) continue;
       const role = 'role' in value ? value.role : null;
       const content = 'content' in value ? value.content : null;
-      if ((role !== 'user' && role !== 'assistant') || typeof content !== 'string' || !content) {
-        return [];
-      }
-      const base = {
-        id: `history_${turn.id}_${index}`,
-        text: content,
-        createdAt: Number.isNaN(createdAt) ? Date.now() : createdAt + index,
-      };
-      if (role === 'user') return [{ ...base, role }];
-      return [{
-        ...base,
-        role,
+      if ((role !== 'user' && role !== 'assistant') || typeof content !== 'string') continue;
+      if (content.trim().length === 0) continue;
+      if (role === 'user') userParts.push(content);
+      else assistantParts.push(content);
+    }
+
+    // The agent records one assistant entry per tool-loop iteration (preamble,
+    // intermediate reasoning, final answer). A turn is still a single reply, so
+    // merge those entries into one message instead of repeating the role label.
+    const finalMessage =
+      result && typeof result === 'object' && 'final_message' in result
+        && typeof result.final_message === 'string'
+        ? result.final_message.trim()
+        : '';
+    const assistantText = assistantParts.join('\n\n').trim() || finalMessage;
+
+    const messages: Message[] = [];
+    if (userParts.length > 0) {
+      messages.push({
+        id: `history_${turn.id}_user`,
+        role: 'user',
+        text: userParts.join('\n\n'),
+        createdAt,
+      });
+    }
+    if (assistantText.length > 0) {
+      messages.push({
+        id: `history_${turn.id}_assistant`,
+        role: 'assistant',
+        text: assistantText,
         status: result.stop_reason === 'completed' ? 'done' : 'incomplete',
         stopReason: typeof result.stop_reason === 'string' ? result.stop_reason : undefined,
-      }];
-    });
+        createdAt: createdAt + 1,
+      });
+    }
+    return messages;
   });
 }
 

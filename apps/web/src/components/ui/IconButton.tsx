@@ -7,9 +7,11 @@ interface IconButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 }
 
 const variants = {
-  default: 'border border-line text-ink-muted hover:bg-line-soft hover:text-ink',
-  primary: 'bg-ink text-white hover:bg-accent-hover',
-  danger: 'text-err hover:bg-err-soft',
+  default:
+    'border border-line text-ink-muted enabled:hover:bg-line-soft enabled:hover:text-ink disabled:text-ink-faint',
+  primary:
+    'bg-accent text-white enabled:hover:bg-accent-hover disabled:bg-sunken disabled:text-ink-faint',
+  danger: 'text-err enabled:hover:bg-err-soft disabled:text-ink-faint',
 };
 
 export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(function IconButton({
@@ -25,7 +27,7 @@ export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(functio
       ref={ref}
       type={type}
       aria-label={label}
-      className={`flex h-7 w-7 items-center justify-center rounded-md transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-40 ${variants[variant]} ${className}`}
+      className={`flex h-8 w-8 items-center justify-center rounded-md transition-colors duration-150 disabled:cursor-not-allowed ${variants[variant]} ${className}`}
       {...props}
     >
       {children}
