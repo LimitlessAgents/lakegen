@@ -349,16 +349,28 @@ export function LakeGenProvider({ children }: { children: React.ReactNode }) {
     if (sessionsLoadingMoreRef.current) return;
     sessionsLoadingMoreRef.current = true;
     setSessionsLoadingMore(true);
-    const requestedAt = Date.now();
     try {
-      const page = await listSessions(sessionsRef.current.length);
-      const ids = new Set(sessionsRef.current.map((session) => session.id));
-      commitSessions(
-        [...sessionsRef.current, ...page.filter((session) => !ids.has(session.id))],
-        requestedAt,
-      );
-      setSessionsHasMore(page.length === SESSION_PAGE_SIZE);
-      setSessionsError(null);
+      // The offset is implied by the rows already loaded, so it is only valid
+      // while that set is unchanged. A delete during the request shifts every
+      // later server offset, and the page can then skip a session entirely, so
+      // drop such a page and ask again from the offset that now applies.
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        const loaded = sessionsRef.current;
+        const requestedAt = Date.now();
+        const page = await listSessions(loaded.length);
+        const current = sessionsRef.current;
+        const stable =
+          current === loaded ||
+          (current.length === loaded.length &&
+            current.every((session, index) => session.id === loaded[index].id));
+        if (!stable) continue;
+        const ids = new Set(loaded.map((session) => session.id));
+        commitSessions([...loaded, ...page.filter((session) => !ids.has(session.id))], requestedAt);
+        setSessionsHasMore(page.length === SESSION_PAGE_SIZE);
+        setSessionsError(null);
+        return;
+      }
+      // Still changing under us; leave “Load more” available to try again.
     } catch (error) {
       setSessionsError(error instanceof Error ? error.message : 'Failed to load sessions');
     } finally {
