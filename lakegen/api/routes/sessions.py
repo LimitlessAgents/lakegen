@@ -8,7 +8,11 @@ from lakegen.api.auth.authenticator import Principal
 from lakegen.api.deps import get_agent_runner, require_principal
 from lakegen.api.responses import SERVICE_ERROR_RESPONSES
 from lakegen.api.run.runner import AgentRunner
-from lakegen.api.schema import CreateSessionResponse, SessionResponse
+from lakegen.api.schema import (
+    CreateSessionResponse,
+    RenameSessionRequest,
+    SessionResponse,
+)
 
 router = APIRouter(
     prefix="/v1/sessions",
@@ -44,6 +48,17 @@ def create_session(
 ) -> CreateSessionResponse:
     session_id = agent_runner.create_session(owner_id=_principal.id)
     return CreateSessionResponse(id=session_id)
+
+
+@router.patch("/{session_id}", status_code=status.HTTP_204_NO_CONTENT)
+def rename_session(
+    session_id: str,
+    body: RenameSessionRequest,
+    principal: Principal = Depends(require_principal),
+    agent_runner: AgentRunner = Depends(get_agent_runner),
+) -> Response:
+    agent_runner.rename_session(session_id, body.name, owner_id=principal.id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.delete("/{session_id}", status_code=status.HTTP_204_NO_CONTENT)

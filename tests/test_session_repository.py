@@ -41,6 +41,48 @@ def test_set_catalog_name_rejects_change() -> None:
     assert exc_info.value.code == ErrorCode.INVALID_ARGUMENT
 
 
+def test_set_name_if_empty_claims_unnamed_session() -> None:
+    database = MagicMock(spec=PostgresPersistence)
+    database.fetch_one.return_value = {"name": "Fix the pipeline"}
+
+    assert (
+        SessionRepository(database).set_name_if_empty("session-1", "Fix the pipeline")
+        == "Fix the pipeline"
+    )
+    statement, parameters = database.fetch_one.call_args.args
+    assert "AND name IS NULL" in statement
+    assert parameters == ("Fix the pipeline", "session-1")
+
+
+def test_set_name_if_empty_keeps_existing_name() -> None:
+    database = MagicMock(spec=PostgresPersistence)
+    database.fetch_one.return_value = None
+
+    assert SessionRepository(database).set_name_if_empty("session-1", "auto") is None
+
+
+def test_rename_overwrites_name() -> None:
+    database = MagicMock(spec=PostgresPersistence)
+    database.fetch_one.return_value = {"name": "Mine"}
+
+    SessionRepository(database).rename("session-1", "Mine")
+
+    statement, parameters = database.fetch_one.call_args.args
+    assert "SET name = %s" in statement
+    assert "name IS NULL" not in statement
+    assert parameters == ("Mine", "session-1")
+
+
+def test_rename_missing_raises_not_found() -> None:
+    database = MagicMock(spec=PostgresPersistence)
+    database.fetch_one.return_value = None
+
+    with pytest.raises(BaseError) as exc_info:
+        SessionRepository(database).rename("missing", "Mine")
+
+    assert exc_info.value.code == ErrorCode.NOT_FOUND
+
+
 def test_create_inserts_session() -> None:
     database = MagicMock(spec=PostgresPersistence)
 

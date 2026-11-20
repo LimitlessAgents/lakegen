@@ -10,7 +10,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, TypeAdapter
 
 from lakegen.agent import StopReason
 from lakegen.api.run.runner import AgentEventType
@@ -50,6 +50,15 @@ class SessionResponse(APIModel):
     catalog_name: str | None
 
 
+class RenameSessionRequest(APIModel):
+    """Manual rename. Auto-titling happens inside the first turn."""
+
+    name: Annotated[
+        str,
+        StringConstraints(strip_whitespace=True, min_length=1, max_length=100),
+    ]
+
+
 class TurnRequest(APIModel):
     text: str = Field(min_length=1)
     catalog_name: str | None = None
@@ -69,6 +78,16 @@ class TurnDoneData(APIModel):
     stop_reason: StopReason
 
 
+class SessionNamedData(APIModel):
+    id: str
+    name: str
+
+
+class SessionNamedEvent(APIModel):
+    type: Literal[AgentEventType.SESSION_NAMED] = AgentEventType.SESSION_NAMED
+    data: SessionNamedData
+
+
 class TextDeltaEvent(APIModel):
     type: Literal[AgentEventType.TEXT_DELTA] = AgentEventType.TEXT_DELTA
     data: TextDeltaData
@@ -85,7 +104,7 @@ class ErrorEvent(APIModel):
 
 
 StreamEvent = Annotated[
-    TextDeltaEvent | TurnDoneEvent | ErrorEvent,
+    TextDeltaEvent | SessionNamedEvent | TurnDoneEvent | ErrorEvent,
     Field(discriminator="type"),
 ]
 

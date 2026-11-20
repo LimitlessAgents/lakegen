@@ -257,6 +257,30 @@ def test_delete_session_passes_x_user(
     agent_runner.delete_session.assert_called_once_with(_SESSION_ID, owner_id="alice")
 
 
+def test_rename_session(client: TestClient, agent_runner: MagicMock) -> None:
+    res = client.patch(
+        f"/v1/sessions/{_SESSION_ID}",
+        json={"name": "  My session  "},
+        headers={"X-User": "alice"},
+    )
+
+    assert res.status_code == 204
+    # The wire model strips surrounding whitespace before the runner sees it.
+    agent_runner.rename_session.assert_called_once_with(
+        _SESSION_ID, "My session", owner_id="alice"
+    )
+
+
+def test_rename_session_rejects_blank_name(
+    client: TestClient, agent_runner: MagicMock
+) -> None:
+    res = client.patch(f"/v1/sessions/{_SESSION_ID}", json={"name": "   "})
+
+    assert res.status_code == 400
+    assert res.json()["code"] == ErrorCode.INVALID_ARGUMENT.value
+    agent_runner.rename_session.assert_not_called()
+
+
 def test_local_auth_x_user_header(client: TestClient, agent_runner: MagicMock) -> None:
     res = client.post("/v1/sessions", headers={"X-User": "alice"})
     assert res.status_code == 201
@@ -380,6 +404,7 @@ def test_local_run_adapter_create_and_turn() -> None:
 
     session.send.side_effect = _send
     manager.get.return_value = session
+    manager.set_name_if_empty.return_value = "hi"
 
     adapter = LocalRunAdapter(manager=manager)
     session_id = adapter.create_session(owner_id="alice")
@@ -402,9 +427,56 @@ def test_local_run_adapter_create_and_turn() -> None:
     assert session.send.call_args.kwargs["catalog_name"] == "prod"
     assert session.send.call_args.kwargs["model"] == "m"
     assert [e.type for e in events] == [
+        AgentEventType.SESSION_NAMED,
         AgentEventType.TEXT_DELTA,
         AgentEventType.TURN_DONE,
     ]
+    assert events[0].data == {"id": _SESSION_ID, "name": "hi"}
+    # The name is claimed before inference, from this turn's message.
+    manager.set_name_if_empty.assert_called_once_with(_SESSION_ID, "hi")
+
+
+def test_local_run_adapter_skips_session_named_when_already_named() -> None:
+    from lakegen.api.run.local import LocalRunAdapter
+    from lakegen.session import SessionManager
+
+    manager = MagicMock(spec=SessionManager)
+    session = MagicMock()
+    session.state.owner_id = "alice"
+    session.send.return_value = MagicMock(
+        result=MagicMock(final_message="yo", stop_reason=StopReason.COMPLETED)
+    )
+    manager.get.return_value = session
+    manager.set_name_if_empty.return_value = None
+
+    events: list[AgentEvent] = []
+    LocalRunAdapter(manager=manager).run_turn(
+        _SESSION_ID,
+        "second turn",
+        owner_id="alice",
+        on_event=events.append,
+        cancel_event=threading.Event(),
+    )
+
+    assert AgentEventType.SESSION_NAMED not in [e.type for e in events]
+
+
+def test_local_run_adapter_rename_session_checks_owner() -> None:
+    from lakegen.api.run.local import LocalRunAdapter
+    from lakegen.session import SessionManager
+
+    manager = MagicMock(spec=SessionManager)
+    session = MagicMock()
+    session.state.owner_id = "alice"
+    manager.get.return_value = session
+    adapter = LocalRunAdapter(manager=manager)
+
+    adapter.rename_session(_SESSION_ID, "Mine", owner_id="alice")
+    manager.rename.assert_called_once_with(_SESSION_ID, "Mine")
+
+    with pytest.raises(BaseError) as exc_info:
+        adapter.rename_session(_SESSION_ID, "Mine", owner_id="bob")
+    assert exc_info.value.code == ErrorCode.NOT_FOUND
 
 
 def test_local_run_adapter_rejects_non_owner_delete() -> None:

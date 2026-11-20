@@ -738,6 +738,16 @@ export function LakeGenProvider({ children }: { children: React.ReactNode }) {
                 ...m,
                 text: m.text + event.data.text,
               }));
+            } else if (event.type === 'session_named') {
+              // The server named the session from this turn's first message.
+              // Patch the list in place instead of refetching.
+              commitSessions(
+                sessionsRef.current.map((session) =>
+                  session.id === event.data.id
+                    ? { ...session, name: event.data.name }
+                    : session,
+                ),
+              );
             } else if (event.type === 'turn_done') {
               clearRetainedTurns(sessionId);
               updateConversation(conversation.id, (current) => ({
@@ -815,7 +825,7 @@ export function LakeGenProvider({ children }: { children: React.ReactNode }) {
       }
       return true;
     },
-    [createConversation, ensureSession, notify, patchAssistant, updateConversation],
+    [createConversation, commitSessions, ensureSession, notify, patchAssistant, updateConversation],
   );
 
   const value: LakeGenValue = {
