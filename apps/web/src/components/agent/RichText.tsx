@@ -20,7 +20,7 @@ function elementChildren(node: ReactNode): ElementWithChildren[] {
   );
 }
 
-/** The header row defines the column count used to repair short body rows. */
+/** The header row defines how many columns a table actually has. */
 function countTableColumns(children: ReactNode): number {
   for (const section of elementChildren(children)) {
     for (const row of elementChildren(section.props.children)) {
@@ -32,8 +32,8 @@ function countTableColumns(children: ReactNode): number {
 }
 
 const TableColumnsContext = createContext(0);
-const RowCellCountContext = createContext(0);
 const CellIndexContext = createContext(0);
+const NoteCellIndexContext = createContext(-1);
 
 function codeBlockInfo(node: ReactNode): { text: string; language: string | null } {
   if (isValidElement<{ className?: string; children?: ReactNode }>(node)) {
@@ -45,99 +45,25 @@ function codeBlockInfo(node: ReactNode): { text: string; language: string | null
 }
 
 /** Numeric cells align right so columns of counts and sizes can be scanned. */
-const NUMERIC_CELL = /^[\s$€£¥]?[+-]?(?:\d[\d,._/-]*\s*)+[%a-zA-Z]*$/;
+const NUMERIC_CELL = /^[\s$€£¥]?[+-]?\d[\d,._/\s-]*[%a-zA-Z]*$/;
 
-/** Split a GFM table row into trimmed cells, honoring escaped pipes. */
-function splitTableRow(line: string): string[] {
-  let row = line.trim();
-  if (row.startsWith('|')) row = row.slice(1);
-  if (row.endsWith('|') && !row.endsWith('\\|')) row = row.slice(0, -1);
-
-  const cells: string[] = [];
-  let cell = '';
-  for (let i = 0; i < row.length; i += 1) {
-    const char = row[i];
-    if (char === '\\' && row[i + 1] === '|') {
-      cell += '|';
-      i += 1;
-    } else if (char === '|') {
-      cells.push(cell.trim());
-      cell = '';
-    } else {
-      cell += char;
-    }
-  }
-  cells.push(cell.trim());
-  return cells;
-}
-
-function isDelimiterRow(line: string | undefined): boolean {
-  if (!line || !line.includes('|') || !line.includes('-')) return false;
-  const cells = splitTableRow(line);
-  return cells.length > 0 && cells.every((cell) => /^:?-+:?$/.test(cell));
-}
-
-function isTableRow(line: string): boolean {
-  return line.includes('|') && line.trim().length > 0;
+/** Any text or element (for example an image) counts as cell content. */
+function cellHasContent(node: ReactNode): boolean {
+  return Children.toArray(node).some((child) =>
+    typeof child === 'string' || typeof child === 'number'
+      ? String(child).trim().length > 0
+      : isValidElement(child),
+  );
 }
 
 /**
- * A GFM table body row with fewer cells than the header is malformed — usually
- * a stray sentence that belongs to the answer, not the grid. remark pads such a
- * row with empty cells, which renders as one wide first column and shifts the
- * rest of the table. Lift those rows out and emit them after the table as prose
- * so every table keeps a consistent column count.
+ * A single filled cell in a multi-column row is a note only when it reads like
+ * prose. Short data rows such as ``| orders | 42 |`` must stay in the grid, so
+ * a low cell count alone is not enough evidence that a row is malformed.
  */
-function liftTableNotes(markdown: string): string {
-  if (!markdown.includes('|')) return markdown;
-
-  const lines = markdown.split('\n');
-  const out: string[] = [];
-  let fence: string | null = null;
-  let i = 0;
-
-  while (i < lines.length) {
-    const line = lines[i];
-    const fenceMatch = /^\s*(`{3,}|~{3,})/.exec(line);
-    if (fenceMatch) {
-      const marker = fenceMatch[1][0];
-      fence = fence === null ? marker : fence === marker ? null : fence;
-      out.push(line);
-      i += 1;
-      continue;
-    }
-    if (fence !== null) {
-      out.push(line);
-      i += 1;
-      continue;
-    }
-
-    if (isTableRow(line) && isDelimiterRow(lines[i + 1])) {
-      const columns = splitTableRow(line).length;
-      out.push(line, lines[i + 1]);
-      i += 2;
-
-      const notes: string[] = [];
-      while (i < lines.length && isTableRow(lines[i]) && !isDelimiterRow(lines[i])) {
-        const cells = splitTableRow(lines[i]);
-        if (columns > 1 && cells.length < columns) {
-          const note = cells.filter(Boolean).join(' ').trim();
-          if (note) notes.push(note);
-        } else {
-          out.push(lines[i]);
-        }
-        i += 1;
-      }
-
-      if (notes.length > 0) out.push('', notes.join('\n\n'));
-      continue;
-    }
-
-    out.push(line);
-    i += 1;
-  }
-
-  return out.join('\n');
+function looksLikeProseNote(text: string): boolean {
+  const trimmed = text.trim();
+  return trimmed.length >= 24 && /\s/.test(trimmed) && /[.!?…]$/.test(trimmed);
 }
 
 function MarkdownContent({ text }: { text: string }) {
@@ -261,22 +187,27 @@ function MarkdownContent({ text }: { text: string }) {
     tr: ({ children }) => {
       const columns = useContext(TableColumnsContext);
       const cells = elementChildren(children);
-      const filled = cells.filter((cell) => textFromNode(cell.props.children).trim().length > 0);
-      // GFM pads short rows with empty cells. When a row carries one leading
-      // value (typically a note), drop the padding and let that cell span the row.
-      const isNoteRow =
-        columns > 1 && cells.length > 1 && filled.length === 1 && filled[0] === cells[0];
-      const rendered = isNoteRow ? [cells[0]] : cells;
+      const contentCells = cells.filter((cell) => cellHasContent(cell.props.children));
+      // remark pads short rows with empty cells. Only collapse a row when it
+      // has exactly one filled cell that reads as prose — valid short data rows
+      // (`| orders | 42 |`) keep their columns and parser-filled empty cells.
+      const noteIndex =
+        columns > 1
+        && contentCells.length === 1
+        && looksLikeProseNote(textFromNode(contentCells[0].props.children))
+          ? cells.indexOf(contentCells[0])
+          : -1;
+      const rendered = noteIndex >= 0 ? cells.slice(0, noteIndex + 1) : cells;
 
       return (
         <tr className="border-b border-line-soft">
-          <RowCellCountContext.Provider value={rendered.length}>
+          <NoteCellIndexContext.Provider value={noteIndex}>
             {rendered.map((cell, index) => (
               <CellIndexContext.Provider key={index} value={index}>
                 {cell}
               </CellIndexContext.Provider>
             ))}
-          </RowCellCountContext.Provider>
+          </NoteCellIndexContext.Provider>
         </tr>
       );
     },
@@ -291,21 +222,21 @@ function MarkdownContent({ text }: { text: string }) {
     ),
     td: ({ children, style }) => {
       const columns = useContext(TableColumnsContext);
-      const rowCells = useContext(RowCellCountContext);
       const index = useContext(CellIndexContext);
+      const noteIndex = useContext(NoteCellIndexContext);
       const content = textFromNode(children).trim();
-      const isNumeric = content.length > 0 && NUMERIC_CELL.test(content);
-      const span =
-        rowCells > 0 && rowCells < columns && index === rowCells - 1 ? columns - index : undefined;
-      const cellClass = isNumeric
-        ? 'whitespace-nowrap text-right font-mono'
-        : span
-          ? 'break-words border-r-0 bg-canvas text-left font-sans text-ink-muted'
+      const isNoteCell = noteIndex >= 0 && index === noteIndex;
+      const isNumeric = !isNoteCell && content.length > 0 && NUMERIC_CELL.test(content);
+      const colSpan = isNoteCell ? Math.max(columns - noteIndex, 1) : undefined;
+      const cellClass = isNoteCell
+        ? 'break-words border-r-0 bg-canvas text-left font-sans text-ink-muted'
+        : isNumeric
+          ? 'whitespace-nowrap text-right font-mono'
           : 'break-words text-left font-mono';
 
       return (
         <td
-          colSpan={span}
+          colSpan={colSpan}
           style={style}
           className={`border-r border-line-soft px-3 py-1.5 align-top text-sm tabular-nums text-ink last:border-r-0 ${cellClass}`}
         >
@@ -317,7 +248,7 @@ function MarkdownContent({ text }: { text: string }) {
 
   return (
     <Markdown remarkPlugins={[remarkGfm]} skipHtml components={components}>
-      {liftTableNotes(text)}
+      {text}
     </Markdown>
   );
 }
