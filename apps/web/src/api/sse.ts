@@ -3,6 +3,7 @@ import { ApiError } from './client';
 
 export type StreamEvent =
   | { type: 'text_delta'; data: { text: string } }
+  | { type: 'session_named'; data: { id: string; name: string } }
   | {
       type: 'turn_done';
       data: { final_message: string; stop_reason: string };
@@ -105,7 +106,12 @@ function parseSseChunk(chunk: string): StreamEvent | null {
   if (!type || dataLines.length === 0) return null;
   try {
     const data = JSON.parse(dataLines.join('\n')) as StreamEvent['data'];
-    if (type === 'text_delta' || type === 'turn_done' || type === 'error') {
+    if (
+      type === 'text_delta' ||
+      type === 'session_named' ||
+      type === 'turn_done' ||
+      type === 'error'
+    ) {
       return { type, data } as StreamEvent;
     }
   } catch {

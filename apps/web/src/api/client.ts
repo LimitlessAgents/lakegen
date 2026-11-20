@@ -79,6 +79,13 @@ export function listSessions(offset = 0): Promise<SessionResponse[]> {
   return request(`/v1/sessions?offset=${offset}`);
 }
 
+export function renameSession(sessionId: string, name: string): Promise<void> {
+  return request(`/v1/sessions/${encodeURIComponent(sessionId)}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ name }),
+  });
+}
+
 export function listSessionTurns(
   sessionId: string,
   offset = 0,

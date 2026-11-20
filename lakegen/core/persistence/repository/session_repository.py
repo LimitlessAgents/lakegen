@@ -77,6 +77,35 @@ class SessionRepository(Repository):
             "Session catalog cannot be changed.",
         )
 
+    def set_name_if_empty(self, session_id: str, name: str) -> str | None:
+        """Claim the name only while the session is unnamed.
+
+        Returns the stored name, or ``None`` when the session already had one
+        (or no longer exists). The ``name IS NULL`` guard makes the claim
+        atomic, so a user rename and the auto-title emitted by the first turn
+        cannot overwrite each other.
+        """
+        row = self._database.fetch_one(
+            """
+            UPDATE sessions
+            SET name = %s
+            WHERE id = %s
+              AND name IS NULL
+            RETURNING name
+            """,
+            (name, session_id),
+        )
+        return str(row["name"]) if row is not None else None
+
+    def rename(self, session_id: str, name: str) -> None:
+        """Overwrite the session name unconditionally."""
+        row = self._database.fetch_one(
+            "UPDATE sessions SET name = %s WHERE id = %s RETURNING name",
+            (name, session_id),
+        )
+        if row is None:
+            self._raise_not_found(session_id)
+
     def exists(self, identifier: str) -> bool:
         if not identifier:
             return False

@@ -89,7 +89,8 @@ export interface paths {
         delete: operations["delete_session_v1_sessions__session_id__delete"];
         options?: never;
         head?: never;
-        patch?: never;
+        /** Rename Session */
+        patch: operations["rename_session_v1_sessions__session_id__patch"];
         trace?: never;
     };
     "/v1/sessions/{session_id}/turns": {
@@ -127,6 +128,14 @@ export interface components {
             result: {
                 [key: string]: unknown;
             };
+            /** Summary */
+            summary?: string | null;
+            /** Summary Kind */
+            summary_kind?: string | null;
+            /** Context Tokens */
+            context_tokens?: number | null;
+            /** Context Source */
+            context_source?: string | null;
         };
         /**
          * CatalogResponse
@@ -246,6 +255,14 @@ export interface components {
              * @description S3 region for Glue.
              */
             glue_region?: string | null;
+        };
+        /**
+         * RenameSessionRequest
+         * @description Manual rename. Auto-titling happens inside the first turn.
+         */
+        RenameSessionRequest: {
+            /** Name */
+            name: string;
         };
         /**
          * RestCatalogSpec
@@ -469,6 +486,7 @@ export type CreateSessionResponse = components['schemas']['CreateSessionResponse
 export type ErrorBody = components['schemas']['ErrorBody'];
 export type ErrorCode = components['schemas']['ErrorCode'];
 export type GlueCatalogSpec = components['schemas']['GlueCatalogSpec'];
+export type RenameSessionRequest = components['schemas']['RenameSessionRequest'];
 export type RestCatalogSpec = components['schemas']['RestCatalogSpec'];
 export type SessionResponse = components['schemas']['SessionResponse'];
 export type SqlCatalogSpec = components['schemas']['SqlCatalogSpec'];
@@ -1229,6 +1247,129 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Service error. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service error. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service error. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service error. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service error. */
+            405: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service error. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service error. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service error. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service error. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service error. */
+            504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    rename_session_v1_sessions__session_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RenameSessionRequest"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             204: {

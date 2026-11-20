@@ -13,7 +13,7 @@ from lakegen.core.config import EnvConfig
 from lakegen.core.error.base import BaseError
 from lakegen.core.error.code import ErrorCode
 from lakegen.core.persistence import PostgresPersistence
-from lakegen.session import Environment, SessionManager
+from lakegen.session import Environment, SessionManager, derive_session_name
 from tests.conftest import open_session
 
 
@@ -789,3 +789,17 @@ def test_session_creation_uses_default_model(monkeypatch: pytest.MonkeyPatch) ->
     session = mgr.get(session_id)
     assert session.state.config.model == "custom-openai-model"
     assert session.state.config.provider == "openai"
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("hi", "hi"),
+        ("  fix   the\npipeline  ", "fix the pipeline"),
+        ("Fix the broken nightly pipeline run", "Fix the broken…"),
+        ("abcdefghijklmnopqrstuvwxyz", "abcdefghijklmnopqrst…"),
+        ("   ", ""),
+    ],
+)
+def test_derive_session_name(text: str, expected: str) -> None:
+    assert derive_session_name(text) == expected

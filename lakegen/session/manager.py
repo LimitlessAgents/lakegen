@@ -20,6 +20,23 @@ from lakegen.session.session import Session
 _DEFAULT_MAX_TURNS = 10
 _SESSION_PAGE_SIZE = 10
 _DEFAULT_CACHE_SIZE = 32
+_TITLE_MAX_CHARS = 20
+
+
+def derive_session_name(text: str) -> str:
+    """Derive a sidebar name from the first user message.
+
+    Whitespace is collapsed so multi-line prompts stay on one line. Long
+    messages are clipped at a word boundary, falling back to a hard cut when
+    the first word alone fills the limit.
+    """
+    collapsed = " ".join(text.split())
+    if len(collapsed) <= _TITLE_MAX_CHARS:
+        return collapsed
+    head = collapsed[:_TITLE_MAX_CHARS].rsplit(" ", 1)[0]
+    if len(head) < _TITLE_MAX_CHARS // 2:
+        head = collapsed[:_TITLE_MAX_CHARS]
+    return head.rstrip(" .,;:!?-") + "…"
 
 
 def _int_env(name: str, default: int) -> int:
@@ -186,6 +203,18 @@ class SessionManager:
                 self._cache.set(session_id, session)
                 self._hydrate_locks.pop(session_id, None)
                 return session
+
+    def set_name_if_empty(self, session_id: str, name: str) -> str | None:
+        """Store ``name`` only while the session is unnamed.
+
+        Returns the stored name, or ``None`` when a name already existed or the
+        session no longer exists.
+        """
+        return self.env.session_repository.set_name_if_empty(session_id, name)
+
+    def rename(self, session_id: str, name: str) -> None:
+        """Overwrite the session name unconditionally."""
+        self.env.session_repository.rename(session_id, name)
 
     def list(self, *, owner_id: str, offset: int = 0) -> list[SessionInfo]:
         """Return one persisted page, newest first."""

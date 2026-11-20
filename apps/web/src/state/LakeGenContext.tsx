@@ -15,6 +15,7 @@ import {
   listCatalogs,
   listSessions,
   listSessionTurns,
+  renameSession as renameSessionRequest,
 } from '../api/client';
 import { runTurn } from '../api/sse';
 import { readLocal, removeLocal, writeLocal } from '../lib/storage';
@@ -66,6 +67,7 @@ interface LakeGenValue {
   loadMoreSessions: () => Promise<void>;
   selectedSessionId: string | null;
   selectSession: (session: SessionResponse) => Promise<void>;
+  renameSession: (session: SessionResponse, name: string) => Promise<boolean>;
   sessionHistoryLoading: boolean;
   sessionHistoryLoadingMore: boolean;
   sessionHistoryHasMore: boolean;
@@ -228,6 +230,23 @@ export function LakeGenProvider({ children }: { children: React.ReactNode }) {
   const hasLoadedCatalogsRef = useRef(false);
   const activeCatalogNameRef = useRef<string | null>(activeCatalogName);
   const sessionsRef = useRef<SessionResponse[]>([]);
+  // Titles known locally, keyed by session id. A ``session_named`` event can
+  // arrive before the session is in the list, and a list response served before
+  // the naming write still carries ``name: null``; merging this map on every
+  // commit keeps the title from being dropped or clobbered.
+  const sessionNamesRef = useRef<Map<string, string>>(new Map());
+  // Renames that have not settled yet, keyed by session id. While one is
+  // pending its title stays on screen, and ``fallbackName`` remembers the last
+  // title the server is known to hold so a failure can restore it.
+  const pendingRenamesRef = useRef<
+    Map<string, { name: string; fallbackName: string | null }>
+  >(new Map());
+  // When each session's rename was saved. Only list responses requested before
+  // that moment can still carry the old title and are overruled.
+  const confirmedRenamesRef = useRef<Map<string, number>>(new Map());
+  // One in-flight rename per session: the editor closes before the request
+  // finishes, so later renames queue behind earlier ones.
+  const renameChainsRef = useRef<Map<string, Promise<boolean>>>(new Map());
   const sessionsRevisionRef = useRef(0);
   const sessionsLoadingMoreRef = useRef(false);
   const historyMoreInFlightSessionRef = useRef<string | null>(null);
@@ -269,21 +288,50 @@ export function LakeGenProvider({ children }: { children: React.ReactNode }) {
     return conversation;
   }, [updateConversations]);
 
-  const replaceSessions = useCallback((next: SessionResponse[]) => {
-    sessionsRef.current = next;
-    setSessions(next);
+  const replaceSessions = useCallback((next: SessionResponse[], requestedAt?: number) => {
+    const knownNames = sessionNamesRef.current;
+    const pendingRenames = pendingRenamesRef.current;
+    const confirmedRenames = confirmedRenamesRef.current;
+    const merged = next.map((session) => {
+      const known = knownNames.get(session.id);
+      const pending = pendingRenames.get(session.id);
+      if (pending) return { ...session, name: pending.name };
+      // A response requested before the rename was saved can still carry the
+      // previous title, so the local one wins. Responses requested afterwards
+      // are taken at face value, which lets a rename made elsewhere show up.
+      const confirmedAt = confirmedRenames.get(session.id);
+      if (
+        known !== undefined &&
+        confirmedAt !== undefined &&
+        requestedAt !== undefined &&
+        requestedAt < confirmedAt
+      ) {
+        return { ...session, name: known };
+      }
+      if (session.name != null) {
+        knownNames.set(session.id, session.name);
+        return session;
+      }
+      return known === undefined ? session : { ...session, name: known };
+    });
+    sessionsRef.current = merged;
+    setSessions(merged);
   }, []);
 
-  const commitSessions = useCallback((next: SessionResponse[]) => {
-    sessionsRevisionRef.current += 1;
-    replaceSessions(next);
-  }, [replaceSessions]);
+  const commitSessions = useCallback(
+    (next: SessionResponse[], requestedAt?: number) => {
+      sessionsRevisionRef.current += 1;
+      replaceSessions(next, requestedAt);
+    },
+    [replaceSessions],
+  );
 
   const refreshSessionHead = useCallback(async () => {
+    const requestedAt = Date.now();
     const page = await listSessions();
     const pageIds = new Set(page.map((session) => session.id));
     const tail = sessionsRef.current.filter((session) => !pageIds.has(session.id));
-    commitSessions([...page, ...tail]);
+    commitSessions([...page, ...tail], requestedAt);
     setSessionsHasMore((current) => (
       tail.length > 0 ? current : page.length === SESSION_PAGE_SIZE
     ));
@@ -294,10 +342,14 @@ export function LakeGenProvider({ children }: { children: React.ReactNode }) {
     if (sessionsLoadingMoreRef.current) return;
     sessionsLoadingMoreRef.current = true;
     setSessionsLoadingMore(true);
+    const requestedAt = Date.now();
     try {
       const page = await listSessions(sessionsRef.current.length);
       const ids = new Set(sessionsRef.current.map((session) => session.id));
-      commitSessions([...sessionsRef.current, ...page.filter((session) => !ids.has(session.id))]);
+      commitSessions(
+        [...sessionsRef.current, ...page.filter((session) => !ids.has(session.id))],
+        requestedAt,
+      );
       setSessionsHasMore(page.length === SESSION_PAGE_SIZE);
       setSessionsError(null);
     } catch (error) {
@@ -308,13 +360,84 @@ export function LakeGenProvider({ children }: { children: React.ReactNode }) {
     }
   }, [commitSessions]);
 
+  const renameSession = useCallback(
+    async (session: SessionResponse, name: string): Promise<boolean> => {
+      const sessionId = session.id;
+      const trimmed = name.trim();
+      if (!trimmed || trimmed === (session.name ?? '').trim()) return false;
+      // Patch the list in place so the new title shows before the round trip;
+      // revert just this row if the server rejects the rename.
+      const applyName = (value: string | null) => {
+        if (value === null) sessionNamesRef.current.delete(sessionId);
+        else sessionNamesRef.current.set(sessionId, value);
+        commitSessions(
+          sessionsRef.current.map((item) =>
+            item.id === sessionId ? { ...item, name: value } : item,
+          ),
+        );
+      };
+      // Keep the title the server is known to hold so a failed rename can
+      // restore it, including an automatic title that arrives while pending.
+      // A rename already queued ahead keeps its fallback, so failing twice
+      // still lands on the last saved title.
+      const queued = pendingRenamesRef.current.get(sessionId);
+      const pending = {
+        name: trimmed,
+        // An unnamed session keeps its ``null`` fallback when a second rename
+        // queues behind the first; only a fresh rename starts from ``session.name``.
+        fallbackName: queued ? queued.fallbackName : session.name,
+      };
+      pendingRenamesRef.current.set(sessionId, pending);
+      applyName(trimmed);
+      // Only a request that still owns the displayed name may touch it, so an
+      // older failure cannot undo a newer rename.
+      const ownsName = () => pendingRenamesRef.current.get(sessionId) === pending;
+      const chains = renameChainsRef.current;
+      const previous = chains.get(sessionId) ?? Promise.resolve(false);
+      const request: Promise<boolean> = previous.then(async () => {
+        try {
+          await renameSessionRequest(sessionId, trimmed);
+          if (ownsName()) {
+            pendingRenamesRef.current.delete(sessionId);
+            confirmedRenamesRef.current.set(sessionId, Date.now());
+            // Claim the name back in case a list refresh raced the PATCH.
+            applyName(trimmed);
+          } else {
+            // A newer rename is waiting; if it fails it falls back to this one.
+            const newer = pendingRenamesRef.current.get(sessionId);
+            if (newer) newer.fallbackName = trimmed;
+          }
+          return true;
+        } catch (error) {
+          if (ownsName()) {
+            pendingRenamesRef.current.delete(sessionId);
+            applyName(pending.fallbackName);
+          }
+          notify({
+            tone: 'error',
+            message: error instanceof Error ? error.message : 'Failed to rename session',
+          });
+          return false;
+        }
+      });
+      chains.set(sessionId, request);
+      try {
+        return await request;
+      } finally {
+        if (chains.get(sessionId) === request) chains.delete(sessionId);
+      }
+    },
+    [commitSessions, notify],
+  );
+
   useEffect(() => {
     let active = true;
     const revision = sessionsRevisionRef.current;
+    const requestedAt = Date.now();
     listSessions()
       .then((page) => {
         if (!active || sessionsRevisionRef.current !== revision) return;
-        replaceSessions(page);
+        replaceSessions(page, requestedAt);
         setSessionsHasMore(page.length === SESSION_PAGE_SIZE);
         setSessionsError(null);
       })
@@ -738,6 +861,20 @@ export function LakeGenProvider({ children }: { children: React.ReactNode }) {
                 ...m,
                 text: m.text + event.data.text,
               }));
+            } else if (event.type === 'session_named') {
+              // The server titled the session from this turn's first message.
+              // Record the name before committing: the sessions list may not
+              // contain the row yet, and the commit applies it when it does.
+              // A rename in flight owns the title, but remembers this automatic
+              // one so a failure can fall back to it. A saved rename means the
+              // event is stale, so drop it.
+              const pending = pendingRenamesRef.current.get(event.data.id);
+              if (pending) {
+                pending.fallbackName = event.data.name;
+              } else if (!confirmedRenamesRef.current.has(event.data.id)) {
+                sessionNamesRef.current.set(event.data.id, event.data.name);
+                commitSessions(sessionsRef.current);
+              }
             } else if (event.type === 'turn_done') {
               clearRetainedTurns(sessionId);
               updateConversation(conversation.id, (current) => ({
@@ -815,7 +952,7 @@ export function LakeGenProvider({ children }: { children: React.ReactNode }) {
       }
       return true;
     },
-    [createConversation, ensureSession, notify, patchAssistant, updateConversation],
+    [createConversation, commitSessions, ensureSession, notify, patchAssistant, updateConversation],
   );
 
   const value: LakeGenValue = {
@@ -838,6 +975,7 @@ export function LakeGenProvider({ children }: { children: React.ReactNode }) {
     loadMoreSessions,
     selectedSessionId,
     selectSession,
+    renameSession,
     sessionHistoryLoading,
     sessionHistoryLoadingMore,
     sessionHistoryHasMore,

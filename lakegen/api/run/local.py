@@ -7,7 +7,13 @@ from lakegen.api.run.runner import AgentEvent, AgentEventType, TurnResult
 from lakegen.core.error.base import BaseError
 from lakegen.core.error.code import ErrorCode
 from lakegen.inference import StreamChunk
-from lakegen.session import AgentTurnInfo, Session, SessionInfo, SessionManager
+from lakegen.session import (
+    AgentTurnInfo,
+    Session,
+    SessionInfo,
+    SessionManager,
+    derive_session_name,
+)
 from lakegen.session.environment import Environment
 
 
@@ -31,6 +37,10 @@ class LocalRunAdapter:
     def delete_session(self, session_id: str, *, owner_id: str) -> None:
         self._require_owner(session_id, owner_id)
         self._manager.delete(session_id)
+
+    def rename_session(self, session_id: str, name: str, *, owner_id: str) -> None:
+        self._require_owner(session_id, owner_id)
+        self._manager.rename(session_id, name)
 
     def list_turns(
         self,
@@ -60,6 +70,26 @@ class LocalRunAdapter:
         cancel_event: threading.Event,
     ) -> TurnResult:
         session = self._require_owner(session_id, owner_id)
+
+        # Name the session from its first message before inference starts, so
+        # the sidebar shows a title while the turn is still streaming. The first
+        # turn that finds the name empty claims it: the store refuses to
+        # overwrite an existing name, so a user rename always wins and a later
+        # turn only titles a session an earlier one left unnamed. A title must
+        # never break an otherwise-successful turn.
+        name = derive_session_name(user_text)
+        if name:
+            try:
+                stored = self._manager.set_name_if_empty(session_id, name)
+            except Exception:  # noqa: BLE001
+                stored = None
+            if stored is not None and on_event is not None:
+                on_event(
+                    AgentEvent(
+                        type=AgentEventType.SESSION_NAMED,
+                        data={"id": session_id, "name": stored},
+                    )
+                )
 
         def _on_chunk(chunk: StreamChunk) -> None:
             if on_event is None or cancel_event.is_set():

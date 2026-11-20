@@ -1,6 +1,6 @@
 from lakegen.agent.policy import ContextPolicy
 from lakegen.session.environment import Environment
-from lakegen.session.manager import SessionManager
+from lakegen.session.manager import SessionManager, derive_session_name
 from lakegen.session.model import (
     AgentTurnInfo,
     SessionInfo,
@@ -18,4 +18,5 @@ __all__ = [
     "SessionManager",
     "SessionState",
     "SessionTurnResult",
+    "derive_session_name",
 ]

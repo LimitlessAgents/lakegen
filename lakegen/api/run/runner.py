@@ -14,6 +14,7 @@ class AgentEventType(StrEnum):
     TEXT_DELTA = "text_delta"
     TOOL_CALL = "tool_call"
     TOOL_RESULT = "tool_result"
+    SESSION_NAMED = "session_named"
     TURN_DONE = "turn_done"
     ERROR = "error"
 
@@ -45,6 +46,8 @@ class AgentRunner(Protocol):
     ) -> list[SessionInfo]: ...
 
     def delete_session(self, session_id: str, *, owner_id: str) -> None: ...
+
+    def rename_session(self, session_id: str, name: str, *, owner_id: str) -> None: ...
 
     def list_turns(
         self,
