@@ -86,6 +86,12 @@ export function renameSession(sessionId: string, name: string): Promise<void> {
   });
 }
 
+export function deleteSession(sessionId: string): Promise<void> {
+  return request(`/v1/sessions/${encodeURIComponent(sessionId)}`, {
+    method: 'DELETE',
+  });
+}
+
 export function listSessionTurns(
   sessionId: string,
   offset = 0,

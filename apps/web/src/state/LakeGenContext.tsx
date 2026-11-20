@@ -12,6 +12,7 @@ import {
   ApiError,
   createSession,
   deleteCatalog as deleteCatalogRequest,
+  deleteSession as deleteSessionRequest,
   listCatalogs,
   listSessions,
   listSessionTurns,
@@ -68,6 +69,7 @@ interface LakeGenValue {
   selectedSessionId: string | null;
   selectSession: (session: SessionResponse) => Promise<void>;
   renameSession: (session: SessionResponse, name: string) => Promise<boolean>;
+  deleteSession: (session: SessionResponse) => Promise<boolean>;
   sessionHistoryLoading: boolean;
   sessionHistoryLoadingMore: boolean;
   sessionHistoryHasMore: boolean;
@@ -244,6 +246,9 @@ export function LakeGenProvider({ children }: { children: React.ReactNode }) {
   // When each session's rename was saved. Only list responses requested before
   // that moment can still carry the old title and are overruled.
   const confirmedRenamesRef = useRef<Map<string, number>>(new Map());
+  // Sessions deleted in this tab. A list response requested before the delete
+  // can still contain one, and ids are never reused, so they stay hidden.
+  const deletedSessionIdsRef = useRef<Set<string>>(new Set());
   // One in-flight rename per session: the editor closes before the request
   // finishes, so later renames queue behind earlier ones.
   const renameChainsRef = useRef<Map<string, Promise<boolean>>>(new Map());
@@ -292,7 +297,9 @@ export function LakeGenProvider({ children }: { children: React.ReactNode }) {
     const knownNames = sessionNamesRef.current;
     const pendingRenames = pendingRenamesRef.current;
     const confirmedRenames = confirmedRenamesRef.current;
-    const merged = next.map((session) => {
+    const deletedSessions = deletedSessionIdsRef.current;
+    const visible = next.filter((session) => !deletedSessions.has(session.id));
+    const merged = visible.map((session) => {
       const known = knownNames.get(session.id);
       const pending = pendingRenames.get(session.id);
       if (pending) return { ...session, name: pending.name };
@@ -342,16 +349,28 @@ export function LakeGenProvider({ children }: { children: React.ReactNode }) {
     if (sessionsLoadingMoreRef.current) return;
     sessionsLoadingMoreRef.current = true;
     setSessionsLoadingMore(true);
-    const requestedAt = Date.now();
     try {
-      const page = await listSessions(sessionsRef.current.length);
-      const ids = new Set(sessionsRef.current.map((session) => session.id));
-      commitSessions(
-        [...sessionsRef.current, ...page.filter((session) => !ids.has(session.id))],
-        requestedAt,
-      );
-      setSessionsHasMore(page.length === SESSION_PAGE_SIZE);
-      setSessionsError(null);
+      // The offset is implied by the rows already loaded, so it is only valid
+      // while that set is unchanged. A delete during the request shifts every
+      // later server offset, and the page can then skip a session entirely, so
+      // drop such a page and ask again from the offset that now applies.
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        const loaded = sessionsRef.current;
+        const requestedAt = Date.now();
+        const page = await listSessions(loaded.length);
+        const current = sessionsRef.current;
+        const stable =
+          current === loaded ||
+          (current.length === loaded.length &&
+            current.every((session, index) => session.id === loaded[index].id));
+        if (!stable) continue;
+        const ids = new Set(loaded.map((session) => session.id));
+        commitSessions([...current, ...page.filter((session) => !ids.has(session.id))], requestedAt);
+        setSessionsHasMore(page.length === SESSION_PAGE_SIZE);
+        setSessionsError(null);
+        return;
+      }
+      // Still changing under us; leave “Load more” available to try again.
     } catch (error) {
       setSessionsError(error instanceof Error ? error.message : 'Failed to load sessions');
     } finally {
@@ -774,6 +793,56 @@ export function LakeGenProvider({ children }: { children: React.ReactNode }) {
     setSendError(null);
   }, []);
 
+  const deleteSession = useCallback(
+    async (session: SessionResponse): Promise<boolean> => {
+      const sessionId = session.id;
+      const bound = Object.values(conversationsRef.current).filter(
+        (conversation) => conversation.sessionId === sessionId,
+      );
+      if (bound.some((conversation) => conversation.isStreaming)) {
+        notify({
+          tone: 'error',
+          message: 'Wait for the response to finish before deleting this session.',
+        });
+        return false;
+      }
+      try {
+        await deleteSessionRequest(sessionId);
+      } catch (error) {
+        notify({
+          tone: 'error',
+          message: error instanceof Error ? error.message : 'Failed to delete session',
+        });
+        return false;
+      }
+      // The session is gone: keep it out of every later list response, drop the
+      // bookkeeping tied to it, and forget its cached turns.
+      deletedSessionIdsRef.current.add(sessionId);
+      sessionNamesRef.current.delete(sessionId);
+      pendingRenamesRef.current.delete(sessionId);
+      confirmedRenamesRef.current.delete(sessionId);
+      renameChainsRef.current.delete(sessionId);
+      clearRetainedTurns(sessionId);
+      if (bound.length > 0) {
+        updateConversations((current) => {
+          const next = { ...current };
+          for (const conversation of bound) delete next[conversation.id];
+          return next;
+        });
+      }
+      commitSessions(sessionsRef.current.filter((item) => item.id !== sessionId));
+      if (
+        selectedSessionIdRef.current === sessionId ||
+        bound.some((conversation) => conversation.id === activeConversationIdRef.current)
+      ) {
+        newConversation();
+      }
+      notify({ tone: 'success', message: 'Session deleted.' });
+      return true;
+    },
+    [commitSessions, newConversation, notify, updateConversations],
+  );
+
   const patchAssistant = useCallback(
     (conversationId: string, id: string, patch: (message: Message) => Message) => {
       updateConversation(conversationId, (conversation) => ({
@@ -884,11 +953,11 @@ export function LakeGenProvider({ children }: { children: React.ReactNode }) {
                 messages: current.messages.map((message) =>
                   message.id === assistantId
                     ? {
-                        ...message,
-                        role: 'assistant',
-                        status: event.data.stop_reason === 'completed' ? 'done' : 'incomplete',
-                        stopReason: event.data.stop_reason,
-                      }
+                      ...message,
+                      role: 'assistant',
+                      status: event.data.stop_reason === 'completed' ? 'done' : 'incomplete',
+                      stopReason: event.data.stop_reason,
+                    }
                     : message,
                 ),
               }));
@@ -976,6 +1045,7 @@ export function LakeGenProvider({ children }: { children: React.ReactNode }) {
     selectedSessionId,
     selectSession,
     renameSession,
+    deleteSession,
     sessionHistoryLoading,
     sessionHistoryLoadingMore,
     sessionHistoryHasMore,
