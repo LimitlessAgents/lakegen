@@ -1,11 +1,29 @@
 import { useRef, useState } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
-import { DatabaseIcon, MessagesSquareIcon, PencilIcon, PlusIcon } from 'lucide-react';
+import {
+  DatabaseIcon,
+  MessagesSquareIcon,
+  PencilIcon,
+  PlusIcon,
+  Trash2Icon,
+} from 'lucide-react';
 import { useLakeGen } from '../state/LakeGenContext';
 import type { SessionResponse } from '../api/types';
 import { Button } from './ui/Button';
+import { ConfirmDialog } from './ui/ConfirmDialog';
 
 const SESSION_NAME_MAX_LENGTH = 100;
+
+function sessionTitle(session: SessionResponse): string {
+  const createdAt = new Date(session.created_at);
+  const fallback = Number.isNaN(createdAt.getTime())
+    ? 'Untitled session'
+    : createdAt.toLocaleString(undefined, {
+        dateStyle: 'medium',
+        timeStyle: 'short',
+      });
+  return session.name?.trim() || fallback;
+}
 
 const items = [
   { to: '/agent', label: 'Agent', icon: MessagesSquareIcon },
@@ -31,11 +49,14 @@ export function Sidebar() {
     selectedSessionId,
     selectSession,
     renameSession,
+    deleteSession,
     newConversation,
   } = useLakeGen();
   const navigate = useNavigate();
   const location = useLocation();
   const [editing, setEditing] = useState<{ id: string; value: string } | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<SessionResponse | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const discardOnBlurRef = useRef(false);
 
   function startConversation() {
@@ -51,6 +72,18 @@ export function Sidebar() {
   async function submitRename(session: SessionResponse, rawValue: string) {
     setEditing(null);
     await renameSession(session, rawValue);
+  }
+
+  async function confirmDelete() {
+    const session = pendingDelete;
+    if (!session) return;
+    setDeleting(true);
+    try {
+      await deleteSession(session);
+    } finally {
+      setDeleting(false);
+      setPendingDelete(null);
+    }
   }
 
   return (
@@ -114,14 +147,7 @@ export function Sidebar() {
               <p className="px-2.5 py-1.5 text-[12px] text-ink-muted">No sessions yet</p>
             )}
             {sessions.map((session) => {
-              const createdAt = new Date(session.created_at);
-              const fallback = Number.isNaN(createdAt.getTime())
-                ? 'Untitled session'
-                : createdAt.toLocaleString(undefined, {
-                  dateStyle: 'medium',
-                  timeStyle: 'short',
-                });
-              const title = session.name?.trim() || fallback;
+              const title = sessionTitle(session);
               if (editing?.id === session.id) {
                 return (
                   <input
@@ -157,7 +183,7 @@ export function Sidebar() {
                   <button
                     type="button"
                     onClick={() => void selectSession(session)}
-                    className={`block w-full truncate rounded-md py-1.5 pl-2.5 pr-7 text-left text-[12px] transition-colors ${session.id === selectedSessionId
+                    className={`block w-full truncate rounded-md py-1.5 pl-2.5 pr-12 text-left text-[12px] transition-colors ${session.id === selectedSessionId
                       ? 'bg-accent-soft font-medium text-accent shadow-[inset_2px_0_0_0_theme(colors.accent.DEFAULT)]'
                       : 'text-ink-muted hover:bg-line/60 hover:text-ink'
                       }`}
@@ -165,15 +191,26 @@ export function Sidebar() {
                   >
                     {title}
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => startEditing(session)}
-                    aria-label={`Rename ${title}`}
-                    title="Rename session"
-                    className="absolute right-1 top-1/2 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded text-ink-faint opacity-0 transition-opacity hover:bg-line hover:text-ink focus-visible:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100"
-                  >
-                    <PencilIcon className="h-3 w-3" strokeWidth={2} />
-                  </button>
+                  <div className="absolute right-0.5 top-1/2 flex -translate-y-1/2 items-center">
+                    <button
+                      type="button"
+                      onClick={() => startEditing(session)}
+                      aria-label={`Rename ${title}`}
+                      title="Rename session"
+                      className="flex h-5 w-5 items-center justify-center rounded text-ink-faint opacity-0 transition-opacity hover:bg-line hover:text-ink focus-visible:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100"
+                    >
+                      <PencilIcon className="h-3 w-3" strokeWidth={2} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPendingDelete(session)}
+                      aria-label={`Delete ${title}`}
+                      title="Delete session"
+                      className="flex h-5 w-5 items-center justify-center rounded text-ink-faint opacity-0 transition-opacity hover:bg-line hover:text-err focus-visible:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100"
+                    >
+                      <Trash2Icon className="h-3 w-3" strokeWidth={2} />
+                    </button>
+                  </div>
                 </div>
               );
             })}
@@ -195,6 +232,22 @@ export function Sidebar() {
           </div>
         </div>
       </aside>
+
+      <ConfirmDialog
+        open={pendingDelete !== null}
+        title="Delete session?"
+        description={
+          pendingDelete
+            ? `Delete “${sessionTitle(pendingDelete)}” and its conversation history. This cannot be undone.`
+            : ''
+        }
+        confirmLabel="Delete"
+        busy={deleting}
+        onCancel={() => setPendingDelete(null)}
+        onConfirm={() => {
+          void confirmDelete();
+        }}
+      />
     </>
   );
 }
