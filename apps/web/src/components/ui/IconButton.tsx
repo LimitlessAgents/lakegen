@@ -3,7 +3,7 @@ import { forwardRef, type ButtonHTMLAttributes, type ReactNode } from 'react';
 interface IconButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   label: string;
   children: ReactNode;
-  variant?: 'default' | 'primary' | 'danger';
+  variant?: 'default' | 'primary' | 'danger' | 'danger-quiet';
 }
 
 const variants = {
@@ -12,6 +12,8 @@ const variants = {
   primary:
     'bg-accent text-white enabled:hover:bg-accent-hover disabled:bg-sunken disabled:text-ink-faint',
   danger: 'text-err enabled:hover:bg-err-soft disabled:text-ink-faint',
+  'danger-quiet':
+    'text-ink-faint enabled:hover:bg-err-soft enabled:hover:text-err disabled:text-ink-faint',
 };
 
 export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(function IconButton({

@@ -15,7 +15,6 @@ export function Catalogs() {
     catalogsLoading,
     catalogsRefreshing,
     refreshCatalogs,
-    activeCatalogName,
     removeCatalog,
   } = useLakeGen();
   const [panelOpen, setPanelOpen] = useState(false);
@@ -113,7 +112,6 @@ export function Catalogs() {
                     <CatalogRow
                       key={catalog.name}
                       catalog={catalog}
-                      isActive={catalog.name === activeCatalogName}
                       removing={catalog.name === removingName}
                       onRemove={() => {
                         setRemoveError(null);
