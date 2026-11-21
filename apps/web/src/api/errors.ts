@@ -13,8 +13,14 @@ export const errorPresentations: Record<ErrorCode, ErrorPresentation> = {
   ALREADY_EXISTS: { title: 'Catalog name already exists', hint: 'Choose a unique catalog name.' },
   UNAUTHENTICATED: { title: 'Authentication required', hint: 'Sign in again and retry.' },
   PERMISSION_DENIED: { title: 'Permission denied', hint: 'Verify your credentials have the required access.' },
-  CONNECTION_FAILED: { title: 'Could not connect', hint: 'Check the endpoint, credentials, and warehouse.' },
-  CONNECTION_TIMEOUT: { title: 'Connection timed out', hint: 'Check the endpoint is reachable and try again.' },
+  CONNECTION_FAILED: {
+    title: 'Could not connect to the catalog',
+    hint: 'Check the endpoint and make sure the credentials and warehouse are correct.',
+  },
+  CONNECTION_TIMEOUT: {
+    title: 'Connection timed out',
+    hint: 'Check the endpoint is reachable, then try again.',
+  },
   UNAVAILABLE: { title: 'Service temporarily unavailable', hint: 'Wait a moment and try again.' },
   KEYRING: { title: 'Could not store credentials', hint: 'Check the system credential store and try again.' },
   JSON: { title: 'Invalid service response', hint: 'Try again or contact support if it persists.' },

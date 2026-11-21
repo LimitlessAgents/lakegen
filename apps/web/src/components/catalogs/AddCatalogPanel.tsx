@@ -278,18 +278,20 @@ export function AddCatalogPanel({ open, onClose }: AddCatalogPanelProps) {
           return;
         }
       }
-      const presentation = err instanceof ApiError ? presentError(err.body?.code) : presentError();
+      const apiError = err instanceof ApiError ? err : null;
+      const presentation = presentError(apiError?.body?.code);
+      // Server-side failures (5xx) carry a generic placeholder message, so
+      // fall back to guidance the user can act on instead of showing it.
       const message = timedOut
         ? 'The connection attempt took longer than 30 seconds. The catalog may still be created; refresh before retrying the same name.'
-        : err instanceof ApiError
-          ? err.message
-          : 'Failed to connect to the catalog.';
+        : apiError
+          ? apiError.status >= 500
+            ? presentation.hint
+            : apiError.message
+          : `${presentation.title}. ${presentation.hint}`;
       setError(message);
-      setErrorCode(err instanceof ApiError ? err.body?.code ?? null : null);
+      setErrorCode(apiError?.body?.code ?? null);
       setConnectStatus('error');
-      if (!timedOut && !(err instanceof ApiError)) {
-        setError(`${presentation.title}. ${presentation.hint}`);
-      }
     } finally {
       if (timeoutRef.current !== null) {
         window.clearTimeout(timeoutRef.current);
